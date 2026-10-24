@@ -2,13 +2,21 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   minuten, uhrzeit, halbstunden, isoWoche, montagDerKw, kwVorZurueck, tageDerWoche, plusTage,
-  zeitspanne, stundenText,
+  zeitspanne, stundenText, heuteDatum,
 } from '../docs/zeit.js';
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
   rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
   vorgabeText,
 } from '../docs/plan-raster.js';
+
+test('heuteDatum: lokales Datum zum Aufrufzeitpunkt; ?heute= ersetzt es nur bei gültigem Datum', () => {
+  assert.equal(heuteDatum(null, new Date(2026, 10, 2, 23, 59)), '2026-11-02');
+  assert.equal(heuteDatum(null, new Date(2026, 10, 3, 0, 1)), '2026-11-03'); // Tablet über Nacht offen
+  assert.equal(heuteDatum('2026-11-09', new Date(2026, 10, 3)), '2026-11-09');
+  assert.equal(heuteDatum('quatsch', new Date(2026, 0, 5)), '2026-01-05');
+  assert.match(heuteDatum(), /^\d{4}-\d{2}-\d{2}$/);
+});
 
 test('Zeit: Minuten, Uhrzeit, Halbstunden', () => {
   assert.equal(minuten('06:30'), 390);

@@ -3,7 +3,7 @@
 // Blöcke kommen als Abschnitte (F2): dieselbe id kann mehrfach vorkommen, je Abschnitt eigenes `unbesetzt`.
 import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE, textfarbe } from './hilfe.js';
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
-import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne } from './zeit.js';
+import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum } from './zeit.js';
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel,
 } from './plan-raster.js';
@@ -33,13 +33,11 @@ const ganzzahl = (name, min, max) => {
   const n = Number(adresse.get(name));
   return adresse.get(name) && Number.isInteger(n) && n >= min && n <= max ? n : null;
 };
-const jetzt = new Date();
-const heuteLokal = istDatum(adresse.get('heute')) ? adresse.get('heute')
-  : `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
+const heuteLokal = () => heuteDatum(adresse.get('heute')); // bei jedem Aufruf neu (Tablet über Nacht offen)
 let datum = istDatum(adresse.get('tag')) ? adresse.get('tag') : null;
 let { jahr, kw } = datum ? isoWoche(datum)
   : ganzzahl('jahr', 2000, 2100) && ganzzahl('kw', 1, 53) ? { jahr: ganzzahl('jahr', 2000, 2100), kw: ganzzahl('kw', 1, 53) }
-    : isoWoche(heuteLokal);
+    : isoWoche(heuteLokal());
 
 let woche = null; // Antwort von pep_einsatzplan_woche
 let pinsel = lesePinsel(); // Bereich-Id als Text oder 'radieren'
@@ -208,7 +206,7 @@ function zeichneKopf() {
         element('strong', { class: 'ep-kw', title: `${datumDE(woche.montag)} – ${datumDE(plusTage(woche.montag, 6))}` }, `KW ${woche.kw}`),
         element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Nächste Woche', onclick: () => wechsleWoche(1) }, '▶'),
         auswahl,
-        element('button', { type: 'button', class: 'knopf', onclick: () => springeZu(woche?.heute ?? heuteLokal) }, 'Heute')),
+        element('button', { type: 'button', class: 'knopf', onclick: () => springeZu(woche?.heute ?? heuteLokal()) }, 'Heute')),
       element('div', { class: 'ep-tage', role: 'group', 'aria-label': 'Tag' }, woche.tage.map(tagesReiter))),
     element('div', { class: 'werkzeug-zeile' },
       pinselLeiste(),

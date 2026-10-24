@@ -3,7 +3,7 @@
 // pep.woche_kennzahlen (schema.sql); hier wird nur angezeigt und gespeichert.
 import { $, meldung, fehlerText, element, eingabe, geldZahl } from './hilfe.js';
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
-import { isoWoche, kwVorZurueck, plusTage } from './zeit.js';
+import { isoWoche, kwVorZurueck, plusTage, heuteDatum } from './zeit.js';
 import { oeffneWoche } from './einsatzplan.js';
 
 // Adresse: ?jahr=&kw= wählen die erste Woche, ?heute=JJJJ-MM-TT ersetzt das heutige Datum (Vorschau).
@@ -12,10 +12,8 @@ const ganzzahl = (name, min, max) => {
   const n = Number(adresse.get(name));
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 };
-const jetzt = new Date();
-const heuteIso = /^\d{4}-\d{2}-\d{2}$/.test(adresse.get('heute') ?? '') ? adresse.get('heute')
-  : `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
-const start = isoWoche(heuteIso);
+const heuteIso = () => heuteDatum(adresse.get('heute')); // bei jedem Aufruf neu (Tablet über Nacht offen)
+const start = isoWoche(heuteIso());
 let jahr = ganzzahl('jahr', 2000, 2100) ?? start.jahr;
 let kw = ganzzahl('kw', 1, 53) ?? start.kw;
 let wochen = []; // Antwort von pep_vorausplanung: sechs Kennzahlen-Objekte
@@ -205,7 +203,7 @@ function verschiebe(schritt) {
 }
 
 function heute() {
-  const ziel = isoWoche(heuteIso);
+  const ziel = isoWoche(heuteIso());
   lade(ziel.jahr, ziel.kw).catch(zeigeFehler);
 }
 

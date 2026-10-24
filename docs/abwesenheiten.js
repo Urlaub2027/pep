@@ -7,6 +7,7 @@ import {
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { dialog } from './dialog.js';
 import { druckAuswahlAbwesenheiten } from './druck.js';
+import { heuteDatum } from './zeit.js';
 import {
   wochenGruppen, ziehBereich, monatVorZurueck, zellenKlasse, stundenAnzeige, kurzStunden,
 } from './kalender.js';
@@ -25,11 +26,9 @@ const ganzzahl = (name, min, max) => {
   const n = Number(adresse.get(name));
   return Number.isInteger(n) && n >= min && n <= max ? n : null;
 };
-const jetzt = new Date();
-const heuteIso = /^\d{4}-\d{2}-\d{2}$/.test(adresse.get('heute') ?? '') ? adresse.get('heute')
-  : `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
-let jahr = ganzzahl('jahr', 2000, 2100) ?? Number(heuteIso.slice(0, 4));
-let monat = ganzzahl('monat', 1, 12) ?? Number(heuteIso.slice(5, 7));
+const heuteIso = () => heuteDatum(adresse.get('heute')); // bei jedem Aufruf neu (Tablet über Nacht offen)
+let jahr = ganzzahl('jahr', 2000, 2100) ?? Number(heuteIso().slice(0, 4));
+let monat = ganzzahl('monat', 1, 12) ?? Number(heuteIso().slice(5, 7));
 let daten = null; // Antwort von pep_abwesenheiten
 let teiler = STANDARD_TEILER;
 let wahl = 'ansehen'; // 'ansehen' | 'keine' | Code-Id als Text
@@ -123,8 +122,9 @@ function wechsleMonat(schritt) {
 }
 
 function zuHeute() {
-  jahr = Number(heuteIso.slice(0, 4));
-  monat = Number(heuteIso.slice(5, 7));
+  const heute = heuteIso();
+  jahr = Number(heute.slice(0, 4));
+  monat = Number(heute.slice(5, 7));
   neuLaden();
 }
 
@@ -196,7 +196,7 @@ const wunschAm = (m, datum) => {
 };
 
 // Klassen, die alle Zellen eines Tages tragen (Kopf, Mitarbeiter, Summe).
-const tagKlassen = (tag) => [...zellenKlasse(tag), ...(tagIso(tag.datum) === heuteIso ? ['heute'] : [])];
+const tagKlassen = (tag) => [...zellenKlasse(tag), ...(tagIso(tag.datum) === heuteIso() ? ['heute'] : [])];
 
 function zelle(m, tag, farben) {
   const datum = tagIso(tag.datum);

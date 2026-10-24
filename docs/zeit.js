@@ -30,6 +30,14 @@ function iso(ms) {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
+// Heutiges Datum 'JJJJ-MM-TT' in Ortszeit, bei jedem Aufruf neu (ein über Nacht offenes Tablet springt mit).
+// ersatz (z. B. ?heute= der Vorschau) gilt, wenn es ein Datum dieser Form ist. Einzige Stelle mit Ortszeit.
+export function heuteDatum(ersatz = null, jetzt = new Date()) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ersatz ?? '')) return ersatz;
+  const zwei = (n) => String(n).padStart(2, '0');
+  return `${jetzt.getFullYear()}-${zwei(jetzt.getMonth() + 1)}-${zwei(jetzt.getDate())}`;
+}
+
 export function plusTage(datum, n) {
   return iso(utc(datum) + n * TAG_MS);
 }
