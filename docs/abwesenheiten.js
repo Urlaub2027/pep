@@ -1,7 +1,7 @@
 // Reiter „Abwesenheiten“: Monatsraster mit Palette, Ziehen per Pointer-Events, Wiederholungen,
 // Urlaubswünsche (Genehmigen/Ablehnen/Zurücknehmen) und Übersicht „Urlaub <Jahr>“ unter dem Raster.
 import {
-  $, meldung, fehlerText, element, datumDE, stundenDE, WOCHENTAGE,
+  $, meldung, fehlerText, element, datumDE, stundenDE, WOCHENTAGE, textfarbe,
   zahl, feld, eingabe, auswahlfeld,
 } from './hilfe.js';
 import { aufruf, ich, reiter } from './app.js';
@@ -173,12 +173,6 @@ function zeichneKopf() {
 
 // ---------------------------------------------------------------- Raster
 
-function textfarbe(farbe) {
-  const m = /^#([0-9a-f]{6})$/i.exec(farbe || '');
-  if (!m) return '';
-  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
-  return (r * 299 + g * 587 + b * 114) / 1000 > 140 ? '#111' : '#fff';
-}
 
 const wuenscheVon = (m) => (daten.wuensche || []).filter((w) => w.mitarbeiter_id === m.id);
 // Offene Wünsche gehen vor; abgelehnte bleiben (abgeblendet) sichtbar und lassen sich erneut genehmigen.

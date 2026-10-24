@@ -5,5 +5,6 @@ import { start } from './app.js';
 import './mitarbeiter.js';
 import './einstellungen.js';
 import './abwesenheiten.js';
+import './einsatzplan.js';
 
 start();

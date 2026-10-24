@@ -7,6 +7,7 @@
   "farbe": "#7FD1FF",
   "kuerzel": "KA",
   "position": 1,
+  "bedeutung": "kasse",
   "filiale_id": 1,
   "kompetenz_noetig": true
  },
@@ -18,6 +19,7 @@
   "farbe": "#9BE38A",
   "kuerzel": "OG",
   "position": 2,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -29,6 +31,7 @@
   "farbe": "#F3C96B",
   "kuerzel": "BB",
   "position": 3,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -40,6 +43,7 @@
   "farbe": "#D9B38C",
   "kuerzel": "TS",
   "position": 4,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -51,6 +55,7 @@
   "farbe": "#F5F5F5",
   "kuerzel": "MO",
   "position": 5,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -62,6 +67,7 @@
   "farbe": "#B8C4FF",
   "kuerzel": "TK",
   "position": 6,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -73,6 +79,7 @@
   "farbe": "#2E7D4F",
   "kuerzel": "FÜ",
   "position": 7,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -84,6 +91,7 @@
   "farbe": "#C9C9C9",
   "kuerzel": "RE",
   "position": 8,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -95,6 +103,7 @@
   "farbe": "#AEE0D6",
   "kuerzel": "BO",
   "position": 9,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -106,6 +115,7 @@
   "farbe": "#555555",
   "kuerzel": "PA",
   "position": 10,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -117,6 +127,7 @@
   "farbe": "#E6E600",
   "kuerzel": "PO",
   "position": 11,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -128,6 +139,7 @@
   "farbe": "#FF8C42",
   "kuerzel": "KI",
   "position": 12,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -139,6 +151,7 @@
   "farbe": "#333333",
   "kuerzel": "GM",
   "position": 13,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -150,6 +163,7 @@
   "farbe": "#B5651D",
   "kuerzel": "BE",
   "position": 14,
+  "bedeutung": null,
   "filiale_id": 1,
   "kompetenz_noetig": false
  },
@@ -161,6 +175,7 @@
   "farbe": "#9A5AD0",
   "kuerzel": "VP",
   "position": 15,
+  "bedeutung": "vp",
   "filiale_id": 1,
   "kompetenz_noetig": false
  }

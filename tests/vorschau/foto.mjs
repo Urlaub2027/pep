@@ -1,6 +1,6 @@
 // Screenshot einer Vorschau-Ansicht mit Edge/Chrome headless.
 // node tests/vorschau/foto.mjs <ansicht> <ausgabe.png> [breite] [hoehe] [zusatz]
-// zusatz: weitere Abfrage-Parameter, z. B. 'toast=Gespeichert.'. Monat und „heute“ passen zu den Vorschau-Daten.
+// zusatz: weitere Abfrage-Parameter, z. B. 'toast=Gespeichert.' oder 'tag=2026-11-10'. Monat, KW und „heute“ passen zu den Vorschau-Daten.
 // Die Ausgabe gehört nicht ins Repo (*.png in tests/vorschau ist gitignored).
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync } from 'node:fs';
@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const [ansicht = 'abwesenheiten', ausgabe = 'vorschau.png', breite = '1440', hoehe = '900', zusatz = ''] = process.argv.slice(2);
-const abfrage = new URLSearchParams(`ansicht=${ansicht}&jahr=2026&monat=11&heute=2026-11-02&${zusatz}`);
+const abfrage = new URLSearchParams(`ansicht=${ansicht}&jahr=2026&monat=11&kw=46&heute=2026-11-02&${zusatz}`);
 // Chrome zuerst: Edge headless schreibt unter Windows keinen Screenshot, wenn Edge schon offen ist.
 const BROWSER = [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',

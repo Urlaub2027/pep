@@ -35,6 +35,12 @@ export async function start() {
   const ansicht = parameter.get('ansicht') || 'start';
   $('navigation').hidden = ansicht === 'login';
   for (const k of document.querySelectorAll('[data-ziel]')) k.addEventListener('click', () => zeigeAnsicht(k.dataset.ziel));
+  // Einsatzplan: Knöpfe der Dialoge späterer Tasks mit Platzhaltern belegen, damit das Foto den fertigen Bildschirm
+  // zeigt (ohne Belegung sind sie ausgeblendet). ?aktionen=0 zeigt den Stand ohne Dialoge.
+  if (ansicht === 'einsatzplan' && parameter.get('aktionen') !== '0') {
+    const { aktionen } = await import('/docs/einsatzplan.js');
+    for (const k of Object.keys(aktionen)) aktionen[k] ??= () => meldung(`Vorschau: „${k}“ folgt mit einer späteren Aufgabe.`, 'ok');
+  }
   zeigeAnsicht(ansicht);
   // ?toast=<Text> zeigt die Erfolgsmeldung, damit sie im Foto zu sehen ist (verzögert: das Foto entsteht
   // nach 4 s virtueller Zeit, der Toast verschwindet nach 3 s).

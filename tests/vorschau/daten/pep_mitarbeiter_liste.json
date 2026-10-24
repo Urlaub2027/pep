@@ -12,7 +12,10 @@
   "id": 2,
   "name": "Muster, Ben",
   "aktiv": true,
-  "kompetenzen": [],
+  "kompetenzen": [
+   "KA",
+   "VP"
+  ],
   "vertragsart": "vollzeit",
   "wochenstunden": 37.5,
   "personalnummer": null
@@ -21,7 +24,9 @@
   "id": 3,
   "name": "Beispiel, Cem",
   "aktiv": true,
-  "kompetenzen": [],
+  "kompetenzen": [
+   "KA"
+  ],
   "vertragsart": "teilzeit",
   "wochenstunden": 30,
   "personalnummer": null
@@ -30,7 +35,9 @@
   "id": 4,
   "name": "Probe, Dana",
   "aktiv": true,
-  "kompetenzen": [],
+  "kompetenzen": [
+   "KA"
+  ],
   "vertragsart": "teilzeit",
   "wochenstunden": 20,
   "personalnummer": null
@@ -48,7 +55,9 @@
   "id": 6,
   "name": "Fiktiv, Frieda",
   "aktiv": true,
-  "kompetenzen": [],
+  "kompetenzen": [
+   "VP"
+  ],
   "vertragsart": "fuehrung",
   "wochenstunden": 42,
   "personalnummer": null
@@ -57,7 +66,9 @@
   "id": 7,
   "name": "Platzhalter, Gustav",
   "aktiv": true,
-  "kompetenzen": [],
+  "kompetenzen": [
+   "KA"
+  ],
   "vertragsart": "teilzeit",
   "wochenstunden": 25,
   "personalnummer": null
@@ -84,7 +95,9 @@
   "id": 10,
   "name": "Skizze, Jana",
   "aktiv": true,
-  "kompetenzen": [],
+  "kompetenzen": [
+   "KA"
+  ],
   "vertragsart": "vollzeit",
   "wochenstunden": 37.5,
   "personalnummer": null
@@ -102,7 +115,9 @@
   "id": 12,
   "name": "Attrappe, Lea",
   "aktiv": true,
-  "kompetenzen": [],
+  "kompetenzen": [
+   "VP"
+  ],
   "vertragsart": "fuehrung",
   "wochenstunden": 42,
   "personalnummer": null

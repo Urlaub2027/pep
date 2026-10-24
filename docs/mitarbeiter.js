@@ -66,7 +66,8 @@ function zeichneListe() {
   if (darfSchreiben()) {
     knoten.push(element('button', { type: 'button', class: 'knopf primaer', onclick: neuer }, 'Neuer Mitarbeiter'));
   }
-  const eintraege = liste.map((m) => element('li', {},
+  const aktive = liste.filter((m) => m.aktiv).map((m) => m.id);
+  const eintraege = liste.map((m) => element('li', { class: 'ma-zeile' },
     element('button', {
       type: 'button',
       class: `ma-eintrag${m.id === auswahl ? ' gewaehlt' : ''}${m.aktiv ? '' : ' inaktiv'}`,
@@ -74,10 +75,24 @@ function zeichneListe() {
     },
     element('span', { class: 'ma-name' }, m.name,
       m.kompetenzen.map((k) => element('span', { class: 'badge' }, k))),
-    element('small', {}, vertragsText(m)))));
+    element('small', {}, vertragsText(m))),
+    darfSchreiben() && m.aktiv ? reihenfolgeKnoepfe(m, aktive) : null));
   knoten.push(element('ul', { class: 'ma-liste' }, eintraege));
   if (!liste.length) knoten.push(element('p', { class: 'hinweis' }, 'Noch keine Mitarbeiter.'));
   $('ma-liste').replaceChildren(...knoten);
+}
+
+// ▲/▼ (F12): Reihenfolge der aktiven Mitarbeiter im Einsatzplan; ein Klick tauscht mit dem Nachbarn und speichert.
+function reihenfolgeKnoepfe(m, aktive) {
+  const i = aktive.indexOf(m.id);
+  const schiebe = (schritt) => {
+    const neu = [...aktive];
+    [neu[i], neu[i + schritt]] = [neu[i + schritt], neu[i]];
+    speichere(() => aufruf('pep_mitarbeiter_reihenfolge', { p_ids: neu }));
+  };
+  return element('div', { class: 'ma-pfeile' },
+    element('button', { type: 'button', class: 'knopf', 'aria-label': `${m.name} nach oben`, disabled: i === 0, onclick: () => schiebe(-1) }, '▲'),
+    element('button', { type: 'button', class: 'knopf', 'aria-label': `${m.name} nach unten`, disabled: i === aktive.length - 1, onclick: () => schiebe(1) }, '▼'));
 }
 
 function neuer() {

@@ -115,6 +115,14 @@ export function stundenDE(n) {
   return Number(n).toFixed(2).replace('.', ',');
 }
 
+// Lesbare Schrift auf einer Code- oder Bereichsfarbe (#RRGGBB): dunkel auf hellem Grund, sonst weiß.
+export function textfarbe(farbe) {
+  const m = /^#([0-9a-f]{6})$/i.exec(farbe || '');
+  if (!m) return '';
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  return (r * 299 + g * 587 + b * 114) / 1000 > 140 ? '#111' : '#fff';
+}
+
 // ---------------------------------------------------------------- Formular-Bausteine (mehrere Reiter)
 
 export const zahl = (wert) => (wert === '' || wert == null ? null : Number(String(wert).replace(',', '.')));

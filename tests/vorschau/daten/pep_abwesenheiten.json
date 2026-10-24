@@ -319,7 +319,7 @@
   "2026-11-03": 13,
   "2026-11-04": 5,
   "2026-11-05": 5,
-  "2026-11-09": 6.25,
+  "2026-11-09": 14.58,
   "2026-11-10": 14.25,
   "2026-11-11": 6.25,
   "2026-11-12": 12.5,
@@ -568,7 +568,21 @@
   {
    "id": 4,
    "name": "Probe, Dana",
-   "tage": {},
+   "tage": {
+    "2026-11-09": {
+     "id": 31,
+     "bis": null,
+     "von": null,
+     "code": "KM",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 2,
+     "stunden": 3.33,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
    "aktiv": true,
    "wochenstunden": 20
   },
@@ -696,7 +710,21 @@
   {
    "id": 9,
    "name": "Entwurf, Ivo",
-   "tage": {},
+   "tage": {
+    "2026-11-09": {
+     "id": 32,
+     "bis": "13:00:00",
+     "von": "08:00:00",
+     "code": "BS",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 3,
+     "stunden": 5,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
    "aktiv": true,
    "wochenstunden": 30
   },

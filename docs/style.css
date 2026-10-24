@@ -438,6 +438,11 @@ th { background: var(--hell); font-weight: 600; }
 .ma-eintrag.inaktiv { color: var(--text-2); background: var(--hell); }
 .ma-eintrag small { display: block; color: var(--text-2); }
 .ma-eintrag.gewaehlt small { color: var(--schwarz); }
+/* ▲/▼ neben aktiven Mitarbeitern (nur Leitung): Reihenfolge im Einsatzplan */
+.ma-zeile { display: flex; gap: var(--a1); margin-bottom: var(--a1); }
+.ma-zeile .ma-eintrag { flex: 1; min-width: 0; margin-bottom: 0; }
+.ma-pfeile { display: flex; gap: 2px; }
+.ma-pfeile .knopf { width: 36px; min-height: 0; height: 100%; padding: 0; font-size: 0.75rem; color: var(--text-2); }
 .badge { display: inline-block; margin-left: var(--a1); padding: 0 6px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--schwarz); border-radius: 8px; background: #fff; }
 .zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--a1) var(--a3); padding: var(--a3) 0; border-bottom: 1px solid var(--linie); }
 .zeile:last-child { border-bottom: 0; }
@@ -456,3 +461,179 @@ th { background: var(--hell); font-weight: 600; }
 .zeile.grau { background: var(--hell); color: var(--text-2); padding-inline: var(--a2); border-radius: 6px; }
 .zeile .erklaerung { flex: 1 1 260px; }
 .zeile .feld input[type="color"] { width: 60px; padding: 2px; }
+
+/* ---------------------------------------------------------------- Einsatzplan */
+
+.ep-werkzeug { gap: 6px; margin-bottom: var(--a3); padding: 10px var(--a4); }
+.ep-werkzeug .werkzeug-zeile { gap: 6px var(--a3); }
+.ep-werkzeug .knopf { padding: 0 12px; font-size: 0.85rem; }
+.ep-kw { min-width: 4.2em; font-size: 1.1rem; text-align: center; }
+.ep-datum { height: var(--knopf-hoehe); margin-left: var(--a2); padding: 0 var(--a2); font: inherit; font-size: 0.9rem; border: 1px solid var(--linie-stark); border-radius: 6px; }
+.ep-tage { display: flex; flex-wrap: wrap; gap: var(--a1); }
+.ep-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: var(--knopf-hoehe);
+  padding: 2px var(--a2);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ep-tag small { font-size: 0.75rem; font-weight: 400; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ep-tag:hover { border-color: var(--grau); }
+.ep-tag.heute { border-width: 2px; border-color: var(--schwarz); }
+.ep-tag.geschlossen { color: var(--text-2); background: var(--geschlossen); }
+.ep-tag.vergangen span { font-style: italic; font-weight: 400; }
+.ep-tag[aria-pressed="true"] { background: var(--netto-gelb); border-color: var(--schwarz); box-shadow: inset 0 0 0 1px var(--schwarz); }
+.ep-tag[aria-pressed="true"] small { color: var(--schwarz); }
+.ep-pinsel { gap: 4px; }
+.ep-pinsel .chip { gap: 5px; padding: 0 9px; font-size: 0.85rem; }
+.ep-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.ep-werkzeug .hinweis-gelb { margin: 0; }
+
+/* Raster links, Seitenleiste ab 1600 px rechts, sonst darunter */
+.ep-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 var(--a4); align-items: start; }
+.ep-seite { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 var(--a4); align-items: start; }
+@media (min-width: 1600px) {
+  .ep-layout { grid-template-columns: minmax(0, 1fr) 330px; }
+  .ep-seite { grid-template-columns: 1fr; }
+}
+
+.ep-scroll { max-height: calc(100vh - 250px); min-height: 280px; } /* genaue Höhe setzt einsatzplan.js */
+.ep-tabelle col.ep-name-spalte { width: 168px; }
+.ep-tabelle col.ep-std-spalte { width: 52px; }
+.ep-tabelle col.ep-kom-spalte { width: 170px; }
+.ep-tabelle th, .ep-tabelle td { font-size: 12px; }
+.ep-tabelle thead th { height: 30px; font-weight: 600; color: var(--text-2); }
+.ep-tabelle thead th.ep-stunde { padding-left: 3px; text-align: left; font-variant-numeric: tabular-nums; box-shadow: inset 1px 0 0 var(--linie-stark); }
+.ep-tabelle thead th.ep-stunde.offen { color: var(--text); box-shadow: inset 1px 0 0 var(--linie-stark), inset 0 -4px 0 var(--netto-gelb); }
+.ep-tabelle tbody tr { height: 42px; }
+.ep-tabelle th.ep-name { padding: 0 var(--a2) 0 var(--a3); text-align: left; background: var(--flaeche); }
+.ep-tabelle thead th.ep-name, .ep-tabelle tfoot th.ep-name { color: var(--text-2); background: var(--hell); }
+.ep-name-knopf, .ep-name-text {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: none;
+  border: 0;
+}
+.ep-name-knopf { cursor: pointer; }
+.ep-name-knopf:hover { text-decoration: underline; }
+.ep-info { display: block; font-size: 11px; font-weight: 400; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-info .badge { margin-left: 3px; padding: 0 4px; font-size: 10px; border-radius: 4px; }
+.ep-abw-kz { font-weight: 700; color: var(--text); }
+.ep-tabelle td.ep-std { padding: 0 var(--a2); font-weight: 600; }
+.ep-tabelle td.ep-kom, .ep-tabelle th.ep-kom { padding: 0 var(--a2); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ep-tabelle td.ep-kom.bearbeitbar { cursor: text; }
+.ep-kom-leer { color: var(--text-2); opacity: 0.6; }
+.ep-tabelle td.ep-kom input { width: 100%; height: 30px; padding: 0 6px; font: inherit; border: 1px solid var(--schwarz); border-radius: 4px; }
+
+/* Halbstunden-Zellen: volle Stunde mit stärkerer Linie, außerhalb der Öffnung grau */
+.malt .ep-tabelle td.ep-z { cursor: crosshair; }
+.ep-tabelle td.ep-z.voll, .ep-tabelle td.ep-dz.voll { box-shadow: inset 1px 0 0 var(--linie-stark); }
+.ep-tabelle td.ep-z.zu { background: #ecece7; }
+.ep-tabelle td.ep-z.ep-abw { background: repeating-linear-gradient(-45deg, #dcdcd6 0 3px, #f3f3ef 3px 7px); }
+.ep-tabelle td.ep-z.belegt { border-right-color: rgba(0, 0, 0, .08); }
+.ep-tabelle td.ep-z.unbesetzt { background: repeating-linear-gradient(-45deg, rgba(227, 6, 19, .28) 0 4px, rgba(227, 6, 19, .07) 4px 8px); color: var(--netto-rot); }
+.ep-tabelle td.ep-start { position: relative; }
+.ep-kz { position: absolute; top: 50%; left: 3px; z-index: 1; transform: translateY(-50%); font-size: 11px; font-weight: 800; pointer-events: none; }
+.ep-ersatz {
+  position: absolute;
+  top: 50%;
+  left: 24px;
+  z-index: 1;
+  transform: translateY(-50%);
+  height: 26px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--netto-rot);
+  background: #fff;
+  border: 1px solid var(--netto-rot);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ep-ersatz:hover { color: #fff; background: var(--netto-rot); }
+.ep-tabelle td.ep-z.markiert { background-image: linear-gradient(rgba(255, 229, 0, .65), rgba(255, 229, 0, .65)); box-shadow: inset 0 2px 0 var(--schwarz), inset 0 -2px 0 var(--schwarz); }
+
+/* Malen: waagerechtes Ziehen malt, senkrechtes Wischen scrollt weiter (Tablet). Kopf und Fußzeilen scrollen quer. */
+.malt .ep-tabelle { touch-action: auto; }
+.malt .ep-tabelle td.ep-z { touch-action: pan-y; }
+
+/* Ganztags abwesend: graue Zeile */
+.ep-tabelle tr.ep-abwesend th.ep-name, .ep-tabelle tr.ep-abwesend td { color: var(--text-2); background: var(--hell); }
+.ep-tabelle td.ep-sperre { padding: 0 var(--a3); text-align: left; font-style: italic; letter-spacing: 0.02em; }
+
+/* Abdeckung Kasse/VP: klebt unten im Scroll-Container */
+.ep-tabelle tfoot td, .ep-tabelle tfoot th { position: sticky; bottom: 0; z-index: 3; height: 26px; background: var(--hell); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ep-tabelle tfoot tr:first-child > * { bottom: 26px; border-top: 1px solid var(--linie-stark); }
+.ep-tabelle tfoot tr > :first-child { z-index: 4; }
+.ep-tabelle tfoot td.gelb { background: var(--hinweis); }
+.ep-tabelle tfoot td.rot { color: #fff; background: var(--netto-rot); }
+
+/* Markierung aus der Regelprüfung */
+.ep-tabelle tr.hervor > th.ep-name { background: var(--netto-gelb); }
+.ep-tabelle tr.hervor td.hervor-zelle { box-shadow: inset 0 0 0 3px var(--schwarz); }
+
+.ep-geschlossen h2 { margin: 0; }
+
+/* Hinweis am Zeiger bei einer Sperre */
+.ep-sperre-hinweis {
+  position: fixed;
+  z-index: 200;
+  max-width: 320px;
+  padding: var(--a2) var(--a3);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--schwarz);
+  border-left: 5px solid var(--netto-rot);
+  border-radius: 6px;
+  box-shadow: var(--schatten-2);
+  pointer-events: none;
+}
+
+/* Seitenleiste */
+.ep-box { padding: var(--a3) var(--a4); }
+.ep-box h3 { margin: 0 0 var(--a2); font-size: 0.95rem; }
+.ep-box h3 small { font-weight: 400; color: var(--text-2); }
+.ep-regeln { max-height: 340px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.ep-eintrag {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--a1);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+.ep-eintrag strong { margin-right: 6px; }
+.ep-eintrag[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--schwarz); }
+.ep-klein { font-size: 0.85rem; }
+.ep-klein th, .ep-klein td { padding: 3px var(--a1); }
+.ep-klein tbody th { max-width: 150px; font-weight: 400; background: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-klein thead th { font-size: 0.8rem; color: var(--text-2); }
+.ep-klein tfoot th, .ep-klein tfoot td { font-weight: 700; background: var(--hell); border-bottom: 0; }
+.ep-klein .plus { color: var(--ok); font-weight: 600; }
+.ep-fuss { margin: var(--a2) 0 0; font-size: 0.8rem; }
