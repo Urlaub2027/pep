@@ -46,7 +46,8 @@ test('malen KA 08:00–12:00 → ein Block', async () => {
   const r = await malen(stellv, a, '2026-11-09', '08:00', '12:00', 'KA');
   assert.equal(r.datum, '2026-11-09');
   assert.deepEqual(zeile(r, a), [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA, unbesetzt: false }]);
-  assert.deepEqual(r.pruefung, {});
+  // Prüfung für Vortag, Tag und Folgetag (Inhalt: tests/regeln.test.mjs)
+  assert.deepEqual(Object.keys(r.pruefung).sort(), ['2026-11-08', '2026-11-09', '2026-11-10']);
 });
 
 test('OG 10:00–11:00 in KA 08–12 → KA 08–10, OG 10–11, KA 11–12', async () => {
@@ -362,7 +363,7 @@ test('pep_einsatzplan_woche(2026, 46): 7 Tage, Sonntag geoeffnet = false, Mitarb
   assert.deepEqual(w.kommentare.filter((k) => k.mitarbeiter_id === j), [{ mitarbeiter_id: j, datum: '2026-11-12', text: 'Früher gehen' }]);
   assert.deepEqual(Object.keys(w.pruefung).sort(),
     ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15']);
-  assert.ok(Object.values(w.pruefung).every((l) => Array.isArray(l) && l.length === 0));
+  assert.ok(Object.values(w.pruefung).every((l) => Array.isArray(l)));
 });
 
 test('pep_einsatzplan_woche().kennzahlen hat alle Felder aus Task 9', async () => {

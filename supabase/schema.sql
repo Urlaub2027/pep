@@ -2807,17 +2807,7 @@ as $$
      and (p_mitarbeiter_ids is null or b.mitarbeiter_id = any (p_mitarbeiter_ids))
 $$;
 
--- Antwort auf einen Strich: Blöcke dieser Mitarbeiter an dem Tag; pruefung füllt die Regelprüfung.
-create or replace function pep.tag_antwort(p_filiale_id bigint, p_datum date, p_mitarbeiter_ids bigint[])
-returns jsonb
-language sql stable
-set search_path = ''
-as $$
-  select jsonb_build_object(
-    'datum', to_char(p_datum, 'YYYY-MM-DD'),
-    'bloecke', pep.bloecke_antwort(p_filiale_id, p_datum, p_datum, coalesce(p_mitarbeiter_ids, '{}')),
-    'pruefung', '{}'::jsonb)
-$$;
+-- pep.tag_antwort steht im Abschnitt „Regelprüfung“ (braucht pep.pruefung).
 
 -- Montag der ISO-KW; DATUM_UNGUELTIG, wenn es die KW im ISO-Jahr nicht gibt (KW 53 nur in manchen Jahren).
 create or replace function pep.kw_montag(p_jahr int, p_kw int)
@@ -3008,7 +2998,7 @@ begin
              order by k.datum, k.mitarbeiter_id)
         from pep.plan_kommentare k
        where k.filiale_id = v_f and k.datum between v_mo and v_so), '[]'::jsonb),
-    'pruefung', (select jsonb_object_agg(to_char(v_mo + i, 'YYYY-MM-DD'), '[]'::jsonb)
+    'pruefung', (select jsonb_object_agg(to_char(v_mo + i, 'YYYY-MM-DD'), pep.pruefung(v_f, v_mo + i))
                    from generate_series(0, 6) i),
     'kennzahlen', pep.woche_kennzahlen(v_f, p_jahr, p_kw));
 end;
@@ -3176,6 +3166,437 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- Regelprüfung
+-- ---------------------------------------------------------------------------
+
+-- Zahl für Prüftexte: zwei Stellen mit Komma („9,50“); p_kurz ohne überflüssige Nullen („11“, „7,5“).
+create or replace function pep.zahl_text(p_wert numeric, p_kurz boolean default false)
+returns text
+language sql immutable
+set search_path = ''
+as $$
+  select replace(case when p_kurz then trim_scale(p_wert)::text
+                      else to_char(round(p_wert, 2), 'FM999999990.00') end, '.', ',')
+$$;
+
+-- Uhrzeit „07:00“ oder Spanne „07:00–08:00“ für Prüftexte.
+create or replace function pep.zeit_text(p_von time, p_bis time default null)
+returns text
+language sql immutable
+set search_path = ''
+as $$
+  select to_char(p_von, 'HH24:MI') || coalesce('–' || to_char(p_bis, 'HH24:MI'), '')
+$$;
+
+-- Zustand je Mitarbeiter und halber Stunde eines Tages (p_mitarbeiter_id null = alle der Filiale), t = Beginn:
+-- unbesetzt (F2, code = Code der Abwesenheit), sonst kasse (Bereich mit bedeutung kasse), pause oder arbeit.
+create or replace function pep.halbstunden(p_filiale_id bigint, p_datum date, p_mitarbeiter_id bigint)
+returns table (mitarbeiter_id bigint, t time, zustand text, code text)
+language sql stable
+set search_path = ''
+as $$
+  select b.mitarbeiter_id, s::time,
+         case when x.unbesetzt then 'unbesetzt' when r.bedeutung = 'kasse' then 'kasse'
+              when r.art = 'pause' then 'pause' else 'arbeit' end,
+         case when x.unbesetzt then (select c.code from pep.abwesenheiten a
+                                       join pep.abwesenheitscodes c on c.id = a.code_id
+                                      where a.mitarbeiter_id = b.mitarbeiter_id and a.datum = b.datum) end
+    from pep.plan_bloecke b
+    join pep.bereiche r on r.id = b.bereich_id
+    cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
+    cross join lateral generate_series(date '2000-01-01' + x.von,
+                                       date '2000-01-01' + x.bis - interval '30 minutes', interval '30 minutes') s
+   where b.filiale_id = p_filiale_id and b.datum = p_datum
+     and (p_mitarbeiter_id is null or b.mitarbeiter_id = p_mitarbeiter_id)
+$$;
+
+-- F8: Schichtlage aus der besetzten Arbeit des Tages (ohne Pause): frueh = Beginn zur Rahmenöffnung,
+-- spaet = Ende nach spaet_grenze, beides = lang, sonst mitte; ohne Arbeit NULL.
+create or replace function pep.lage(p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date)
+returns text
+language sql stable
+set search_path = ''
+as $$
+  select case when a.erster is null then null
+              when a.erster = s.rahmen_von and a.ende > g.grenze then 'lang'
+              when a.erster = s.rahmen_von then 'frueh'
+              when a.ende > g.grenze then 'spaet'
+              else 'mitte' end
+    from (select min(h.t) as erster, max(h.t) + interval '30 minutes' as ende
+            from pep.halbstunden(p_filiale_id, p_datum, p_mitarbeiter_id) h
+           where h.zustand in ('kasse', 'arbeit')) a
+    cross join lateral pep.tag_status(p_filiale_id, p_datum) s
+    cross join (select (pep.einstellung(p_filiale_id, 'spaet_grenze') #>> '{}')::time as grenze) g
+$$;
+
+-- F8: Lage der ISO-Woche vor p_datum: frueh bei mehr Früh- als Spätschichten (lang zählt für beide),
+-- spaet umgekehrt, sonst NULL.
+create or replace function pep.lage_vorwoche(p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date)
+returns text
+language sql stable
+set search_path = ''
+as $$
+  select case when x.frueh > x.spaet then 'frueh' when x.spaet > x.frueh then 'spaet' end
+    from (select count(*) filter (where l.lage in ('frueh', 'lang')) as frueh,
+                 count(*) filter (where l.lage in ('spaet', 'lang')) as spaet
+            from (select distinct b.datum from pep.plan_bloecke b
+                   where b.mitarbeiter_id = p_mitarbeiter_id
+                     and b.datum between p_datum - extract(isodow from p_datum)::int - 6
+                                     and p_datum - extract(isodow from p_datum)::int) d
+            cross join lateral (select pep.lage(p_filiale_id, p_mitarbeiter_id, d.datum) as lage) l) x
+$$;
+
+-- Lage des letzten Samstags vor p_datum, an dem der Mitarbeiter gearbeitet hat (NULL, wenn keiner).
+create or replace function pep.lage_letzter_samstag(p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date)
+returns text
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_datum date;
+  v_lage  text;
+begin
+  for v_datum in select distinct b.datum from pep.plan_bloecke b
+                  where b.mitarbeiter_id = p_mitarbeiter_id and b.datum < p_datum
+                    and extract(isodow from b.datum) = 6
+                  order by 1 desc loop
+    v_lage := pep.lage(p_filiale_id, p_mitarbeiter_id, v_datum);
+    if v_lage is not null then
+      return v_lage;
+    end if;
+  end loop;
+  return null;
+end;
+$$;
+
+-- Text einer verletzten Wochenvorgabe ohne Notiz, z. B. „Bevorzugt: nur 08:00–14:00“.
+create or replace function pep.vorgabe_text(p_w pep.wochenvorgaben)
+returns text
+language sql immutable
+set search_path = ''
+as $$
+  select 'Bevorzugt: ' || case
+    when p_w.art = 'nur_zwischen' then 'nur ' || pep.zeit_text(p_w.von, p_w.bis)
+    when p_w.von is not null or p_w.bis is not null
+      then 'nicht ' || pep.zeit_text(coalesce(p_w.von, time '00:00'), coalesce(p_w.bis, time '24:00'))
+    when p_w.max_stunden_tag is not null and p_w.max_stunden_woche is not null
+      then 'höchstens ' || pep.zahl_text(p_w.max_stunden_tag, true) || ' h am Tag und '
+           || pep.zahl_text(p_w.max_stunden_woche, true) || ' h in der Woche'
+    when p_w.max_stunden_tag is not null then 'höchstens ' || pep.zahl_text(p_w.max_stunden_tag, true) || ' h am Tag'
+    when p_w.max_stunden_woche is not null
+      then 'höchstens ' || pep.zahl_text(p_w.max_stunden_woche, true) || ' h in der Woche'
+    else 'nicht an diesem Tag' end
+$$;
+
+-- Regelprüfung eines Tages (Spec 12): Liste [{art, schwere, mitarbeiter_id, von, bis, text}], Warnungen vor
+-- Hinweisen, dann von (ohne Uhrzeit zuerst), dann Mitarbeitername. Zusammenhängende halbe Stunden derselben
+-- Art und desselben Mitarbeiters ergeben einen Eintrag. Regeln über die ganze Filiale (Kasse, VP, eine Person)
+-- haben mitarbeiter_id NULL. Unbesetzte Zeit zählt nirgends mit (F2), Pause zählt als anwesend (F3).
+-- Wochenregeln (wochenstunden, wochenstunden_unter, Woche unter 18) stehen an jedem geöffneten Tag der
+-- ISO-Woche und an jedem Tag mit Blöcken des Mitarbeiters.
+create or replace function pep.pruefung(p_filiale_id bigint, p_datum date)
+returns jsonb
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_tag         record;
+  v_mo          date := p_datum - (extract(isodow from p_datum)::int - 1);
+  v_kasse       pep.bereiche;
+  v_vp          bigint;
+  v_p6          numeric := (pep.einstellung(p_filiale_id, 'pause_ab_6h_min') #>> '{}')::numeric;
+  v_p9          numeric := (pep.einstellung(p_filiale_id, 'pause_ab_9h_min') #>> '{}')::numeric;
+  v_ruhe        numeric := (pep.einstellung(p_filiale_id, 'ruhezeit_h') #>> '{}')::numeric;
+  v_ruhe_u18    numeric := (pep.einstellung(p_filiale_id, 'ruhezeit_u18_h') #>> '{}')::numeric;
+  v_max         numeric := (pep.einstellung(p_filiale_id, 'max_tag_h') #>> '{}')::numeric;
+  v_max_u18     numeric := (pep.einstellung(p_filiale_id, 'max_tag_u18_h') #>> '{}')::numeric;
+  v_woche_u18   numeric := (pep.einstellung(p_filiale_id, 'max_woche_u18_h') #>> '{}')::numeric;
+  v_frueh_u18   time    := (pep.einstellung(p_filiale_id, 'u18_fruehestens') #>> '{}')::time;
+  v_spaet_u18   time    := (pep.einstellung(p_filiale_id, 'u18_spaetestens') #>> '{}')::time;
+  v_sa_monat    numeric := (pep.einstellung(p_filiale_id, 'freie_samstage_monat') #>> '{}')::numeric;
+  v_sa_jahr     numeric := (pep.einstellung(p_filiale_id, 'freie_samstage_jahr') #>> '{}')::numeric;
+  v_toleranz    numeric := (pep.einstellung(p_filiale_id, 'wochen_toleranz_h') #>> '{}')::numeric;
+  v_samstag     boolean := extract(isodow from p_datum) = 6;
+  v_monat_von   date := date_trunc('month', p_datum)::date;
+  v_jahr_von    date := date_trunc('year', p_datum)::date;
+  v_sa_im_monat int := 0;  -- Samstage des Monats
+  v_sa_vor      int := 0;  -- Samstage des Jahres vor p_datum
+  v_sa_nach     int := 0;  -- Samstage des Jahres nach p_datum
+  v_woche_voll  boolean;
+  v_monate      text[] := array['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
+                                'September', 'Oktober', 'November', 'Dezember'];
+begin
+  select * into v_tag from pep.tag_status(p_filiale_id, p_datum);
+  select * into v_kasse from pep.bereiche b where b.filiale_id = p_filiale_id and b.bedeutung = 'kasse';
+  select b.id into v_vp from pep.bereiche b where b.filiale_id = p_filiale_id and b.bedeutung = 'vp';
+  -- wochenstunden_unter erst, wenn alle geöffneten Tage der KW mindestens einen Block haben
+  v_woche_voll := not exists (
+    select 1 from generate_series(0, 6) i
+     cross join lateral pep.tag_status(p_filiale_id, v_mo + i) s
+     where s.geoeffnet
+       and not exists (select 1 from pep.plan_bloecke b where b.filiale_id = p_filiale_id and b.datum = v_mo + i));
+  if v_samstag then
+    select count(*) filter (where x.d >= v_monat_von and x.d < (v_monat_von + interval '1 month')::date),
+           count(*) filter (where x.d < p_datum),
+           count(*) filter (where x.d > p_datum)
+      into v_sa_im_monat, v_sa_vor, v_sa_nach
+      from (select v_jahr_von + i as d
+              from generate_series(0, (v_jahr_von + interval '1 year')::date - v_jahr_von - 1) i) x
+     where extract(isodow from x.d) = 6;
+  end if;
+
+  return (
+    with h as (
+      select * from pep.halbstunden(p_filiale_id, p_datum, null)
+    ), da as (  -- anwesend (F3)
+      select * from h where h.zustand <> 'unbesetzt'
+    ), ma as (  -- je anwesendem Mitarbeiter: Anwesenheit und Arbeitsstunden (F4), unter 18 (F7)
+      select da.mitarbeiter_id, min(da.t) as erster, max(da.t) + interval '30 minutes' as ende,
+             extract(epoch from min(da.t)) / 3600 as erster_h,
+             extract(epoch from max(da.t)) / 3600 + 0.5 as ende_h,
+             extract(epoch from max(da.t) - min(da.t)) / 3600 + 0.5 as anwesend_h,
+             count(*) filter (where da.zustand in ('kasse', 'arbeit')) * 0.5 as arbeit_h,
+             coalesce(pep.alter_am(da.mitarbeiter_id, p_datum) < 18, false) as u18
+        from da
+       group by da.mitarbeiter_id
+    ), slots as (  -- halbe Stunden des Rahmens
+      select s::time as t, s::time >= v_tag.oeffnung_von and s::time < v_tag.oeffnung_bis as offen
+        from generate_series(date '2000-01-01' + v_tag.rahmen_von,
+                             date '2000-01-01' + v_tag.rahmen_bis - interval '30 minutes', interval '30 minutes') s
+       where v_tag.geoeffnet
+    ), abdeckung as (
+      select s.t, s.offen,
+             count(da.mitarbeiter_id) as anwesend,
+             count(da.mitarbeiter_id) filter (where da.zustand = 'kasse') as kasse,
+             count(da.mitarbeiter_id) filter (where exists (select 1 from pep.kompetenzen k
+                                                             where k.mitarbeiter_id = da.mitarbeiter_id
+                                                               and k.bereich_id = v_vp)) as vp
+        from slots s
+        left join da on da.t = s.t
+       group by s.t, s.offen
+    ), roh (art, mitarbeiter_id, t, info) as (  -- Verstöße je halbe Stunde
+      select 'unbesetzt', h.mitarbeiter_id, h.t, h.code from h where h.zustand = 'unbesetzt'
+      union all
+      select 'kasse_unbesetzt', null::bigint, a.t, null::text
+        from abdeckung a where a.offen and a.kasse = 0 and v_kasse.id is not null
+      union all
+      select 'keine_vp', null, a.t, null
+        from abdeckung a where v_vp is not null and a.vp = 0 and (a.offen or a.anwesend > 0)  -- F5
+      union all
+      select 'vp_allein', null, a.t, null from abdeckung a where a.offen and a.anwesend = 1
+      union all
+      -- Pause einer Kassenkraft: Kasse leer oder niemand mit Kassenkompetenz frei (nicht Kasse, nicht Pause)
+      select 'pausenabloese', p.mitarbeiter_id, p.t, null
+        from da p
+       where p.zustand = 'pause'
+         and exists (select 1 from da k where k.mitarbeiter_id = p.mitarbeiter_id and k.zustand = 'kasse')
+         and (not exists (select 1 from da k where k.t = p.t and k.zustand = 'kasse')
+              or not exists (select 1 from da f
+                              where f.t = p.t and f.zustand = 'arbeit' and f.mitarbeiter_id <> p.mitarbeiter_id
+                                and (not v_kasse.kompetenz_noetig
+                                     or exists (select 1 from pep.kompetenzen k
+                                                 where k.mitarbeiter_id = f.mitarbeiter_id
+                                                   and k.bereich_id = v_kasse.id))))
+      union all
+      select 'jarbschg', da.mitarbeiter_id, da.t, null
+        from da join ma on ma.mitarbeiter_id = da.mitarbeiter_id
+       where ma.u18 and (da.t < v_frueh_u18 or da.t >= v_spaet_u18)
+    ), inseln as (  -- zusammenhängende halbe Stunden je Art und Mitarbeiter
+      select r.art, r.mitarbeiter_id, r.info, min(r.t) as von, max(r.t) + interval '30 minutes' as bis
+        from (select roh.*, extract(epoch from roh.t) / 1800
+                            - row_number() over (partition by roh.art, roh.mitarbeiter_id, roh.info order by roh.t) as g
+                from roh) r
+       group by r.art, r.mitarbeiter_id, r.info, r.g
+    ), ruhe as (  -- Ruhezeit zum Vortag und zum Folgetag; „unter 18“ am jeweils späteren Tag
+      select ma.mitarbeiter_id, ma.erster as von, 24 - v.ende_h + ma.erster_h as stunden, 'vor' as wo,
+             case when coalesce(pep.alter_am(ma.mitarbeiter_id, p_datum) < 18, false)
+                  then v_ruhe_u18 else v_ruhe end as mind
+        from ma
+        join (select x.mitarbeiter_id, extract(epoch from max(x.t)) / 3600 + 0.5 as ende_h
+                from pep.halbstunden(p_filiale_id, p_datum - 1, null) x
+               where x.zustand <> 'unbesetzt' group by x.mitarbeiter_id) v on v.mitarbeiter_id = ma.mitarbeiter_id
+      union all
+      select ma.mitarbeiter_id, ma.ende, 24 - ma.ende_h + f.erster_h, 'nach',
+             case when coalesce(pep.alter_am(ma.mitarbeiter_id, p_datum + 1) < 18, false)
+                  then v_ruhe_u18 else v_ruhe end
+        from ma
+        join (select x.mitarbeiter_id, extract(epoch from min(x.t)) / 3600 as erster_h
+                from pep.halbstunden(p_filiale_id, p_datum + 1, null) x
+               where x.zustand <> 'unbesetzt' group by x.mitarbeiter_id) f on f.mitarbeiter_id = ma.mitarbeiter_id
+    ), woche as (  -- F6: Vertrag, geplante (F4) und angerechnete abwesende Stunden der ISO-Woche
+      select m.id as mitarbeiter_id, v.wochenstunden as vertrag,
+             case when v.vertragsart = 'minijob' then 0 else v_toleranz end as toleranz,
+             coalesce((select sum(extract(epoch from x.bis - x.von) / 3600)
+                         from pep.plan_bloecke b
+                         join pep.bereiche r on r.id = b.bereich_id
+                         cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
+                        where b.mitarbeiter_id = m.id and b.datum between v_mo and v_mo + 6
+                          and r.art <> 'pause' and not x.unbesetzt), 0) as geplant,
+             coalesce((select sum(a.stunden) from pep.abwesenheiten a
+                        where a.mitarbeiter_id = m.id and a.datum between v_mo and v_mo + 6), 0) as abwesend
+        from pep.mitarbeiter m
+        cross join lateral pep.wochenvertrag(m.id, v_mo) v
+       where m.filiale_id = p_filiale_id and v.id is not null
+         and ((m.aktiv and (m.eintritt is null or m.eintritt <= v_mo + 6) and (m.austritt is null or m.austritt >= v_mo))
+              or exists (select 1 from pep.plan_bloecke b where b.mitarbeiter_id = m.id and b.datum between v_mo and v_mo + 6))
+         and (v_tag.geoeffnet or exists (select 1 from h where h.mitarbeiter_id = m.id))
+    ), lagen as (
+      select ma.mitarbeiter_id, ma.arbeit_h, pep.lage(p_filiale_id, ma.mitarbeiter_id, p_datum) as lage from ma
+    ), samstage as (  -- nur samstags: gearbeitete Samstage (F9) vom Jahresbeginn bis Monatsende
+      select b.mitarbeiter_id, b.datum
+        from pep.plan_bloecke b
+        join pep.bereiche r on r.id = b.bereich_id
+        cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
+       where v_samstag and b.filiale_id = p_filiale_id
+         and b.datum >= v_jahr_von and b.datum < (v_monat_von + interval '1 month')::date
+         and extract(isodow from b.datum) = 6 and r.art <> 'pause' and not x.unbesetzt
+       group by b.mitarbeiter_id, b.datum
+    ), frei as (  -- je Samstagsarbeiter: freie andere Samstage im Monat, höchstens erreichbare im Jahr
+      select l.mitarbeiter_id,
+             v_sa_im_monat - 1 - (select count(*) from samstage s where s.mitarbeiter_id = l.mitarbeiter_id
+                                     and s.datum >= v_monat_von and s.datum <> p_datum) as monat,
+             v_sa_vor - (select count(*) from samstage s where s.mitarbeiter_id = l.mitarbeiter_id
+                            and s.datum < p_datum) + v_sa_nach as jahr
+        from lagen l
+       where v_samstag and l.arbeit_h > 0
+    ), wuensche as (  -- offene Urlaubswünsche (ohne entschiedene Freigabe) am Tag
+      select distinct w.mitarbeiter_id
+        from pep.urlaubswuensche(p_filiale_id, p_datum, p_datum) w
+        left join lateral pep.freigabe_zum_wunsch(p_filiale_id,
+          pep.wunsch_json(w.umfrage_id, w.urlaub_mitarbeiter_id, w.art, w.kw,
+                          case when w.art = 'tag' then w.von end)) fg on true
+       where coalesce(fg.status, 'offen') = 'offen'
+    ), eintraege (art, schwere, mitarbeiter_id, von, bis, text) as (
+      select i.art, 'warnung', i.mitarbeiter_id, i.von, i.bis,
+             case i.art
+               when 'unbesetzt'       then 'Unbesetzt (' || i.info || '): ' || pep.zeit_text(i.von, i.bis)
+               when 'kasse_unbesetzt' then 'Kasse unbesetzt ' || pep.zeit_text(i.von, i.bis)
+               when 'keine_vp'        then 'Keine VP anwesend ' || pep.zeit_text(i.von, i.bis)
+               when 'vp_allein'       then 'Nur eine Person anwesend ' || pep.zeit_text(i.von, i.bis)
+               when 'pausenabloese'   then 'Pausenablöse fehlt ' || pep.zeit_text(i.von, i.bis)
+               when 'jarbschg'        then 'Unter 18: nicht vor ' || pep.zeit_text(v_frueh_u18)
+                                           || ' und nicht nach ' || pep.zeit_text(v_spaet_u18)
+             end
+        from inseln i
+      union all
+      -- Pause = Anwesenheit ohne Arbeit, also Pausenblöcke und Lücken
+      select 'pause_fehlt', 'warnung', p.mitarbeiter_id, p.erster, p.ende,
+             'Pause fehlt oder zu kurz: ' || pep.zahl_text(p.anwesend_h) || ' h anwesend, '
+             || pep.zahl_text(p.pause_min, true) || ' min Pause (mind. ' || pep.zahl_text(p.mind, true) || ' min)'
+        from (select ma.*, (ma.anwesend_h - ma.arbeit_h) * 60 as pause_min,
+                     case when ma.anwesend_h > 9 and (ma.anwesend_h - ma.arbeit_h) * 60 < v_p9 then v_p9
+                          when ma.anwesend_h > 6 and (ma.anwesend_h - ma.arbeit_h) * 60 < v_p6 then v_p6 end as mind
+                from ma) p
+       where p.mind is not null
+      union all
+      select 'ruhezeit', 'warnung', r.mitarbeiter_id, r.von, null::time,
+             'Ruhezeit ' || pep.zahl_text(r.stunden) || ' h (mind. ' || pep.zahl_text(r.mind, true) || ' h) '
+             || r.wo || ' ' || pep.zeit_text(r.von)
+        from ruhe r
+       where r.stunden < r.mind
+      union all
+      select 'hoechstarbeitszeit', 'warnung', g.mitarbeiter_id, g.erster, g.ende,
+             pep.zahl_text(g.arbeit_h) || ' h am Tag (höchstens ' || pep.zahl_text(g.grenze, true) || ' h)'
+        from (select ma.*, case when ma.u18 then v_max_u18 else v_max end as grenze from ma) g
+       where g.arbeit_h > g.grenze
+      union all
+      select 'hoechstarbeitszeit', 'warnung', w.mitarbeiter_id, null, null,
+             pep.zahl_text(w.geplant) || ' h in der Woche (höchstens ' || pep.zahl_text(v_woche_u18, true) || ' h)'
+        from woche w
+       where w.geplant > v_woche_u18 and coalesce(pep.alter_am(w.mitarbeiter_id, p_datum) < 18, false)
+      union all
+      select 'wochenstunden', 'warnung', w.mitarbeiter_id, null, null,
+             'Woche: ' || pep.zahl_text(w.geplant) || ' h geplant + ' || pep.zahl_text(w.abwesend)
+             || ' h abwesend, Vertrag ' || pep.zahl_text(w.vertrag) || ' h'
+        from woche w
+       where w.geplant + w.abwesend > w.vertrag + w.toleranz
+      union all
+      select 'wochenstunden_unter', 'hinweis', w.mitarbeiter_id, null, null,
+             'Woche: ' || pep.zahl_text(w.geplant + w.abwesend) || ' h von ' || pep.zahl_text(w.vertrag) || ' h verplant'
+        from woche w
+       where v_woche_voll and w.geplant + w.abwesend < w.vertrag - w.toleranz
+      union all
+      select 'vorgabe_bevorzugt', 'hinweis', ma.mitarbeiter_id, null, null,
+             coalesce(nullif(btrim(v.notiz), ''), pep.vorgabe_text(v))
+        from ma
+        cross join lateral pep.vorgaben_verletzt(ma.mitarbeiter_id, p_datum, '[]'::jsonb,
+                                                 pep.zeile_lesen(ma.mitarbeiter_id, p_datum), false) v
+      union all
+      select 'schichtlage', 'hinweis', l.mitarbeiter_id, null, null,
+             'Letzte Woche überwiegend ' || case l.lage when 'frueh' then 'früh' else 'spät' end
+        from lagen l
+       where l.lage in ('frueh', 'spaet') and l.lage = pep.lage_vorwoche(p_filiale_id, l.mitarbeiter_id, p_datum)
+      union all
+      select 'samstag_spaet', 'hinweis', l.mitarbeiter_id, null, null, 'Zweiter Samstag spät in Folge'
+        from lagen l
+       where v_samstag and l.lage in ('spaet', 'lang')
+         and pep.lage_letzter_samstag(p_filiale_id, l.mitarbeiter_id, p_datum) in ('spaet', 'lang')
+      union all
+      select 'freier_samstag', 'hinweis', f.mitarbeiter_id, null, null,
+             case when f.monat = 0 then 'Noch kein freier Samstag im ' || v_monate[extract(month from p_datum)::int]
+                  else 'Erst ' || f.monat || ' von ' || pep.zahl_text(v_sa_monat, true) || ' freien Samstagen im '
+                       || v_monate[extract(month from p_datum)::int] end
+        from frei f
+       where f.monat < v_sa_monat
+      union all
+      select 'freier_samstag', 'hinweis', f.mitarbeiter_id, null, null,
+             'Jahresziel ' || pep.zahl_text(v_sa_jahr, true) || ' freie Samstage nicht mehr erreichbar'
+        from frei f
+       where f.jahr < v_sa_jahr
+      union all
+      select 'wunsch_offen', 'hinweis', ma.mitarbeiter_id, null, null, 'Urlaubswunsch offen'
+        from ma join wuensche w on w.mitarbeiter_id = ma.mitarbeiter_id
+       where ma.arbeit_h > 0
+    )
+    select coalesce(jsonb_agg(jsonb_build_object(
+             'art', e.art, 'schwere', e.schwere, 'mitarbeiter_id', e.mitarbeiter_id,
+             'von', to_char(e.von, 'HH24:MI'), 'bis', to_char(e.bis, 'HH24:MI'), 'text', e.text)
+           order by e.schwere = 'hinweis', e.von nulls first, m.name nulls first, e.mitarbeiter_id nulls first,
+                    e.art, e.text), '[]'::jsonb)
+      from eintraege e
+      left join pep.mitarbeiter m on m.id = e.mitarbeiter_id);
+end;
+$$;
+
+-- Antwort auf einen Strich: Blöcke dieser Mitarbeiter an dem Tag und die Prüfung für Vortag, Tag und
+-- Folgetag (Ruhezeit wirkt auf die Nachbartage).
+create or replace function pep.tag_antwort(p_filiale_id bigint, p_datum date, p_mitarbeiter_ids bigint[])
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'datum', to_char(p_datum, 'YYYY-MM-DD'),
+    'bloecke', pep.bloecke_antwort(p_filiale_id, p_datum, p_datum, coalesce(p_mitarbeiter_ids, '{}')),
+    'pruefung', (select jsonb_object_agg(to_char(p_datum + i, 'YYYY-MM-DD'), pep.pruefung(p_filiale_id, p_datum + i))
+                   from generate_series(-1, 1) i))
+$$;
+
+-- Regelprüfung für einen Zeitraum von höchstens 42 Tagen (Startseite): {"YYYY-MM-DD": [...]}.
+create or replace function public.pep_pruefung_zeitraum(p_von date, p_bis date)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung_oder_stellvertretung();
+begin
+  if p_von is null or p_bis is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if p_bis < p_von then
+    raise exception 'ZEITRAUM_UNGUELTIG';
+  end if;
+  if p_bis - p_von + 1 > 42 then
+    raise exception 'ZEITRAUM_ZU_LANG';
+  end if;
+  return (select jsonb_object_agg(to_char(p_von + i, 'YYYY-MM-DD'), pep.pruefung(v_b.filiale_id, p_von + i))
+            from generate_series(0, p_bis - p_von) i);
+end;
+$$;
+
 -- Bestehende Filialen nachrüsten (zweiter Schema-Lauf nach einem Update).
 select pep.grundausstattung(id) from pep.filialen;
 
@@ -3275,5 +3696,9 @@ grant execute on function public.pep_plan_malen(bigint, date, time, time, bigint
 grant execute on function public.pep_plan_zeile_setzen(bigint, date, jsonb) to authenticated;
 grant execute on function public.pep_kommentar_setzen(bigint, date, text) to authenticated;
 grant execute on function public.pep_mitarbeiter_reihenfolge(bigint[]) to authenticated;
+
+-- Regelprüfung
+revoke all on function public.pep_pruefung_zeitraum(date, date) from public, anon, authenticated;
+grant execute on function public.pep_pruefung_zeitraum(date, date) to authenticated;
 
 commit;

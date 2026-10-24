@@ -37,7 +37,8 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 
 // Nur lesende Funktionen; alles andere gilt als schreibend und muss unten abgedeckt sein.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
-  'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche'];
+  'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
+  'pep_pruefung_zeitraum'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
