@@ -6,6 +6,7 @@ const ANSICHTEN = ['login', 'filiale', 'start', 'abwesenheiten', 'vorausplanung'
 
 export let ich = null;
 // Reiter-Module tragen sich beim Import ein: reiter.<name> = { zeigen() }.
+// Sie werden in main.js importiert, nicht hier (sonst Importzyklus).
 export const reiter = {};
 
 export function zeigeAnsicht(name) {
@@ -15,7 +16,7 @@ export function zeigeAnsicht(name) {
   }
   meldung('');
   window.scrollTo(0, 0);
-  reiter[name]?.zeigen?.();
+  (async () => reiter[name]?.zeigen?.())().catch(fehlerAnzeigen); // auch synchrone Fehler landen in der Meldung
 }
 
 // Ruft eine pep_-Funktion auf. Abgelaufene Anmeldung oder fehlende Rechte → Login.
@@ -118,7 +119,8 @@ async function filialeAnlegen(ereignis) {
 
 // ---------------------------------------------------------------- Start
 
-function start() {
+// Wird von main.js aufgerufen, nachdem alle Reiter-Module importiert (= registriert) sind.
+export function start() {
   $('login-form').addEventListener('submit', login);
   $('filiale-form').addEventListener('submit', filialeAnlegen);
   $('abmelden').addEventListener('click', () => abmelden());
@@ -128,8 +130,3 @@ function start() {
   if (sitzung.istAngemeldet()) nachLogin();
   else zeigeAnsicht('login');
 }
-
-start();
-
-// Reiter-Module (werden in späteren Tasks ergänzt)
-// Jedes Modul trägt sich beim Import mit reiter.<name> = { zeigen } ein.
