@@ -75,3 +75,8 @@ export async function filiale(db, userId, { name = 'Netto Aschaffenburg', nummer
     'select public.pep_filiale_anlegen($1, $2, $3) as r', [name, nummer, bundesland]);
   return r[0].r.id;
 }
+
+// Fixiert pep.heute() für Tests (Datum "YYYY-MM-DD"); null hebt die Fixierung auf.
+export async function heuteSetzen(db, datum) {
+  await db.query("select set_config('pep.heute', $1, false)", [datum ?? '']);
+}

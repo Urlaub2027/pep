@@ -1,6 +1,6 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { neueDatenbank, als, browser, organisator, pepBenutzer, filiale } from './helfer.mjs';
+import { neueDatenbank, als, browser, organisator, pepBenutzer, filiale, heuteSetzen } from './helfer.mjs';
 
 let db;
 before(async () => { db = await neueDatenbank(); });
@@ -74,4 +74,17 @@ test('Filiale anlegen schreibt Protokoll', async () => {
 test('pep.heute() liefert Datum in Europe/Berlin', async () => {
   const r = (await db.query("select pep.heute() = (now() at time zone 'Europe/Berlin')::date as ok")).rows[0];
   assert.equal(r.ok, true);
+});
+
+test('pep.heute(): ohne Testdatum Berliner Datum, mit heuteSetzen fixiert, danach zurückgesetzt', async () => {
+  const berlin = async () => (await db.query(
+    "select pep.heute() = (now() at time zone 'Europe/Berlin')::date as ok")).rows[0].ok;
+  assert.equal(await berlin(), true);
+  await heuteSetzen(db, '2030-05-01');
+  try {
+    assert.equal((await db.query('select pep.heute()::text as d')).rows[0].d, '2030-05-01');
+  } finally {
+    await heuteSetzen(db, null);
+  }
+  assert.equal(await berlin(), true);
 });

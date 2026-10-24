@@ -1,7 +1,7 @@
 // Abwesenheiten: Tage, Stundenregel, Wiederholungen, Monatsdaten, Neuberechnung.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { neueDatenbank, als, pepBenutzer, filiale } from './helfer.mjs';
+import { neueDatenbank, als, pepBenutzer, filiale, heuteSetzen } from './helfer.mjs';
 
 let db, leitung, stellv, fil, anna, ben, cem;
 const code = {};
@@ -31,6 +31,7 @@ const monat = (j, m) => json(leitung, 'select public.pep_abwesenheiten($1, $2) a
 
 before(async () => {
   db = await neueDatenbank();
+  await heuteSetzen(db, '2026-10-24'); // fester Stichtag, damit die Tests nie ablaufen
   leitung = await pepBenutzer(db, 'chef');
   fil = await filiale(db, leitung);
   stellv = await pepBenutzer(db, 'vize', 'stellvertretung', fil);
@@ -233,4 +234,80 @@ test('inaktiver Mitarbeiter → MITARBEITER_INAKTIV; Stellvertretung darf setzen
   assert.equal(r.tage, 1);
   assert.equal(await json(stellv, 'select public.pep_abwesenheit_loeschen($1, $2::date, $3::date) as r',
     [anna, '2027-09-01', '2027-09-01']), 1);
+});
+
+test('Stunden: Teiltag und Wiederholung mit 0, negativen oder zu großen Stunden → STUNDEN_UNGUELTIG', async () => {
+  const m = await neuerMa('Test, Stefan', 37.5);
+  for (const h of [-1, 0, 25]) {
+    await wirft(setzen(leitung, m, 'ZA', '2027-04-12', '2027-04-12', h, '08:00', '13:00'), 'STUNDEN_UNGUELTIG');
+  }
+  await wirft(setzen(leitung, m, 'BS', '2027-04-12', '2027-04-12', 25), 'STUNDEN_UNGUELTIG');
+  const w = (extra) => aufruf(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb)',
+    [m, JSON.stringify({ code_id: code.BS, wochentag: 2, von_datum: '2027-01-01', bis_datum: '2027-06-30', ...extra })]);
+  for (const h of [-1, 0, 25]) await wirft(w({ stunden: h }), 'STUNDEN_UNGUELTIG');
+  await wirft(w({ stunden: 30, von: '08:00', bis: '13:00' }), 'STUNDEN_UNGUELTIG');
+  assert.equal((await db.query('select count(*)::int as n from pep.wiederholungen where mitarbeiter_id = $1', [m])).rows[0].n, 0);
+});
+
+test('Wiederholung mit tatsaechlich-Code ohne Stunden → STUNDEN_FEHLEN, nichts gespeichert', async () => {
+  const m = await neuerMa('Test, Sven', 37.5);
+  await wirft(aufruf(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb)',
+    [m, JSON.stringify({ code_id: code.BS, wochentag: 2, von_datum: '2027-01-01', bis_datum: '2027-06-30' })]),
+    'STUNDEN_FEHLEN');
+  assert.equal((await db.query('select count(*)::int as n from pep.wiederholungen where mitarbeiter_id = $1', [m])).rows[0].n, 0);
+  // Teiler-Code braucht keine Stunden
+  await aufruf(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb)',
+    [m, JSON.stringify({ code_id: code.U, wochentag: 2, von_datum: '2027-01-01', bis_datum: '2027-01-31' })]);
+});
+
+test('Wiederholung überschreibt keine manuellen Einträge', async () => {
+  const m = await neuerMa('Test, Marta', 37.5);
+  await setzen(leitung, m, 'KM', '2027-02-02', '2027-02-02');
+  await aufruf(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb)',
+    [m, JSON.stringify({ code_id: code.BS, wochentag: 2, von_datum: '2027-02-01', bis_datum: '2027-02-28', stunden: 8 })]);
+  const z = await zeilen(m, '2027-02-01', '2027-02-28');
+  assert.deepEqual(z.map((x) => [x.datum, x.code, x.quelle]), [
+    ['2027-02-02', 'KM', 'manuell'], ['2027-02-09', 'BS', 'wiederholung'],
+    ['2027-02-16', 'BS', 'wiederholung'], ['2027-02-23', 'BS', 'wiederholung']]);
+});
+
+test('Rolle mitarbeiter darf nichts: NUR_LEITUNG bei setzen, loeschen, Wiederholung, Monatsdaten', async () => {
+  const ma = await pepBenutzer(db, 'azubi', 'mitarbeiter', fil);
+  await wirft(setzen(ma, anna, 'U', '2027-09-02', '2027-09-02'), 'NUR_LEITUNG');
+  await wirft(aufruf(ma, 'select public.pep_abwesenheit_loeschen($1, $2::date, $2::date)', [anna, '2027-09-02']), 'NUR_LEITUNG');
+  await wirft(aufruf(ma, 'select public.pep_wiederholung_speichern($1, $2::jsonb)',
+    [anna, JSON.stringify({ code_id: code.U, wochentag: 2, von_datum: '2027-01-01', bis_datum: '2027-01-31' })]), 'NUR_LEITUNG');
+  await wirft(aufruf(ma, 'select public.pep_wiederholung_loeschen(1)'), 'NUR_LEITUNG');
+  await wirft(aufruf(ma, 'select public.pep_abwesenheiten(2027, 9)'), 'NUR_LEITUNG');
+});
+
+test('fremde Filiale: Mitarbeiter, Code und Wiederholung sind gesperrt, nichts wird geschrieben', async () => {
+  const chef2 = await pepBenutzer(db, 'chef2');
+  await filiale(db, chef2, { name: 'Netto Fremd', nummer: '9999' });
+  const fremd = await json(chef2, 'select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r', [JSON.stringify({ name: 'Fremd, Frank' })]);
+  await aufruf(chef2, 'select public.pep_vertrag_speichern($1, $2::jsonb)',
+    [fremd, JSON.stringify({ vertragsart: 'teilzeit', wochenstunden: 30, gueltig_ab: '2026-01-01' })]);
+  const fremdCode = (await json(chef2, 'select public.pep_einstellungen() as r')).codes.find((c) => c.code === 'U').id;
+  const eigeneW = await json(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb) as r',
+    [cem, JSON.stringify({ code_id: code.U, wochentag: 3, von_datum: '2027-01-01', bis_datum: '2027-01-31' })]);
+  const zaehle = async () => (await db.query('select (select count(*) from pep.abwesenheiten)::int as a, (select count(*) from pep.wiederholungen)::int as w')).rows[0];
+  const vorher = await zaehle();
+
+  await wirft(setzen(leitung, fremd, 'U', '2027-09-03', '2027-09-03'), 'MITARBEITER_NICHT_GEFUNDEN');
+  await wirft(aufruf(leitung, 'select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, null, null, null, null)',
+    [anna, fremdCode, '2027-09-03']), 'CODE_NICHT_GEFUNDEN');
+  await wirft(aufruf(leitung, 'select public.pep_abwesenheit_loeschen($1, $2::date, $2::date)', [fremd, '2027-09-03']),
+    'MITARBEITER_NICHT_GEFUNDEN');
+  await wirft(aufruf(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb)',
+    [fremd, JSON.stringify({ code_id: code.U, wochentag: 2, von_datum: '2027-01-01', bis_datum: '2027-01-31' })]),
+    'MITARBEITER_NICHT_GEFUNDEN');
+  await wirft(aufruf(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb)',
+    [anna, JSON.stringify({ code_id: fremdCode, wochentag: 2, von_datum: '2027-01-01', bis_datum: '2027-01-31' })]),
+    'CODE_NICHT_GEFUNDEN');
+  // eine Regel der ersten Filiale lässt sich von der zweiten weder ändern noch löschen
+  await wirft(aufruf(chef2, 'select public.pep_wiederholung_loeschen($1)', [eigeneW]), 'WIEDERHOLUNG_NICHT_GEFUNDEN');
+  await wirft(aufruf(chef2, 'select public.pep_wiederholung_speichern($1, $2::jsonb)',
+    [fremd, JSON.stringify({ id: eigeneW, code_id: fremdCode, wochentag: 2, von_datum: '2027-01-01', bis_datum: '2027-01-31' })]),
+    'WIEDERHOLUNG_NICHT_GEFUNDEN');
+  assert.deepEqual(await zaehle(), vorher);
 });

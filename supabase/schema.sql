@@ -143,13 +143,15 @@ alter table pep.wochenvorgaben  enable row level security;
 -- Interne Funktionen (nicht aus dem Browser aufrufbar)
 -- ---------------------------------------------------------------------------
 
--- „Heute“ in der Zeitzone des Marktes, nie current_date.
+-- „Heute“ in der Zeitzone des Marktes, nie current_date. Die Einstellung
+-- pep.heute (GUC) gibt es nur für Tests und fixiert das Datum; in Produktion ist sie leer.
 create or replace function pep.heute()
 returns date
 language sql stable
 set search_path = ''
 as $$
-  select (now() at time zone 'Europe/Berlin')::date
+  select coalesce(nullif(current_setting('pep.heute', true), '')::date,
+                  (now() at time zone 'Europe/Berlin')::date)
 $$;
 
 -- Der angemeldete, nicht gesperrte Benutzer.
@@ -1456,7 +1458,8 @@ alter table pep.abwesenheiten  enable row level security;
 -- Abwesenheiten: interne Funktionen
 -- ---------------------------------------------------------------------------
 
--- Leitung oder Stellvertretung mit Filiale; sonst NUR_LEITUNG.
+-- Leitung oder Stellvertretung mit Filiale; sonst NUR_LEITUNG (auch für die Rolle
+-- mitarbeiter) bzw. KEINE_FILIALE.
 create or replace function pep.leitung_oder_stellvertretung()
 returns pep.benutzer
 language plpgsql stable
@@ -1496,6 +1499,9 @@ begin
   end if;
   if p_stunden is null then
     raise exception 'STUNDEN_FEHLEN';
+  end if;
+  if p_stunden <= 0 or p_stunden > 24 then
+    raise exception 'STUNDEN_UNGUELTIG';
   end if;
 end;
 $$;
@@ -1616,19 +1622,27 @@ $$;
 
 -- Erzeugt die Tage einer Wiederholungsregel ab heute (vergangene bleiben unberührt).
 create or replace function pep.wiederholung_erzeugen(p_w pep.wiederholungen, p_user_id uuid)
-returns void
+returns int
 language plpgsql
 set search_path = ''
 as $$
 declare
   v_start date := greatest(p_w.von_datum, pep.heute());
   v_tag   date;
+  v_belegt int := 0;
 begin
   for v_tag in select v_start + i from generate_series(0, p_w.bis_datum - v_start) i
                 where extract(isodow from v_start + i)::int = p_w.wochentag loop
+    -- Manuelle, Urlaubstool- und Schnell-Einträge sowie Freigaben bleiben stehen
+    if exists (select 1 from pep.abwesenheiten
+                where mitarbeiter_id = p_w.mitarbeiter_id and datum = v_tag and quelle <> 'wiederholung') then
+      v_belegt := v_belegt + 1;
+      continue;
+    end if;
     perform pep.abwesenheit_schreiben(p_w.filiale_id, p_w.mitarbeiter_id, p_w.code_id, v_tag, v_tag,
       p_w.stunden, p_w.von, p_w.bis, 'wiederholung', p_w.id, null, p_w.notiz, p_user_id);
   end loop;
+  return v_belegt;
 end;
 $$;
 
@@ -1701,6 +1715,7 @@ declare
   v_vz   time := (p_daten ->> 'von')::time;
   v_bz   time := (p_daten ->> 'bis')::time;
   v_std  numeric := (p_daten ->> 'stunden')::numeric;
+  v_regel text;
   v_alt  pep.wiederholungen;
   v_neu  pep.wiederholungen;
 begin
@@ -1716,10 +1731,18 @@ begin
   if v_bis > (v_von + interval '12 months')::date then
     raise exception 'ZEITRAUM_ZU_LANG';
   end if;
-  if not exists (select 1 from pep.abwesenheitscodes where id = v_code and filiale_id = v_b.filiale_id and aktiv) then
+  select stundenregel into v_regel from pep.abwesenheitscodes
+   where id = v_code and filiale_id = v_b.filiale_id and aktiv;
+  if not found then
     raise exception 'CODE_NICHT_GEFUNDEN';
   end if;
   perform pep.abwesenheit_zeiten_pruefen(v_vz, v_bz, v_std);
+  if v_std is null and v_regel = 'tatsaechlich' then
+    raise exception 'STUNDEN_FEHLEN';
+  end if;
+  if v_std is not null and (v_std > 24 or v_std < 0 or (v_std = 0 and (v_regel = 'tatsaechlich' or v_vz is not null))) then
+    raise exception 'STUNDEN_UNGUELTIG';
+  end if;
 
   if v_id is null then
     insert into pep.wiederholungen (filiale_id, mitarbeiter_id, code_id, wochentag, von_datum, bis_datum,
