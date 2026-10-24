@@ -23,6 +23,9 @@ const abwesend = (maId, c, datum, stunden = null, von = null, bis = null) =>
 const vorgabe = (maId, daten) =>
   json(leitung, 'select public.pep_wochenvorgabe_speichern($1, $2::jsonb) as r',
     [maId, JSON.stringify({ gueltig_von: '2026-11-01', ...daten })]);
+// Arbeitsstunden (F4) der gespeicherten Zeile.
+const stunden = async (maId, datum) => Number((await db.query(
+  'select pep.arbeitsstunden($1, $2::date, pep.zeile_lesen($1, $2::date)) as h', [maId, datum])).rows[0].h);
 const kommentar = (maId, datum, text, nutzer = leitung) =>
   aufruf(nutzer, 'select public.pep_kommentar_setzen($1, $2::date, $3)', [maId, datum, text]);
 
@@ -104,6 +107,7 @@ test('U ganztags → malen ABWESEND; vorher geplanter Block wird unbesetzt und l
   await abwesend(a, 'U', '2026-11-10');
   await wirft(malen(leitung, a, '2026-11-10', '14:00', '16:00', 'KA'), 'ABWESEND');
   assert.deepEqual(zeile(await woche(), a), [blk('08:00', '12:00', 'KA', true)]);
+  assert.equal(await stunden(a, '2026-11-10'), 0);
   // Unveränderte Zeile wiederherstellen geht; den Bereich eines unbesetzten Blocks wechseln nicht
   await setzen(a, '2026-11-10', [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA }]);
   await wirft(malen(leitung, a, '2026-11-10', '08:00', '12:00', 'PA'), 'ABWESEND');
@@ -169,7 +173,8 @@ test('pep_plan_zeile_setzen mit unveränderter Zeile scheitert an keiner nachtr�
   await aufruf(leitung, `select public.pep_bereich_speichern($1, '{"kompetenz_noetig":true,"aktiv":false}')`, [bereich.OG]);
   try {
     const r = await setzen(a, tag, z);
-    assert.deepEqual(zeile(r, a), [blk('08:00', '12:00', 'KA', true), blk('12:00', '12:30', 'PA'), blk('12:30', '16:00', 'OG')]);
+    assert.deepEqual(zeile(r, a), [blk('08:00', '10:00', 'KA'), blk('10:00', '12:00', 'KA', true),
+      blk('12:00', '12:30', 'PA'), blk('12:30', '16:00', 'OG')]);
     // Jede echte Änderung prüft wieder: neue halbe Stunde am ganztags gesperrten Samstag
     await wirft(malen(leitung, a, tag, '16:00', '16:30', 'PA'), 'VORGABE_VERLETZT');
   } finally {
@@ -186,6 +191,44 @@ test('BS 08:00–13:00 mit von/bis: 13–18 erlaubt, 12–14 ABWESEND; vorher 09
   const r = await malen(leitung, a, '2026-11-11', '13:00', '18:00', 'KA');
   assert.deepEqual(zeile(r, a), [blk('09:00', '12:00', 'KA', true), blk('13:00', '18:00', 'KA')]);
   await wirft(malen(leitung, a, '2026-11-11', '12:00', '14:00', 'KA'), 'ABWESEND');
+});
+
+// F2 je halbe Stunde: ein gespeicherter Block wird in der Ausgabe an der Abwesenheitsgrenze geteilt.
+test('KA 10–14, BS 08–13, malen KA 14–16 → gespeichert ein Block 10–16; Abschnitte 10–13 unbesetzt, 13–16 besetzt (gleiche id); 3,00 h', async () => {
+  const a = await ma('Test, Selma');
+  await malen(leitung, a, '2026-11-12', '10:00', '14:00', 'KA');
+  await abwesend(a, 'BS', '2026-11-12', 5, '08:00', '13:00');
+  const r = await malen(leitung, a, '2026-11-12', '14:00', '16:00', 'KA');
+  const gespeichert = (await db.query(
+    "select to_char(von, 'HH24:MI') as von, to_char(bis, 'HH24:MI') as bis from pep.plan_bloecke where mitarbeiter_id = $1",
+    [a])).rows;
+  assert.deepEqual(gespeichert, [{ von: '10:00', bis: '16:00' }]);
+  assert.deepEqual(zeile(r, a), [blk('10:00', '13:00', 'KA', true), blk('13:00', '16:00', 'KA')]);
+  const ids = r.bloecke.filter((b) => b.mitarbeiter_id === a).map((b) => b.id);
+  assert.equal(ids.length, 2);
+  assert.equal(ids[0], ids[1]);
+  assert.deepEqual(zeile(await woche(), a), zeile(r, a));
+  assert.equal(await stunden(a, '2026-11-12'), 3);
+});
+
+test('dieselbe Lage, 13–14 auf OG umfärben → erlaubt: KA 10–13 unbesetzt, OG 13–14, KA 14–16; 3,00 h', async () => {
+  const a = await ma('Test, Olga', { kompetenzen: ['KA', 'OG'] });
+  await malen(leitung, a, '2026-11-12', '10:00', '14:00', 'KA');
+  await abwesend(a, 'BS', '2026-11-12', 5, '08:00', '13:00');
+  await malen(leitung, a, '2026-11-12', '14:00', '16:00', 'KA');
+  const r = await malen(leitung, a, '2026-11-12', '13:00', '14:00', 'OG');
+  assert.deepEqual(zeile(r, a), [blk('10:00', '13:00', 'KA', true), blk('13:00', '14:00', 'OG'), blk('14:00', '16:00', 'KA')]);
+  assert.equal(await stunden(a, '2026-11-12'), 3);
+});
+
+test('Pflicht max_stunden_tag zählt nur besetzte Stunden', async () => {
+  const a = await ma('Test, Hanna');
+  await malen(leitung, a, '2026-11-12', '10:00', '16:00', 'KA');
+  await abwesend(a, 'BS', '2026-11-12', 5, '08:00', '13:00'); // 3 h besetzt
+  await vorgabe(a, { pflicht: true, wochentag: 4, art: 'nicht_verfuegbar', max_stunden_tag: 4 });
+  // 4 h besetzt: erlaubt (gespeicherte 7 h würden die Grenze reißen)
+  await malen(leitung, a, '2026-11-12', '16:00', '17:00', 'KA');
+  await wirft(malen(leitung, a, '2026-11-12', '17:00', '17:30', 'KA'), 'VORGABE_VERLETZT');
 });
 
 test('Pflicht nicht_verfuegbar Sa → VORGABE_VERLETZT; Pflicht nur_zwischen 08–14: 13–15 → VORGABE_VERLETZT; Pflicht max_stunden_tag 6: 08–15 → VORGABE_VERLETZT, 08–14 erlaubt; dieselben Vorgaben mit pflicht = false sperren nicht', async () => {
@@ -227,6 +270,15 @@ test('Eintritt Mi 11.11., Austritt Fr 13.11.: steht in KW 46; malen Di → MITAR
   const ids = w.mitarbeiter.map((m) => m.id);
   assert.ok(ids.includes(e) && ids.includes(v), 'Eintritt/Vertrag mitten in der Woche stehen in der Liste');
   assert.ok(!ids.includes(weg), 'Austritt vor der Woche steht nicht in der Liste');
+  // Bewusste Obermenge: wer in der Woche Blöcke hat, steht in der Liste, auch inaktiv oder ausgetreten
+  const inaktiv = await ma('Test, Ina');
+  const raus = await ma('Test, Raus');
+  await malen(leitung, inaktiv, '2026-11-10', '08:00', '12:00', 'KA');
+  await malen(leitung, raus, '2026-11-10', '08:00', '12:00', 'KA');
+  await aufruf(leitung, `select public.pep_mitarbeiter_speichern($1, '{"aktiv":false}')`, [inaktiv]);
+  await aufruf(leitung, `select public.pep_mitarbeiter_speichern($1, '{"austritt":"2026-11-06"}')`, [raus]);
+  const liste = (await woche()).mitarbeiter.map((m) => m.id);
+  assert.ok(liste.includes(inaktiv) && liste.includes(raus), 'mit Block in der Woche immer in der Liste');
   const vito = w.mitarbeiter.find((m) => m.id === v);
   assert.equal(vito.wochenstunden, 20); // erster Vertragstag der Woche
   assert.equal(vito.vertragsart, 'teilzeit');
@@ -265,6 +317,9 @@ test('pep_plan_zeile_setzen ersetzt die Zeile; [] löscht sie; Zeile mit 05:00 �
     { von: '11:00', bis: '13:00', bereich_id: bereich.OG }]), 'UEBERLAPPUNG');
   await wirft(setzen(a, '2026-11-13', [{ von: '08:15', bis: '12:00', bereich_id: bereich.KA }]), 'HALBE_STUNDE');
   await wirft(setzen(a, '2026-11-13', { von: '08:00' }), 'WERT_UNGUELTIG');
+  await wirft(setzen(a, '2026-11-13', [{ von: '08:00', bis: '12:00', bereich_id: 1.5 }]), 'WERT_UNGUELTIG');
+  await wirft(setzen(a, '2026-11-13', [{ von: '08:00', bis: '12:00', bereich_id: 1e30 }]), 'WERT_UNGUELTIG');
+  await wirft(setzen(a, '2026-11-13', [{ von: '08:00', bis: '12:00', bereich_id: '3' }]), 'WERT_UNGUELTIG');
   assert.deepEqual(zeile(await woche(), a), [blk('10:00', '16:00', 'KA')]);
   r = await setzen(a, '2026-11-13', []);
   assert.deepEqual(zeile(r, a), []);

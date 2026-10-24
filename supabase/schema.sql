@@ -2561,31 +2561,52 @@ as $$
    where b.mitarbeiter_id = p_mitarbeiter_id and b.datum = p_datum
 $$;
 
--- F2: Ein Block ist unbesetzt, wenn eine sperrende Abwesenheit des Tages ihn zeitlich schneidet
--- (ohne von/bis = ganzer Tag).
+-- F2 (je halbe Stunde): Zerlegt [p_von, p_bis) an den Grenzen der sperrenden Abwesenheit des Tages
+-- (ohne von/bis = ganzer Tag) in Abschnitte; unbesetzt ist genau der überschneidende Teil.
+-- Einzige Stelle, die Abwesenheiten auf Planzeit abbildet (je Mitarbeiter und Tag gibt es höchstens eine).
+create or replace function pep.abschnitte(p_mitarbeiter_id bigint, p_datum date, p_von time, p_bis time)
+returns table (von time, bis time, unbesetzt boolean)
+language sql stable
+set search_path = ''
+as $$
+  with sperre as (
+    select coalesce(a.von, time '00:00') as av, coalesce(a.bis, time '24:00') as ab
+      from pep.abwesenheiten a
+      join pep.abwesenheitscodes c on c.id = a.code_id
+     where a.mitarbeiter_id = p_mitarbeiter_id and a.datum = p_datum and c.sperrt
+     limit 1
+  ), teile as (
+    select p_von as v, least(p_bis, greatest(p_von, s.av)) as b, false as u from sperre s
+    union all
+    select greatest(p_von, s.av), least(p_bis, s.ab), true from sperre s
+    union all
+    select greatest(p_von, s.ab), p_bis, false from sperre s
+    union all
+    select p_von, p_bis, false where not exists (select 1 from sperre)
+  )
+  select t.v, t.b, t.u from teile t where t.v < t.b order by t.v
+$$;
+
+-- Ist irgendein Teil von [p_von, p_bis) unbesetzt? Für eine halbe Stunde = diese halbe Stunde ist unbesetzt.
 create or replace function pep.unbesetzt(p_mitarbeiter_id bigint, p_datum date, p_von time, p_bis time)
 returns boolean
 language sql stable
 set search_path = ''
 as $$
-  select exists (
-    select 1 from pep.abwesenheiten a
-      join pep.abwesenheitscodes c on c.id = a.code_id
-     where a.mitarbeiter_id = p_mitarbeiter_id and a.datum = p_datum and c.sperrt
-       and (a.von is null or (a.von < p_bis and a.bis > p_von)))
+  select exists (select 1 from pep.abschnitte(p_mitarbeiter_id, p_datum, p_von, p_bis) x where x.unbesetzt)
 $$;
 
--- F4: Arbeitsstunden einer Zeile = nicht unbesetzte Blöcke ohne Pause.
+-- F4: Arbeitsstunden einer Zeile = besetzte Zeit ohne Pause (je halbe Stunde nach F2).
 create or replace function pep.arbeitsstunden(p_mitarbeiter_id bigint, p_datum date, p_bloecke jsonb)
 returns numeric
 language sql stable
 set search_path = ''
 as $$
-  select round(coalesce(sum(extract(epoch from (e ->> 'bis')::time - (e ->> 'von')::time) / 3600), 0), 2)
+  select round(coalesce(sum(extract(epoch from x.bis - x.von) / 3600), 0), 2)
     from jsonb_array_elements(coalesce(p_bloecke, '[]'::jsonb)) e
     join pep.bereiche b on b.id = (e ->> 'bereich_id')::bigint
-   where b.art <> 'pause'
-     and not pep.unbesetzt(p_mitarbeiter_id, p_datum, (e ->> 'von')::time, (e ->> 'bis')::time)
+    cross join lateral pep.abschnitte(p_mitarbeiter_id, p_datum, (e ->> 'von')::time, (e ->> 'bis')::time) x
+   where b.art <> 'pause' and not x.unbesetzt
 $$;
 
 -- Halbe Stunden der Zeile p_neu, die gegenüber p_alt neu belegt sind (neu_belegt) oder den Bereich
@@ -2766,16 +2787,24 @@ begin
 end;
 $$;
 
--- Ein Block für den Browser.
-create or replace function pep.block_antwort(p_b pep.plan_bloecke)
+-- Blöcke für den Browser zwischen p_von und p_bis (p_mitarbeiter_ids null = alle der Filiale).
+-- Ein gespeicherter Block wird an den Abwesenheitsgrenzen in Abschnitte mit derselben id und je
+-- eigenem unbesetzt geteilt (F2).
+drop function if exists pep.block_antwort(pep.plan_bloecke);
+create or replace function pep.bloecke_antwort(p_filiale_id bigint, p_von date, p_bis date, p_mitarbeiter_ids bigint[])
 returns jsonb
 language sql stable
 set search_path = ''
 as $$
-  select jsonb_build_object(
-    'id', p_b.id, 'mitarbeiter_id', p_b.mitarbeiter_id, 'datum', to_char(p_b.datum, 'YYYY-MM-DD'),
-    'von', to_char(p_b.von, 'HH24:MI'), 'bis', to_char(p_b.bis, 'HH24:MI'), 'bereich_id', p_b.bereich_id,
-    'unbesetzt', pep.unbesetzt(p_b.mitarbeiter_id, p_b.datum, p_b.von, p_b.bis))
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', b.id, 'mitarbeiter_id', b.mitarbeiter_id, 'datum', to_char(b.datum, 'YYYY-MM-DD'),
+           'von', to_char(x.von, 'HH24:MI'), 'bis', to_char(x.bis, 'HH24:MI'), 'bereich_id', b.bereich_id,
+           'unbesetzt', x.unbesetzt)
+         order by b.datum, b.mitarbeiter_id, x.von), '[]'::jsonb)
+    from pep.plan_bloecke b
+    cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
+   where b.filiale_id = p_filiale_id and b.datum between p_von and p_bis
+     and (p_mitarbeiter_ids is null or b.mitarbeiter_id = any (p_mitarbeiter_ids))
 $$;
 
 -- Antwort auf einen Strich: Blöcke dieser Mitarbeiter an dem Tag; pruefung füllt die Regelprüfung.
@@ -2786,10 +2815,7 @@ set search_path = ''
 as $$
   select jsonb_build_object(
     'datum', to_char(p_datum, 'YYYY-MM-DD'),
-    'bloecke', coalesce((select jsonb_agg(pep.block_antwort(b) order by b.mitarbeiter_id, b.von)
-                           from pep.plan_bloecke b
-                          where b.filiale_id = p_filiale_id and b.datum = p_datum
-                            and b.mitarbeiter_id = any (p_mitarbeiter_ids)), '[]'::jsonb),
+    'bloecke', pep.bloecke_antwort(p_filiale_id, p_datum, p_datum, coalesce(p_mitarbeiter_ids, '{}')),
     'pruefung', '{}'::jsonb)
 $$;
 
@@ -2966,10 +2992,7 @@ begin
         from unnest(v_ids) with ordinality u (id, ord)
         join pep.mitarbeiter m on m.id = u.id
         left join lateral pep.wochenvertrag(m.id, v_mo) v on true), '[]'::jsonb),
-    'bloecke', coalesce((
-      select jsonb_agg(pep.block_antwort(b) order by b.datum, b.mitarbeiter_id, b.von)
-        from pep.plan_bloecke b
-       where b.filiale_id = v_f and b.datum between v_mo and v_so), '[]'::jsonb),
+    'bloecke', pep.bloecke_antwort(v_f, v_mo, v_so, null),
     'abwesenheiten', coalesce((
       select jsonb_agg(jsonb_build_object(
                'mitarbeiter_id', a.mitarbeiter_id, 'datum', to_char(a.datum, 'YYYY-MM-DD'),
@@ -3049,7 +3072,9 @@ begin
     raise exception 'WERT_UNGUELTIG';
   end if;
   for v_e in select e from jsonb_array_elements(p_bloecke) e loop
-    if jsonb_typeof(v_e) <> 'object' or coalesce(jsonb_typeof(v_e -> 'bereich_id'), '') <> 'number' then
+    -- bereich_id muss eine ganze Zahl im bigint-Bereich sein (1.5 oder 1e30 sonst roher Cast-Fehler)
+    if jsonb_typeof(v_e) <> 'object' or coalesce(jsonb_typeof(v_e -> 'bereich_id'), '') <> 'number'
+       or (v_e ->> 'bereich_id') !~ '^[0-9]{1,18}$' then
       raise exception 'WERT_UNGUELTIG';
     end if;
     begin
