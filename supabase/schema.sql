@@ -1851,7 +1851,7 @@ begin
                   select jsonb_object_agg(a.datum::text, jsonb_build_object(
                            'id', a.id, 'code', c.code, 'code_id', a.code_id, 'stunden', a.stunden,
                            'von', a.von, 'bis', a.bis, 'quelle', a.quelle,
-                           'freigabe_id', a.freigabe_id, 'wiederholung_id', a.wiederholung_id,
+                           'freigabe_id', a.freigabe_id, 'wiederholung_id', a.wiederholung_id, 'notiz', a.notiz,
                            'wunsch_geaendert', coalesce(fg.status = 'genehmigt' and not pep.wunsch_vorhanden(fg.wunsch), false)))
                     from pep.abwesenheiten a join pep.abwesenheitscodes c on c.id = a.code_id
                     left join pep.urlaub_freigaben fg on fg.id = a.freigabe_id
@@ -1872,7 +1872,9 @@ begin
     'wuensche', coalesce((
       select jsonb_agg(jsonb_build_object(
                'mitarbeiter_id', w.mitarbeiter_id, 'art', w.art, 'kw', w.kw, 'von', w.von, 'bis', w.bis,
-               'status', coalesce(fg.status, 'offen'), 'freigabe_id', fg.id)
+               'status', coalesce(fg.status, 'offen'), 'freigabe_id', fg.id,
+               'umfrage_id', w.umfrage_id, 'urlaub_mitarbeiter_id', w.urlaub_mitarbeiter_id,
+               'datum', case when w.art = 'tag' then to_char(w.von, 'YYYY-MM-DD') end)
              order by w.von, w.mitarbeiter_id, w.art)
         from pep.urlaubswuensche(v_f, v_von, v_bis) w
         left join lateral pep.freigabe_zum_wunsch(v_f,

@@ -114,6 +114,10 @@ test('pep_abwesenheiten(2027,3).wuensche enthält beide mit status offen', async
   assert.equal(w.find((x) => x.art === 'kw').von, '2027-03-22');
   assert.equal(w.find((x) => x.art === 'tag').von, '2027-03-05');
   assert.equal((await wuensche(5)).length, 0);
+  // Schnappschuss-Schlüssel, die pep_urlaub_freigeben/-ablehnen im p_wunsch erwarten
+  assert.ok(w.every((x) => x.umfrage_id === umfrage && x.urlaub_mitarbeiter_id === tAnna.id));
+  assert.equal(w.find((x) => x.art === 'tag').datum, '2027-03-05');
+  assert.equal(w.find((x) => x.art === 'kw').datum, null);
 });
 
 let freigabeKw12;

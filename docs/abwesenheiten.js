@@ -327,7 +327,7 @@ function wunschTitel(w) {
 // Der Wunsch, wie pep_urlaub_freigeben/-ablehnen ihn erwarten (Schnappschuss-Schlüssel).
 const wunschFuerDb = (w) => ({
   umfrage_id: w.umfrage_id, urlaub_mitarbeiter_id: w.urlaub_mitarbeiter_id, art: w.art,
-  kw: w.art === 'kw' ? w.kw : null, datum: w.art === 'tag' ? tagIso(w.von) : null,
+  kw: w.art === 'kw' ? w.kw : null, datum: w.art === 'tag' ? w.datum : null,
 });
 
 function oeffneWunsch(m, w) {
@@ -363,14 +363,27 @@ function oeffneInfo(m, datum) {
   const zeilen = [
     ['Mitarbeiter', m.name], ['Datum', datumDE(datum)], ['Code', art ? `${e.code} ${art.name}` : e.code],
     ['Anzeige', stundenAnzeige(e)], ['Quelle', e.quelle],
+    ...(e.notiz ? [['Notiz', e.notiz]] : []),
   ];
-  const aktionen = e.freigabe_id && istLeitung() ? [{
-    text: 'Zurücknehmen', sekundaer: true,
-    aktion: () => aufruf('pep_freigabe_zuruecknehmen', { p_freigabe_id: e.freigabe_id }),
-    danach: nachSpeichern,
-  }] : [];
+  const aktionen = [];
+  if (e.freigabe_id && istLeitung()) {
+    aktionen.push({
+      text: 'Zurücknehmen', sekundaer: true,
+      aktion: () => aufruf('pep_freigabe_zuruecknehmen', { p_freigabe_id: e.freigabe_id }),
+      danach: nachSpeichern,
+    });
+  }
+  if (e.wiederholung_id && darfZeichnen()) {
+    aktionen.push({
+      text: 'Wiederholung löschen', sekundaer: true,
+      aktion: () => aufruf('pep_wiederholung_loeschen', { p_id: e.wiederholung_id }),
+      danach: nachSpeichern,
+    });
+  }
   dialog(`${e.code} am ${datumDE(datum)}`, [
     element('dl', { class: 'abw-info' }, zeilen.map(([k, v]) => [element('dt', {}, k), element('dd', {}, String(v))])),
+    e.wiederholung_id ? element('p', { class: 'hinweis' },
+      'Dieser Tag gehört zu einer Wiederholung. „Wiederholung löschen“ löscht alle künftigen Tage dieser Wiederholung. Ändern ist in dieser Stufe nicht möglich.') : null,
     e.freigabe_id && e.wunsch_geaendert ? element('p', { class: 'meldung fehler' }, `! ${HINWEIS_WUNSCH_GEAENDERT}`) : null,
   ], aktionen);
 }
@@ -437,15 +450,13 @@ function tageIn(von, bis) {
   return tage;
 }
 
-// Geschätzte Stunden offener Wünsche: Tage im Monat nur wenn geöffnet, Tage außerhalb Mo–Sa;
+// Geschätzte Stunden offener Wünsche, nur geöffnete Tage des angezeigten Monats;
 // mal Wochenstunden durch Teiler.
 function offeneStunden(m) {
   const geoeffnet = new Map(daten.tage.map((t) => [tagIso(t.datum), t.geoeffnet]));
   let tage = 0;
   for (const w of wuenscheVon(m).filter((x) => x.status === 'offen')) {
-    for (const d of tageIn(tagIso(w.von), tagIso(w.bis))) {
-      if (geoeffnet.has(d)) { if (geoeffnet.get(d)) tage += 1; } else if (new Date(`${d}T00:00:00Z`).getUTCDay() !== 0) tage += 1;
-    }
+    for (const d of tageIn(tagIso(w.von), tagIso(w.bis))) if (geoeffnet.get(d)) tage += 1;
   }
   return tage * ((m.wochenstunden || 0) / teiler);
 }
@@ -461,9 +472,9 @@ function zeichneSeite() {
   });
   rahmen.seite.replaceChildren(element('div', { class: 'box' }, element('h2', {}, `Urlaub ${jahr}`),
     element('table', { class: 'abw-urlaub' },
-      element('thead', {}, element('tr', {}, ['Mitarbeiter', 'Anspruch', 'genehmigt', 'offen (geschätzt)', 'Rest'].map((t) => element('th', {}, t)))),
+      element('thead', {}, element('tr', {}, ['Mitarbeiter', 'Anspruch', 'genehmigt', 'offen im Monat (geschätzt)', 'Rest'].map((t) => element('th', {}, t)))),
       element('tbody', {}, zeilen)),
-    element('p', { class: 'hinweis' }, 'Angaben in Stunden. „offen“ zählt nur Wünsche, die in den angezeigten Monat fallen.')));
+    element('p', { class: 'hinweis' }, 'Angaben in Stunden. „offen im Monat“ zählt nur die offenen Wunschtage des angezeigten Monats; die übrigen Spalten gelten für das ganze Jahr.')));
 }
 
 reiter.abwesenheiten = { zeigen };

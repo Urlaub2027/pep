@@ -311,3 +311,12 @@ test('fremde Filiale: Mitarbeiter, Code und Wiederholung sind gesperrt, nichts w
     'WIEDERHOLUNG_NICHT_GEFUNDEN');
   assert.deepEqual(await zaehle(), vorher);
 });
+
+test('pep_abwesenheiten liefert die Notiz des Tages (notiz); ohne Notiz null', async () => {
+  await json(leitung, `select public.pep_abwesenheit_setzen($1, $2, '2027-08-10'::date, '2027-08-10'::date,
+    null, null, null, 'Arzttermin') as r`, [cem, code.KM]);
+  await setzen(leitung, cem, 'KM', '2027-08-11', '2027-08-11');
+  const tage = (await monat(2027, 8)).mitarbeiter.find((x) => x.id === cem).tage;
+  assert.equal(tage['2027-08-10'].notiz, 'Arzttermin');
+  assert.equal(tage['2027-08-11'].notiz, null);
+});
