@@ -191,6 +191,15 @@ test('pausenabloese: Kasse von jemand anderem besetzt → kein Eintrag; Kasse le
   assert.deepEqual(nur(l, 'pausenabloese'), []);
 });
 
+test('pausenabloese: Pause nach Ladenschluss 20:00 oder vor Öffnung 07:00 → kein Eintrag', async () => {
+  const k = await ma('Test, Abend', { kompetenzen: ['KA', 'OG'] });
+  await plan(k, '2027-01-18', '13:00-20:00 KA, 20:00-20:30 PA, 20:30-21:30 OG');
+  assert.deepEqual(nur(await pr('2027-01-18'), 'pausenabloese'), []);
+  const f = await ma('Test, Morgen', { kompetenzen: ['KA', 'OG'] });
+  await plan(f, '2027-01-19', '06:00-06:30 OG, 06:30-07:00 PA, 07:00-13:00 KA');
+  assert.deepEqual(nur(await pr('2027-01-19'), 'pausenabloese'), []);
+});
+
 // ---------------------------------------------------------------------------
 // pause_fehlt (§ 4 ArbZG: Schwellen an der Arbeitszeit, Pause = Anwesenheit ohne Arbeit)
 
@@ -426,6 +435,18 @@ test('pep.lage: frueh, spaet, lang, mitte; ohne Block oder nur unbesetzt NULL', 
   assert.equal(await lage(a, '2026-11-12'), 'mitte'); // Ende genau 18:00 ist nicht spät
   assert.equal(await lage(a, '2026-11-13'), null);
   assert.equal(await lage(a, '2026-11-14'), null);
+});
+
+test('pep.lage: Rahmen nachträglich auf 06:30 gekürzt → Block ab 06:00 bleibt frueh bzw. lang', async () => {
+  const a = await ma('Test, Rahmen', { kompetenzen: ['OG'] });
+  await plan(a, '2027-01-20', '06:00-12:00 OG');
+  await plan(a, '2027-01-21', '06:00-12:00 OG, 12:00-12:30 PA, 12:30-18:30 OG');
+  for (const d of ['2027-01-20', '2027-01-21']) {
+    await aufruf(leitung, 'select public.pep_abweichung_speichern($1::date, $2::jsonb)', [d, JSON.stringify({
+      art: 'sonstiges', geoeffnet: true, oeffnung_von: '07:00', oeffnung_bis: '20:00', rahmen_von: '06:30', rahmen_bis: '21:30' })]);
+  }
+  assert.equal(await lage(a, '2027-01-20'), 'frueh');
+  assert.equal(await lage(a, '2027-01-21'), 'lang');
 });
 
 test('schichtlage: Vorwoche überwiegend früh, heute früh → Hinweis', async () => {

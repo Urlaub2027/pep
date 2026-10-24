@@ -3238,7 +3238,8 @@ as $$
      and (p_mitarbeiter_id is null or b.mitarbeiter_id = p_mitarbeiter_id)
 $$;
 
--- F8: Schichtlage aus der besetzten Arbeit des Tages (ohne Pause): frueh = Beginn zur Rahmenöffnung,
+-- F8: Schichtlage aus der besetzten Arbeit des Tages (ohne Pause): frueh = Beginn zur Rahmenöffnung
+-- oder davor (Rahmen nachträglich gekürzt),
 -- spaet = Ende nach spaet_grenze, beides = lang, sonst mitte; ohne Arbeit NULL.
 create or replace function pep.lage(p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date)
 returns text
@@ -3246,8 +3247,8 @@ language sql stable
 set search_path = ''
 as $$
   select case when a.erster is null then null
-              when a.erster = s.rahmen_von and a.ende > g.grenze then 'lang'
-              when a.erster = s.rahmen_von then 'frueh'
+              when a.erster <= s.rahmen_von and a.ende > g.grenze then 'lang'
+              when a.erster <= s.rahmen_von then 'frueh'
               when a.ende > g.grenze then 'spaet'
               else 'mitte' end
     from (select min(h.t) as erster, max(h.t) + interval '30 minutes' as ende
@@ -3434,10 +3435,12 @@ begin
       union all
       select 'vp_allein', null, a.t, null from abdeckung a where a.offen and a.anwesend = 1
       union all
-      -- Pause einer Kassenkraft: Kasse leer und niemand mit Kassenkompetenz frei (nicht Kasse, nicht Pause)
+      -- Pause einer Kassenkraft in der Öffnungszeit: Kasse leer und niemand mit Kassenkompetenz frei
+      -- (nicht Kasse, nicht Pause); außerhalb der Öffnung ist die Kasse zu, wie bei kasse_unbesetzt
       select 'pausenabloese', p.mitarbeiter_id, p.t, null
         from da p
        where p.zustand = 'pause'
+         and exists (select 1 from slots s where s.t = p.t and s.offen)
          and exists (select 1 from da k where k.mitarbeiter_id = p.mitarbeiter_id and k.zustand = 'kasse')
          and (not exists (select 1 from da k where k.t = p.t and k.zustand = 'kasse')
               and not exists (select 1 from da f
