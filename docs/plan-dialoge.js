@@ -14,6 +14,9 @@ const kwText = ({ jahr, kw }) => {
   const mo = montagDerKw(jahr, kw);
   return `KW ${kw} (${datumDE(mo).slice(0, 6)}–${datumDE(plusTage(mo, 6))})`;
 };
+// Zeitstempel (timestamptz, UTC oder mit Versatz) als lokales Datum des Browsers, z. B. „24.10.2026“.
+const angelegt = (zeitstempel) => new Date(zeitstempel)
+  .toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const liste = (eintraege, max = 6) =>
   eintraege.slice(0, max).join(', ') + (eintraege.length > max ? ` … (${eintraege.length})` : '');
 
@@ -166,7 +169,7 @@ export async function vorlagenDialog(kontext) {
   const zeile = (v) => element('div', { class: 'pd-vorlage' },
     element('div', { class: 'pd-vorlage-text' }, element('strong', {}, v.name),
       element('small', {}, `${v.art === 'woche' ? 'Woche' : 'Tag'} · ${v.bloecke} ${v.bloecke === 1 ? 'Block' : 'Blöcke'}`
-        + ` · ${datumDE(v.angelegt_am)}`)),
+        + ` · ${angelegt(v.angelegt_am)}`)),
     element('button', { type: 'button', class: 'knopf', onclick: () => { d.close(); ladenDialog(v, kontext); } },
       v.art === 'woche' ? `Laden auf KW ${woche.kw}` : `Laden auf ${tagKurz(datum)}`),
     element('button', {

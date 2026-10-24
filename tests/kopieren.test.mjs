@@ -211,6 +211,8 @@ test('Woche KW 46 → KW 47 und KW 48 in einem Aufruf; 13 Ziel-KWs → ZU_VIELE_
 
   const ziele13 = Array.from({ length: 13 }, (_, i) => ({ jahr: 2027, kw: i + 2 }));
   await wirft(t.wocheKopieren(2026, 46, ziele13), 'ZU_VIELE_ZIELE');
+  // Länge vor jeder Einzelprüfung: 14 ungültige Einträge → ZU_VIELE_ZIELE, nicht DATUM_UNGUELTIG
+  await wirft(t.wocheKopieren(2026, 46, Array.from({ length: 14 }, () => ({ jahr: 2026, kw: 99 }))), 'ZU_VIELE_ZIELE');
   await wirft(t.wocheKopieren(2026, 46, [{ jahr: 2026, kw: 54 }]), 'DATUM_UNGUELTIG');
   await wirft(t.wocheKopieren(2026, 46, [{ jahr: 2026 }]), 'DATUM_UNGUELTIG');
   await wirft(t.wocheKopieren(2026, 46, [{ jahr: 2026, kw: 'x' }]), 'DATUM_UNGUELTIG');
@@ -218,6 +220,10 @@ test('Woche KW 46 → KW 47 und KW 48 in einem Aufruf; 13 Ziel-KWs → ZU_VIELE_
   await wirft(t.wocheKopieren(2026, 46, [{ jahr: 2026, kw: 47 }], 'quatsch'), 'MODUS_UNGUELTIG');
   const tage = (n) => Array.from({ length: n }, (_, i) => new Date(Date.UTC(2027, 0, 4 + i)).toISOString().slice(0, 10));
   await wirft(t.kopieren('2026-11-09', tage(61)), 'ZU_VIELE_ZIELE');
+  // 62 Einträge → schon an der Länge, auch wenn darunter NULL wäre
+  await wirft(t.kopieren('2026-11-09', [...tage(61), null]), 'ZU_VIELE_ZIELE');
+  // Die Quelle selbst darf zusätzlich zu 60 Zielen in der Liste stehen
+  assert.deepEqual((await t.kopieren('2026-11-09', ['2026-11-09', ...tage(60)], 'pruefen')).belegt, []);
   const r60 = await t.kopieren('2026-11-09', tage(60), 'pruefen'); // 60 Ziele sind erlaubt
   assert.deepEqual(r60.belegt, []);
 });
@@ -322,4 +328,74 @@ test('fremde Vorlage laden oder löschen → VORLAGE_NICHT_GEFUNDEN; je Zieltag 
     `select count(*)::int as n from pep.protokoll where aktion = $1 and tabelle = 'vorlagen'`, [aktion])).rows[0].n;
   assert.equal(await n('anlegen'), 1);
   assert.equal(await n('loeschen'), 1);
+});
+
+test('ersetzen einer Woche: Wochengrenze rechnet ohne die zu ersetzenden Zielblöcke (Kopie und Wochenvorlage)', async () => {
+  const t = await aufbau();
+  const a = await t.ma('Test, Anna');
+  await t.vorgabe(a, { gueltig_von: '2026-11-01', pflicht: true, art: 'nicht_verfuegbar', max_stunden_woche: 20 });
+  await t.malen(t.leitung, a, '2026-11-09', '08:00', '16:00', 'KA');
+  await t.malen(t.leitung, a, '2026-11-10', '08:00', '16:00', 'KA');
+  for (const tag of ['2026-11-18', '2026-11-19', '2026-11-25', '2026-11-26']) {
+    await t.malen(t.leitung, a, tag, '08:00', '16:00', 'KA');
+  }
+  // Vorher Mi+Do 16 h, danach Mo+Di 16 h: beides ≤ 20, die alten Blöcke dürfen nicht mitzählen
+  const r = await t.wocheKopieren(2026, 46, [{ jahr: 2026, kw: 47 }], 'ersetzen');
+  assert.deepEqual(r, { tage: 6, bloecke: 2, ...LEER });
+  assert.deepEqual(await t.zeile(a, '2026-11-16'), [{ von: '08:00', bis: '16:00', k: 'KA' }]);
+  assert.deepEqual(await t.zeile(a, '2026-11-17'), [{ von: '08:00', bis: '16:00', k: 'KA' }]);
+  assert.deepEqual(await t.zeile(a, '2026-11-18'), []);
+  assert.deepEqual(await t.zeile(a, '2026-11-19'), []);
+  // Dasselbe mit einer Wochenvorlage auf KW 48
+  const id = await t.speichern('Zwei Tage', 'woche', '2026-11-09');
+  const v = await t.laden(id, '2026-11-23', 'ersetzen');
+  assert.deepEqual(v, { tage: 6, bloecke: 2, ...LEER });
+  assert.deepEqual(await t.zeile(a, '2026-11-24'), [{ von: '08:00', bis: '16:00', k: 'KA' }]);
+  assert.deepEqual(await t.zeile(a, '2026-11-25'), []);
+  // Atomar: scheitert der Aufruf (hier: ungültiges Ziel hinter einem gültigen), bleibt alles unverändert
+  const vorher = await t.anzahl();
+  await wirft(t.wocheKopieren(2026, 46, [{ jahr: 2026, kw: 49 }, { jahr: 2026, kw: 54 }], 'ersetzen'), 'DATUM_UNGUELTIG');
+  assert.equal(await t.anzahl(), vorher);
+});
+
+test('Pause ohne verbleibenden Arbeitsblock fällt am Ziel weg und zählt als ausgelassen', async () => {
+  const t = await aufbau();
+  const a = await t.ma('Test, Anna');
+  const b = await t.ma('Test, Bert');
+  await t.malen(t.leitung, a, '2026-11-09', '08:00', '12:00', 'KA');
+  await t.malen(t.leitung, a, '2026-11-09', '12:00', '12:30', 'PA');
+  await t.malen(t.leitung, b, '2026-11-09', '08:00', '12:00', 'KA');
+  await t.malen(t.leitung, b, '2026-11-09', '12:00', '12:30', 'PA');
+  await t.malen(t.leitung, b, '2026-11-09', '12:30', '14:00', 'OG');
+  // Beide verlieren die Kassen-Kompetenz: Anna bleibt nur die Pause (fällt weg), Bert behält OG und damit die Pause
+  for (const m of [a, b]) await t.aufruf(t.leitung, 'select public.pep_kompetenz_setzen($1, $2, false)', [m, t.bereich.KA]);
+  const r = await t.kopieren('2026-11-09', ['2026-11-16']);
+  assert.deepEqual(r, { tage: 1, bloecke: 2, ...LEER, ausgelassen: 3 });
+  assert.deepEqual(await t.zeile(a, '2026-11-16'), []);
+  assert.deepEqual(await t.zeile(b, '2026-11-16'), [{ von: '12:00', bis: '12:30', k: 'PA' }, { von: '12:30', bis: '14:00', k: 'OG' }]);
+});
+
+test('Isolation: Vorlagen-Daten mit fremdem Mitarbeiter oder Bereich werden ausgelassen; zweite Filiale liest nichts der ersten', async () => {
+  const t = await aufbau();
+  const a = await t.ma('Test, Anna');
+  await t.malen(t.leitung, a, '2026-11-09', '08:00', '12:00', 'KA');
+  const chef2 = await pepBenutzer(t.db, 'chef2');
+  const fil2 = await filiale(t.db, chef2, { name: 'Netto Zweitfiliale', nummer: '9999' });
+  const fremdMa = await t.json(chef2, `select public.pep_mitarbeiter_speichern(null, '{"name":"Fremd, Frieda"}') as r`);
+  const fremdBereich = (await t.json(chef2, 'select public.pep_bereiche() as r')).find((x) => x.kuerzel === 'OG').id;
+  // daten baut sonst nur der Server; hier absichtlich verfälscht
+  const id = (await t.db.query(`insert into pep.vorlagen (filiale_id, name, art, daten) values ($1, 'Verfälscht', 'tag', $2::jsonb) returning id`,
+    [t.fil, JSON.stringify([
+      { wochentag: null, mitarbeiter_id: fremdMa, von: '08:00', bis: '12:00', bereich_id: t.bereich.KA },
+      { wochentag: null, mitarbeiter_id: a, von: '13:00', bis: '15:00', bereich_id: fremdBereich }])])).rows[0].id;
+  const r = await t.laden(id, '2026-11-17');
+  assert.deepEqual(r, { tage: 1, bloecke: 0, unbesetzt: 0, gekuerzt: 0, ausgelassen: 2,
+    ausgeschieden: ['gelöschter Mitarbeiter'], uebersprungen: [] });
+  assert.equal((await t.db.query(`select count(*)::int as n from pep.plan_bloecke where datum = '2026-11-17'`)).rows[0].n, 0);
+  // Zweite Filiale kopiert den 09.11.: sieht keine Blöcke der ersten, schreibt nichts
+  const r2 = await t.kopieren('2026-11-09', ['2026-11-16'], 'leere', chef2);
+  assert.deepEqual(r2, { tage: 1, bloecke: 0, ...LEER });
+  assert.deepEqual(await t.kopieren('2026-11-16', ['2026-11-09'], 'pruefen', chef2), { belegt: [], uebersprungen: [] });
+  assert.equal((await t.db.query('select count(*)::int as n from pep.plan_bloecke where filiale_id = $1', [fil2])).rows[0].n, 0);
+  assert.deepEqual(await t.zeile(a, '2026-11-16'), []);
 });

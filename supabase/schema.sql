@@ -3637,6 +3637,8 @@ $$;
 --   Bereich fehlt/inaktiv/Funktion, Kompetenz fehlt oder Pflicht-Vorgabe verletzt (gegen die bis dahin
 --   angenommenen Blöcke, Stundengrenzen also kumulativ) → ausgelassen;
 -- - Abwesenheit sperrt nicht: Der Block wird eingefügt und ist nach F2 unbesetzt (zählt in unbesetzt).
+-- - Bleibt einem Mitarbeiter kein Arbeitsblock (nur Pausen), fallen auch die Pausen weg und zählen als
+--   ausgelassen: Eine Pause allein würde Anwesenheit und VP verfälschen (F3).
 -- p_modus: ersetzen = alle Zeilen des Tages werden ersetzt (auch die von Mitarbeitern ohne Quellblöcke →
 -- leer); leere = Mitarbeiter mit Blöcken am Ziel bleiben unberührt. Geschrieben wird je Zeile über
 -- pep.zeile_schreiben (ein Protokolleintrag „setzen“ je geänderter Zeile).
@@ -3665,6 +3667,10 @@ declare
   v_gekuerzt  int := 0;
   v_ausgel    int := 0;
   v_weg       text[] := '{}';
+  l_bloecke   int; -- Zähler je Mitarbeiter, erst am Ende übernommen (Pausen-Regel)
+  l_unbesetzt int;
+  l_gekuerzt  int;
+  l_arbeit    int;
 begin
   perform pep.modus_pruefen(p_modus);
   if p_modus = 'pruefen' then
@@ -3711,6 +3717,7 @@ begin
        or not exists (select 1 from pep.vertraege v where v.mitarbeiter_id = v_ma and v.gueltig_ab <= p_ziel) then
       v_ausgel := v_ausgel + v_n;
     else
+      l_bloecke := 0; l_unbesetzt := 0; l_gekuerzt := 0; l_arbeit := 0;
       for v_e in select e from jsonb_array_elements(v_quelle) e
                   where (e ->> 'mitarbeiter_id')::bigint = v_ma order by (e ->> 'von')::time loop
         v_von := greatest((v_e ->> 'von')::time, v_tag.rahmen_von);
@@ -3733,14 +3740,25 @@ begin
           continue;
         end if;
         if v_von <> (v_e ->> 'von')::time or v_bis <> (v_e ->> 'bis')::time then
-          v_gekuerzt := v_gekuerzt + 1;
+          l_gekuerzt := l_gekuerzt + 1;
         end if;
         v_zeile := v_kandidat;
-        v_bloecke := v_bloecke + 1;
+        l_bloecke := l_bloecke + 1;
+        if v_bereich.art <> 'pause' then
+          l_arbeit := l_arbeit + 1;
+        end if;
         if pep.unbesetzt(v_ma, p_ziel, v_von, v_bis) then
-          v_unbesetzt := v_unbesetzt + 1;
+          l_unbesetzt := l_unbesetzt + 1;
         end if;
       end loop;
+      if l_arbeit = 0 then
+        v_zeile := '[]'::jsonb; -- nur Pausen übrig: weglassen
+        v_ausgel := v_ausgel + l_bloecke;
+      else
+        v_bloecke := v_bloecke + l_bloecke;
+        v_unbesetzt := v_unbesetzt + l_unbesetzt;
+        v_gekuerzt := v_gekuerzt + l_gekuerzt;
+      end if;
     end if;
     -- leere: nur schreiben, was dazukommt; ersetzen: die Zeile immer ersetzen (auch durch eine leere)
     if p_modus = 'ersetzen' or jsonb_array_length(v_zeile) > 0 then
@@ -3760,8 +3778,13 @@ $$;
 -- Blöcke hätte – sonst geht nichts verloren, und bei jeder Wochenkopie stünde der Sonntag in der Liste.
 -- pruefen schreibt nichts: {belegt: [Zieltage mit Blöcken, ohne übersprungene], uebersprungen}.
 -- Sonst: {tage, bloecke, unbesetzt, gekuerzt, ausgelassen, ausgeschieden, uebersprungen} (Summe über die Tage).
+-- ersetzen leert zuerst ALLE bearbeiteten Zieltage und fügt erst danach ein. Sonst rechnete die Wochengrenze
+-- (max_stunden_woche in pep.vorgaben_verletzt) für frühe Tage noch mit den alten Blöcken späterer Zieltage,
+-- die gleich ersetzt werden, und ließe gültige Blöcke aus. Der Aufruf ist eine Transaktion: Scheitert
+-- etwas, ist auch das Leeren zurückgenommen.
 -- Protokoll: je bearbeitetem Zieltag genau ein Eintrag (p_aktion, 'plan_bloecke', 'YYYY-MM-DD') mit Herkunft,
--- Modus und Bericht des Tages; die geänderten Zeilen protokolliert pep.zeile_schreiben zusätzlich wie beim Malen.
+-- Modus und Bericht des Tages; die geänderten Zeilen protokolliert pep.zeile_schreiben zusätzlich wie beim Malen
+-- (bei ersetzen je Zeile zweimal: alt → leer, leer → neu).
 create or replace function pep.kopie_ausfuehren(
   p_filiale_id bigint, p_user_id uuid, p_aktion text, p_paare jsonb, p_modus text)
 returns jsonb
@@ -3780,8 +3803,11 @@ declare
   v_summe   jsonb := '{"bloecke": 0, "unbesetzt": 0, "gekuerzt": 0, "ausgelassen": 0}'::jsonb;
   v_weg     text[] := '{}';
   v_k       text;
+  v_offen   jsonb := '[]'::jsonb; -- zu bearbeitende Paare, nach Ziel sortiert
+  v_ma      bigint;
 begin
   perform pep.modus_pruefen(p_modus);
+  -- 1. Ziele einteilen: übersprungen, (pruefen) belegt, sonst zu bearbeiten
   for v_p in select p from jsonb_array_elements(p_paare) p order by (p ->> 'ziel')::date loop
     v_ziel := (v_p ->> 'ziel')::date;
     select * into v_tag from pep.tag_status(p_filiale_id, v_ziel);
@@ -3798,6 +3824,26 @@ begin
       end if;
       continue;
     end if;
+    v_offen := v_offen || jsonb_build_array(v_p);
+  end loop;
+  if p_modus = 'pruefen' then
+    return jsonb_build_object('belegt', v_belegt, 'uebersprungen', v_ueber);
+  end if;
+
+  -- 2. ersetzen: alle Zieltage leeren, bevor irgendetwas eingefügt wird
+  if p_modus = 'ersetzen' then
+    for v_p in select p from jsonb_array_elements(v_offen) p loop
+      v_ziel := (v_p ->> 'ziel')::date;
+      for v_ma in select distinct b.mitarbeiter_id from pep.plan_bloecke b
+                   where b.filiale_id = p_filiale_id and b.datum = v_ziel order by 1 loop
+        perform pep.zeile_schreiben(p_filiale_id, v_ma, v_ziel, '[]'::jsonb, p_user_id);
+      end loop;
+    end loop;
+  end if;
+
+  -- 3. einfügen
+  for v_p in select p from jsonb_array_elements(v_offen) p loop
+    v_ziel := (v_p ->> 'ziel')::date;
     v_r := pep.tag_einfuegen(p_filiale_id, v_ziel, v_p -> 'bloecke', p_modus, p_user_id);
     perform pep.protokolliere(p_filiale_id, p_aktion, 'plan_bloecke', to_char(v_ziel, 'YYYY-MM-DD'), null,
       coalesce(v_p -> 'herkunft', '{}'::jsonb) || jsonb_build_object('modus', p_modus) || v_r);
@@ -3808,9 +3854,6 @@ begin
     v_weg := v_weg || array(select jsonb_array_elements_text(v_r -> 'ausgeschieden'));
   end loop;
 
-  if p_modus = 'pruefen' then
-    return jsonb_build_object('belegt', v_belegt, 'uebersprungen', v_ueber);
-  end if;
   return jsonb_build_object('tage', v_tage) || v_summe || jsonb_build_object(
     'ausgeschieden', (select coalesce(jsonb_agg(x order by x = 'gelöschter Mitarbeiter', x), '[]'::jsonb)
                         from (select distinct unnest(v_weg) x) s),
@@ -3835,6 +3878,10 @@ declare
   v_bloecke jsonb;
 begin
   perform pep.modus_pruefen(p_modus);
+  -- Länge vor jeder Arbeit je Eintrag; ein Eintrag mehr erlaubt (die Quelle selbst darf in der Liste stehen)
+  if cardinality(p_ziele) > 61 then
+    raise exception 'ZU_VIELE_ZIELE';
+  end if;
   if p_quelle is null or p_ziele is null or array_position(p_ziele, null) is not null then
     raise exception 'DATUM_UNGUELTIG';
   end if;
@@ -3870,10 +3917,14 @@ declare
   i         int;
 begin
   perform pep.modus_pruefen(p_modus);
-  v_mo := pep.kw_montag(p_jahr, p_kw);
   if p_ziele is null or jsonb_typeof(p_ziele) <> 'array' then
     raise exception 'DATUM_UNGUELTIG';
   end if;
+  -- Länge vor jeder Arbeit je Eintrag; ein Eintrag mehr erlaubt (die Quellwoche selbst darf in der Liste stehen)
+  if jsonb_array_length(p_ziele) > 13 then
+    raise exception 'ZU_VIELE_ZIELE';
+  end if;
+  v_mo := pep.kw_montag(p_jahr, p_kw);
   for v_e in select e from jsonb_array_elements(p_ziele) e loop
     if jsonb_typeof(v_e) <> 'object' or coalesce(jsonb_typeof(v_e -> 'jahr'), '') <> 'number'
        or coalesce(jsonb_typeof(v_e -> 'kw'), '') <> 'number'
