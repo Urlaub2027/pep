@@ -1,0 +1,175 @@
+:root {
+  --netto-gelb: #FFE500;
+  --netto-rot: #E30613;
+  --schwarz: #111;
+  --grau: #666;
+  --linie: #d9d9d9;
+  --hell: #f5f5f2;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: var(--schwarz);
+  background: var(--hell);
+  line-height: 1.4;
+}
+
+.kopf {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  padding: 10px 16px;
+  background: var(--netto-gelb);
+  color: var(--schwarz);
+}
+.kopf h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.05em; }
+.wer { margin: 0 0 0 auto; font-size: 0.95rem; }
+
+.reiterleiste {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 16px;
+  background: #fff;
+  border-bottom: 1px solid var(--linie);
+}
+.reiterleiste[hidden] { display: none; }
+.reiter-knopf {
+  min-height: 44px;
+  padding: 8px 14px;
+  font: inherit;
+  color: var(--schwarz);
+  background: none;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+}
+.reiter-knopf:hover { background: var(--hell); }
+.reiter-knopf.aktiv { font-weight: 600; border-bottom-color: var(--netto-rot); }
+.reiter-knopf.rechts { margin-left: auto; }
+.reiter-knopf[hidden] { display: none; }
+
+main { max-width: 1600px; margin: 0 auto; padding: 16px; }
+section[hidden] { display: none; }
+
+.box {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid var(--linie);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.formular-box { max-width: 420px; margin-inline: auto; }
+.box h2 { margin-top: 0; }
+
+.feld { display: block; margin-bottom: 12px; font-size: 0.95rem; }
+.feld input, .feld select {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 4px;
+  padding: 6px 8px;
+  font: inherit;
+  border: 1px solid #999;
+  border-radius: 4px;
+  background: #fff;
+}
+.feld input:focus, .feld select:focus { outline: 2px solid var(--schwarz); outline-offset: 1px; }
+
+button[type="submit"], .knopf {
+  min-height: 44px;
+  padding: 8px 18px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--schwarz);
+  background: var(--netto-gelb);
+  border: 2px solid var(--schwarz);
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+
+.meldung { padding: 10px 12px; margin: 0 0 16px; border-radius: 4px; border: 1px solid var(--linie); background: #fff; }
+.meldung[hidden] { display: none; }
+.meldung.fehler { color: var(--netto-rot); border-color: var(--netto-rot); }
+.meldung.ok { color: var(--schwarz); border-color: var(--schwarz); }
+
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--linie); }
+th { background: var(--hell); font-weight: 600; }
+
+/* Reiter Mitarbeiter */
+.zweispaltig { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .zweispaltig { grid-template-columns: 1fr; } }
+.ma-liste { list-style: none; margin: 12px 0 0; padding: 0; }
+.ma-eintrag { display: block; width: 100%; min-height: 44px; margin-bottom: 4px; padding: 6px 10px; font: inherit; text-align: left; color: var(--schwarz); background: #fff; border: 1px solid var(--linie); border-radius: 4px; cursor: pointer; }
+.ma-eintrag:hover { background: var(--hell); }
+.ma-eintrag.gewaehlt { border: 2px solid var(--schwarz); background: var(--netto-gelb); }
+.ma-eintrag.inaktiv { color: var(--grau); background: var(--hell); }
+.ma-eintrag small { display: block; color: var(--grau); }
+.ma-eintrag.gewaehlt small { color: var(--schwarz); }
+.badge { display: inline-block; margin-left: 4px; padding: 0 6px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--schwarz); border-radius: 8px; background: #fff; }
+.hinweis { color: var(--grau); }
+.zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--linie); }
+.zeile .feld { width: 170px; margin-bottom: 0; }
+.zeile .feld.breit { width: 100%; }
+.zeile .feld textarea { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font: inherit; border: 1px solid #999; border-radius: 4px; }
+.zeile .zeilentitel { width: 100%; }
+.zeile .zeiten { display: flex; gap: 12px; }
+.zeile .zeiten[hidden] { display: none; }
+.zeile .zeiten .feld { width: 120px; }
+.feld.haken, .haken { display: flex; align-items: center; gap: 6px; min-height: 40px; }
+.feld.haken input, .haken input { width: 20px; min-height: 20px; margin: 0; }
+.haken-liste { display: flex; flex-wrap: wrap; gap: 4px 24px; }
+.zeile .knopf { background: #fff; }
+
+/* Einstellungen */
+.zeile.grau { background: var(--hell); color: var(--grau); }
+.zeile .erklaerung { flex: 1 1 260px; }
+.zeile .feld input[type="color"] { width: 60px; padding: 2px; }
+.box h3 { margin: 16px 0 4px; font-size: 1rem; }
+
+/* Abwesenheiten */
+:root { --schulferien: #dff3df; --feiertag: #fff3a8; --geschlossen: #e4e4e4; }
+.abw-kopfzeile { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.abw-monat { min-width: 9em; text-align: center; }
+.abw-legende { margin-left: auto; }
+.abw-farbe { display: inline-block; width: 14px; height: 14px; vertical-align: middle; border: 1px solid var(--linie); background: #fff; }
+.abw-farbe.schulferien { background: var(--schulferien); }
+.abw-farbe.feiertag { background: var(--feiertag); }
+.abw-farbe.geschlossen { background: var(--geschlossen); }
+.abw-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 1300px) { .abw-layout { grid-template-columns: 200px minmax(0, 1fr); } .abw-seite { grid-column: 1 / -1; } }
+@media (max-width: 800px) { .abw-layout { grid-template-columns: 1fr; } }
+.abw-pal-eintrag { display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
+.abw-pal-eintrag input { width: 18px; height: 18px; margin: 0; }
+.abw-palette .knopf { margin-top: 8px; }
+.abw-scroll { overflow-x: auto; background: #fff; border: 1px solid var(--linie); }
+.abw-tabelle { width: auto; border-collapse: collapse; touch-action: none; user-select: none; }
+.abw-tabelle th, .abw-tabelle td { padding: 0; border: 1px solid var(--linie); text-align: center; font-size: 0.75rem; }
+.abw-tabelle th.abw-name { position: sticky; left: 0; z-index: 1; min-width: 130px; padding: 2px 6px; text-align: left; white-space: nowrap; background: var(--hell); }
+.abw-tag span, .abw-tag small { display: block; line-height: 1.15; }
+.abw-zelle { position: relative; width: 26px; min-width: 26px; max-width: 26px; height: 34px; line-height: 1.1; cursor: pointer; }
+.abw-zelle .kz { display: block; font-weight: 600; }
+.abw-zelle small { display: block; font-size: 0.6rem; }
+.abw-zelle .warn { position: absolute; top: 0; right: 1px; font-weight: 700; color: var(--netto-rot); }
+.abw-tabelle .schulferien { background: var(--schulferien); }
+.abw-tabelle .feiertag { background: var(--feiertag); }
+.abw-tabelle .wochenende, .abw-tabelle .geschlossen { background: var(--geschlossen); }
+.abw-zelle.wunsch { outline: 2px dashed var(--schwarz); outline-offset: -3px; }
+.abw-zelle.wunsch-abgelehnt { outline: 1px dashed var(--grau); outline-offset: -3px; }
+.abw-zelle.wunsch-abgelehnt .kz { color: var(--grau); font-weight: 400; text-decoration: line-through; opacity: 0.6; }
+.abw-zelle.markiert { outline: 2px solid var(--schwarz); outline-offset: -2px; background: var(--netto-gelb); }
+.abw-tabelle tr.inaktiv th.abw-name { color: var(--grau); font-style: italic; }
+.abw-summe td, .abw-summe th { font-weight: 600; background: var(--hell); }
+.abw-urlaub th, .abw-urlaub td { font-size: 0.85rem; padding: 4px 6px; }
+.abw-urlaub td { text-align: right; }
+.abw-dialog { max-width: 420px; width: calc(100% - 32px); padding: 16px; border: 2px solid var(--schwarz); border-radius: 6px; }
+.abw-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+.abw-dialog .dialog-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.abw-info { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+.abw-info dt { color: var(--grau); }
+.abw-info dd { margin: 0; }
