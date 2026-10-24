@@ -3286,9 +3286,9 @@ begin
 end;
 $$;
 
--- F9: Samstage in [p_von, p_bis], an denen der Mitarbeiter besetzte Arbeit (ohne Pause) hat. Alle anderen
--- Samstage (Urlaub, Krankheit, geschlossen, ungeplant, nur Pause) sind frei. Einzige Stelle dieser Definition
--- (Regelprüfung, Ersatzsuche, Eckdaten).
+-- F9: Samstage in [p_von, p_bis] ab Eintritt, an denen der Mitarbeiter besetzte Arbeit (ohne Pause) hat. Alle anderen
+-- Samstage ab Eintritt (Urlaub, Krankheit, geschlossen, ungeplant, nur Pause) sind frei; Samstage vor dem Eintritt
+-- sind weder frei noch gearbeitet. Einzige Stelle dieser Definition (Regelprüfung, Ersatzsuche, Eckdaten).
 create or replace function pep.gearbeitete_samstage(p_mitarbeiter_id bigint, p_von date, p_bis date)
 returns table (datum date)
 language sql stable
@@ -3296,10 +3296,25 @@ set search_path = ''
 as $$
   select distinct b.datum
     from pep.plan_bloecke b
+    join pep.mitarbeiter m on m.id = b.mitarbeiter_id
     join pep.bereiche r on r.id = b.bereich_id
     cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
    where b.mitarbeiter_id = p_mitarbeiter_id and b.datum between p_von and p_bis
+     and (m.eintritt is null or b.datum >= m.eintritt)
      and extract(isodow from b.datum) = 6 and r.art <> 'pause' and not x.unbesetzt
+$$;
+
+-- F9: Zahl der Samstage in [p_von, p_bis] ab dem Eintritt des Mitarbeiters (ohne Eintritt alle). Freie Samstage =
+-- diese Zahl − gearbeitete (pep.gearbeitete_samstage); das Jahresziel bleibt wie eingestellt (nicht anteilig).
+create or replace function pep.samstage_beschaeftigt(p_mitarbeiter_id bigint, p_von date, p_bis date)
+returns int
+language sql stable
+set search_path = ''
+as $$
+  select count(*)::int
+    from pep.mitarbeiter m
+    cross join generate_series(greatest(p_von, coalesce(m.eintritt, p_von)), p_bis, interval '1 day') x
+   where m.id = p_mitarbeiter_id and extract(isodow from x) = 6
 $$;
 
 -- Text einer verletzten Wochenvorgabe ohne Notiz, z. B. „Bevorzugt: nur 08:00–14:00“.
@@ -3351,10 +3366,9 @@ declare
   v_toleranz    numeric := (pep.einstellung(p_filiale_id, 'wochen_toleranz_h') #>> '{}')::numeric;
   v_samstag     boolean := extract(isodow from p_datum) = 6;
   v_monat_von   date := date_trunc('month', p_datum)::date;
+  v_monat_bis   date := (date_trunc('month', p_datum) + interval '1 month')::date - 1;
   v_jahr_von    date := date_trunc('year', p_datum)::date;
-  v_sa_im_monat int := 0;  -- Samstage des Monats
-  v_sa_vor      int := 0;  -- Samstage des Jahres vor p_datum
-  v_sa_nach     int := 0;  -- Samstage des Jahres nach p_datum
+  v_jahr_bis    date := (date_trunc('year', p_datum) + interval '1 year')::date - 1;
   v_woche_voll  boolean;
   v_monate      text[] := array['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August',
                                 'September', 'Oktober', 'November', 'Dezember'];
@@ -3368,15 +3382,6 @@ begin
      cross join lateral pep.tag_status(p_filiale_id, v_mo + i) s
      where s.geoeffnet
        and not exists (select 1 from pep.plan_bloecke b where b.filiale_id = p_filiale_id and b.datum = v_mo + i));
-  if v_samstag then
-    select count(*) filter (where x.d >= v_monat_von and x.d < (v_monat_von + interval '1 month')::date),
-           count(*) filter (where x.d < p_datum),
-           count(*) filter (where x.d > p_datum)
-      into v_sa_im_monat, v_sa_vor, v_sa_nach
-      from (select v_jahr_von + i as d
-              from generate_series(0, (v_jahr_von + interval '1 year')::date - v_jahr_von - 1) i) x
-     where extract(isodow from x.d) = 6;
-  end if;
 
   return (
     with h as (
@@ -3476,15 +3481,17 @@ begin
     ), samstage as (  -- nur samstags: gearbeitete Samstage (F9) der Samstagsarbeiter vom Jahresbeginn bis Monatsende
       select l.mitarbeiter_id, s.datum
         from lagen l
-        cross join lateral pep.gearbeitete_samstage(l.mitarbeiter_id, v_jahr_von,
-                                                    (v_monat_von + interval '1 month')::date - 1) s
+        cross join lateral pep.gearbeitete_samstage(l.mitarbeiter_id, v_jahr_von, v_monat_bis) s
        where v_samstag and l.arbeit_h > 0
-    ), frei as (  -- je Samstagsarbeiter: freie andere Samstage im Monat, höchstens erreichbare im Jahr
+    ), frei as (  -- je Samstagsarbeiter, Samstage erst ab Eintritt: freie andere Samstage im Monat,
+                  -- höchstens erreichbare im Jahr (frei davor + alle danach, auch schon geplante)
       select l.mitarbeiter_id,
-             v_sa_im_monat - 1 - (select count(*) from samstage s where s.mitarbeiter_id = l.mitarbeiter_id
-                                     and s.datum >= v_monat_von and s.datum <> p_datum) as monat,
-             v_sa_vor - (select count(*) from samstage s where s.mitarbeiter_id = l.mitarbeiter_id
-                            and s.datum < p_datum) + v_sa_nach as jahr
+             pep.samstage_beschaeftigt(l.mitarbeiter_id, v_monat_von, v_monat_bis) - 1
+             - (select count(*) from samstage s where s.mitarbeiter_id = l.mitarbeiter_id
+                   and s.datum >= v_monat_von and s.datum <> p_datum) as monat,
+             pep.samstage_beschaeftigt(l.mitarbeiter_id, v_jahr_von, p_datum - 1)
+             - (select count(*) from samstage s where s.mitarbeiter_id = l.mitarbeiter_id and s.datum < p_datum)
+             + pep.samstage_beschaeftigt(l.mitarbeiter_id, p_datum + 1, v_jahr_bis) as jahr
         from lagen l
        where v_samstag and l.arbeit_h > 0
     ), wuensche as (  -- offene Urlaubswünsche (ohne entschiedene Freigabe) am Tag
@@ -4339,8 +4346,9 @@ $$;
 -- vorgaben: alle am Datum gültigen Wochenvorgaben, Pflicht zuerst.
 -- abwesenheiten: Montag dieser bis Sonntag nächster ISO-Woche.
 -- woche: Soll = Vertrag der Woche − angerechnete Abwesenheit (F6, NULL ohne Vertrag), geplant (F4), wie die Seitenleiste.
--- samstage: jeder Samstag des Monats als gearbeitet (F9) / abwesend (mit Code) / geschlossen / frei – nur gearbeitet
---   zählt nicht als frei; frei_jahr = freie Samstage des Jahres vor dem Datum; Ziele aus den Einstellungen.
+-- samstage: jeder Samstag des Monats als vor_eintritt / gearbeitet (F9) / abwesend (mit Code) / geschlossen / frei –
+--   abwesend, geschlossen und frei zählen als frei, vor_eintritt weder als frei noch als gearbeitet;
+--   frei_jahr = freie Samstage des Jahres ab Eintritt vor dem Datum; Ziele aus den Einstellungen.
 -- vorwoche: Lage (F8) je Tag der ISO-Woche davor; vorwoche_lage und letzter_samstag_spaet wie in pep.pruefung
 --   (pep.lage_vorwoche, pep.lage_letzter_samstag). hinweise: Texte dazu, nie Sperren.
 create or replace function public.pep_eckdaten(p_mitarbeiter_id bigint, p_datum date)
@@ -4406,9 +4414,10 @@ begin
       'monat', (
         select jsonb_agg(jsonb_build_object(
                  'datum', to_char(s.d, 'YYYY-MM-DD'),
-                 'status', case when g.datum is not null then 'gearbeitet' when a.code is not null then 'abwesend'
+                 'status', case when s.d < v_m.eintritt then 'vor_eintritt'
+                                when g.datum is not null then 'gearbeitet' when a.code is not null then 'abwesend'
                                 when not t.geoeffnet then 'geschlossen' else 'frei' end,
-                 'code', case when g.datum is null then a.code end)
+                 'code', case when g.datum is null and not coalesce(s.d < v_m.eintritt, false) then a.code end)
                order by s.d)
           from (select x::date as d from generate_series(v_monat, v_monat_bis, interval '1 day') x) s
           left join pep.gearbeitete_samstage(v_m.id, v_monat, v_monat_bis) g on g.datum = s.d
@@ -4416,8 +4425,7 @@ begin
                               where a2.mitarbeiter_id = v_m.id and a2.datum = s.d) a on true
           cross join lateral pep.tag_status(v_f, s.d) t
          where extract(isodow from s.d) = 6),
-      'frei_jahr', (select count(*) from generate_series(v_jahr, p_datum - 1, interval '1 day') x
-                     where extract(isodow from x) = 6)
+      'frei_jahr', pep.samstage_beschaeftigt(v_m.id, v_jahr, p_datum - 1)
                    - (select count(*) from pep.gearbeitete_samstage(v_m.id, v_jahr, p_datum - 1)),
       'ziel_jahr', pep.einstellung(v_f, 'freie_samstage_jahr'),
       'ziel_monat', pep.einstellung(v_f, 'freie_samstage_monat')),

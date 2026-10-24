@@ -411,14 +411,16 @@ export async function eckdatenDialog(kontext, mitarbeiterId, datum) {
     : null);
 
   const s = e.samstage;
-  const freiMonat = s.monat.filter((x) => x.status !== 'gearbeitet').length;
+  const beschaeftigt = s.monat.filter((x) => x.status !== 'vor_eintritt'); // davor weder frei noch gearbeitet
+  const freiMonat = beschaeftigt.filter((x) => x.status !== 'gearbeitet').length;
+  const saText = (x) => (x.status === 'abwesend' ? `frei (${x.code})` : x.status === 'vor_eintritt' ? 'vor Eintritt' : x.status);
   const samstage = eckTeil(`Samstage im ${monat}`,
     element('ul', { class: 'pd-samstage' }, s.monat.map((x) => element('li', { class: `pd-sa ${x.status}` },
       element('strong', {}, `${x.datum.slice(8, 10)}.${x.datum.slice(5, 7)}.`),
-      ` ${x.status === 'abwesend' ? `frei (${x.code})` : x.status}`))),
-    element('p', {}, `Frei im ${monat}: ${freiMonat} von ${s.monat.length} (Ziel ${s.ziel_monat})`),
+      ` ${saText(x)}`))),
+    element('p', {}, `Frei im ${monat}: ${freiMonat} von ${beschaeftigt.length} (Ziel ${s.ziel_monat})`),
     element('p', {}, `Frei im Jahr vor dem ${datumDE(datum).slice(0, 6)}: ${s.frei_jahr} (Ziel ${s.ziel_jahr})`),
-    element('p', { class: 'hinweis' }, 'Urlaub, Krankheit, geschlossene und noch nicht geplante Samstage zählen als frei.'));
+    element('p', { class: 'hinweis' }, 'Urlaub, Krankheit, geschlossene und noch nicht geplante Samstage zählen als frei, Samstage vor dem Eintritt gar nicht.'));
 
   const tage = e.vorwoche.filter((v, i) => i < 6 || v.lage); // Mo–Sa, Sonntag nur mit Arbeit
   const vorwoche = eckTeil(`Vorwoche KW ${isoWoche(plusTage(datum, -7)).kw}`,

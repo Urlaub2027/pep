@@ -54,6 +54,23 @@ test('Samstage im November: gearbeitet, abwesend (U), frei; frei_jahr zählt nur
   assert.equal((await t.eck(a, '2026-11-08')).samstage.frei_jahr, samstageVor('2026-11-08') - 1);
 });
 
+test('Eintritt 01.10.2026: frei_jahr zählt erst ab Oktober, Samstage davor sind weder frei noch gearbeitet', async () => {
+  const n = await t.ma('Test, Nora');
+  await t.json(t.leitung, `select public.pep_mitarbeiter_speichern($1, '{"eintritt":"2026-10-01"}') as r`, [n]);
+  await t.malen(t.leitung, n, '2026-11-07', '08:00', '14:00', 'KA');
+  // Samstage ab 01.10. vor dem 16.11.: 03., 10., 17., 24., 31.10., 07., 14.11. = 7, davon 07.11. gearbeitet
+  assert.equal((await t.eck(n, '2026-11-16')).samstage.frei_jahr, 6);
+  // Am 01.10. selbst: noch kein Samstag seit Eintritt
+  assert.equal((await t.eck(n, '2026-10-01')).samstage.frei_jahr, 0);
+  // September: alle Samstage vor dem Eintritt
+  const sep = await t.eck(n, '2026-09-28');
+  assert.equal(sep.samstage.frei_jahr, 0);
+  assert.deepEqual(sep.samstage.monat.map((s) => s.status), ['vor_eintritt', 'vor_eintritt', 'vor_eintritt', 'vor_eintritt']);
+  // Oktober: alle fünf Samstage ab Eintritt; 03.10. Feiertag (geschlossen), die übrigen ungeplant → frei
+  assert.deepEqual((await t.eck(n, '2026-10-12')).samstage.monat.map((s) => s.status),
+    ['geschlossen', 'frei', 'frei', 'frei', 'frei']);
+});
+
 test('Samstage im Dezember: Krankmeldung über geplantem Samstag → abwesend, Feiertag 26.12. → geschlossen', async () => {
   const b = await t.ma('Test, Bea');
   await t.malen(t.leitung, b, '2026-12-05', '08:00', '14:00', 'KA');

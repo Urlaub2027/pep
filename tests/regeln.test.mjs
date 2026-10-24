@@ -519,6 +519,33 @@ test('freier_samstag: Jahresziel nicht mehr erreichbar → Hinweis; erreichbar �
   }
 });
 
+test('freier_samstag: Jahresziel zählt erst ab Eintritt – Neuling Ende November ja, Mitarbeiter ohne Eintritt nein', async () => {
+  // Sa 12.12.2026. Neuling ab 30.11.: Samstage ab Eintritt 05., 12., 19., 26.12. → 1 frei davor (05.12.) + 2 danach = 3.
+  // Ohne Eintritt: 49 Samstage vor dem 12.12. frei + 2 danach = 51.
+  const neu = await ma('Test, Nele', { kompetenzen: ['OG'] });
+  await aufruf(leitung, `select public.pep_mitarbeiter_speichern($1, '{"eintritt":"2026-11-30"}')`, [neu]);
+  const alt = await ma('Test, Olaf', { kompetenzen: ['OG'] });
+  await plan(neu, '2026-12-12', '08:00-12:00 OG');
+  await plan(alt, '2026-12-12', '12:00-16:00 OG');
+  const hinweis = (n) => [{ von: null, bis: null, text: `Jahresziel ${n} freie Samstage nicht mehr erreichbar` }];
+  try {
+    let l = await pr('2026-12-12'); // Ziel 12 (Standard)
+    assert.deepEqual(nur(l, 'freier_samstag', neu), hinweis(12)); // nur Jahr; Monat: 3 andere Samstage frei
+    assert.deepEqual(nur(l, 'freier_samstag', alt), []);
+    await einstellen('freie_samstage_jahr', 3);
+    assert.deepEqual(nur(await pr('2026-12-12'), 'freier_samstag', neu), []);
+    await einstellen('freie_samstage_jahr', 4);
+    assert.deepEqual(nur(await pr('2026-12-12'), 'freier_samstag', neu), hinweis(4));
+    await einstellen('freie_samstage_jahr', 51);
+    assert.deepEqual(nur(await pr('2026-12-12'), 'freier_samstag', alt), []);
+    await einstellen('freie_samstage_jahr', 52);
+    l = await pr('2026-12-12');
+    assert.deepEqual(nur(l, 'freier_samstag', alt), hinweis(52));
+  } finally {
+    await einstellen('freie_samstage_jahr', 12);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // wunsch_offen (Urlaubstool, Stufe 0)
 
