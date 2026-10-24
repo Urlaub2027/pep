@@ -135,6 +135,17 @@ export function textfarbe(farbe) {
 // ---------------------------------------------------------------- Formular-Bausteine (mehrere Reiter)
 
 export const zahl = (wert) => (wert === '' || wert == null ? null : Number(String(wert).replace(',', '.')));
+// Zahl aus deutscher Eingabe: '60.000' → 60000 (Punkt vor genau drei Ziffern = Tausendertrennung),
+// '60000,50' und '60.000,50' → Komma ist das Dezimalzeichen, '60.5' → 60,5; Leerzeichen und € werden ignoriert.
+// Leer → null, Unlesbares → NaN (der Aufrufer meldet WERT_UNGUELTIG).
+export function geldZahl(wert) {
+  const t = String(wert ?? '').replace(/[\s€]/g, '');
+  if (t === '') return null;
+  let n = t;
+  if (t.includes(',')) n = /^(\d{1,3}(\.\d{3})*|\d*),\d*$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : '';
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) n = t.replace(/\./g, '');
+  return /^(\d+(\.\d*)?|\.\d+)$/.test(n) && n !== '.' ? Number(n) : NaN;
+}
 export const text = (wert) => (wert == null ? '' : String(wert));
 export const datum = (wert) => (wert ? String(wert).slice(0, 10) : '');
 export const uhrzeit = (wert) => (wert ? String(wert).slice(0, 5) : '');

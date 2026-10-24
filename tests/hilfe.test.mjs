@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fehlerText, datumDE, stundenDE, element } from '../docs/hilfe.js';
+import { fehlerText, datumDE, stundenDE, element, geldZahl } from '../docs/hilfe.js';
 
 test('fehlerText kennt alle Codes des Schemas', () => {
   const schema = readFileSync('supabase/schema.sql', 'utf8');
@@ -43,5 +43,21 @@ test('element() hängt beliebig tief verschachtelte Kinderlisten als Elemente an
     assert.equal(box.kinder[3].text, 'Text');
   } finally {
     aufraeumen();
+  }
+});
+
+test('geldZahl: deutsche Eingabe mit Tausenderpunkt und Komma', () => {
+  assert.equal(geldZahl('60.000'), 60000);
+  assert.equal(geldZahl('60000'), 60000);
+  assert.equal(geldZahl('60000,50'), 60000.5);
+  assert.equal(geldZahl('60.000,50'), 60000.5);
+  assert.equal(geldZahl('1.234.567'), 1234567);
+  assert.equal(geldZahl('250,5'), 250.5);
+  assert.equal(geldZahl('250.5'), 250.5);
+  assert.equal(geldZahl(' 60 000 € '), 60000);
+  assert.equal(geldZahl(''), null);
+  assert.equal(geldZahl(null), null);
+  for (const falsch of ['abc', '1,2,3', '1.2.3', '60,000.50', ',', '.', '-5', '1e5']) {
+    assert.ok(Number.isNaN(geldZahl(falsch)), falsch);
   }
 });

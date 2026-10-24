@@ -4447,6 +4447,97 @@ $$;
 select pep.grundausstattung(id) from pep.filialen;
 
 -- ---------------------------------------------------------------------------
+-- Vorausplanung: sechs Wochen mit Soll, Verfügbar und Überhang (Spec 10)
+-- ---------------------------------------------------------------------------
+
+-- Sechs Wochen ab der angegebenen KW (über den Jahreswechsel) – Leitung und Stellvertretung.
+create or replace function public.pep_vorausplanung(p_jahr int, p_kw int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b  pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_mo date := pep.kw_montag(p_jahr, p_kw);
+begin
+  return jsonb_build_object('wochen', (
+    select jsonb_agg(pep.woche_kennzahlen(v_b.filiale_id, k.jahr, k.kw) order by i)
+      from generate_series(0, 5) i
+      cross join lateral (select extract(isoyear from v_mo + 7 * i)::int as jahr,
+                                 extract(week from v_mo + 7 * i)::int as kw) k));
+end;
+$$;
+
+-- Planumsatz, Stundenleistung und manuelle Stundenvorgabe einer Woche. Enthaltene Schlüssel werden
+-- gesetzt (Zahl > 0, Vorgabe ab 0, oder null zum Leeren), fehlende bleiben unverändert.
+-- Antwort: die Kennzahlen der Woche.
+create or replace function public.pep_woche_speichern(p_jahr int, p_kw int, p_daten jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b    pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_f    bigint := v_b.filiale_id;
+  v_alt  pep.wochen;
+  v_neu  pep.wochen;
+  v_da   boolean;
+  v_umsatz numeric;
+  v_leist  numeric;
+  v_vorg   numeric;
+begin
+  perform pep.kw_montag(p_jahr, p_kw);
+  if p_daten is null or jsonb_typeof(p_daten) <> 'object' then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  -- Jedes vorhandene Feld: JSON-Zahl oder null; Grenzen passen zu numeric(12,2), (8,2), (7,2)
+  if p_daten ? 'planumsatz' and (jsonb_typeof(p_daten -> 'planumsatz') not in ('number', 'null')
+       or (p_daten ->> 'planumsatz')::numeric not between 0.01 and 9999999999.99) then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  if p_daten ? 'stundenleistung_eur_pro_h' and (jsonb_typeof(p_daten -> 'stundenleistung_eur_pro_h') not in ('number', 'null')
+       or (p_daten ->> 'stundenleistung_eur_pro_h')::numeric not between 0.01 and 999999.99) then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  if p_daten ? 'stundenvorgabe_manuell' and (jsonb_typeof(p_daten -> 'stundenvorgabe_manuell') not in ('number', 'null')
+       or (p_daten ->> 'stundenvorgabe_manuell')::numeric not between 0 and 99999.99) then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+
+  select * into v_alt from pep.wochen where filiale_id = v_f and jahr = p_jahr and kw = p_kw;
+  v_da := found;
+  v_umsatz := case when p_daten ? 'planumsatz' then (p_daten ->> 'planumsatz')::numeric else v_alt.planumsatz end;
+  v_leist  := case when p_daten ? 'stundenleistung_eur_pro_h' then (p_daten ->> 'stundenleistung_eur_pro_h')::numeric
+                   else v_alt.stundenleistung_eur_pro_h end;
+  v_vorg   := case when p_daten ? 'stundenvorgabe_manuell' then (p_daten ->> 'stundenvorgabe_manuell')::numeric
+                   else v_alt.stundenvorgabe_manuell end;
+
+  if v_umsatz is null and v_leist is null and v_vorg is null then
+    if v_da then
+      delete from pep.wochen where filiale_id = v_f and jahr = p_jahr and kw = p_kw;
+      perform pep.protokolliere(v_f, 'loeschen', 'wochen', p_jahr || '-' || p_kw, to_jsonb(v_alt), null);
+    end if;
+  else
+    insert into pep.wochen (filiale_id, jahr, kw, planumsatz, stundenleistung_eur_pro_h, stundenvorgabe_manuell)
+    values (v_f, p_jahr, p_kw, v_umsatz, v_leist, v_vorg)
+    on conflict (filiale_id, jahr, kw) do update
+      set planumsatz = excluded.planumsatz,
+          stundenleistung_eur_pro_h = excluded.stundenleistung_eur_pro_h,
+          stundenvorgabe_manuell = excluded.stundenvorgabe_manuell
+    returning * into v_neu;
+    if not v_da or to_jsonb(v_alt) is distinct from to_jsonb(v_neu) then
+      perform pep.protokolliere(v_f, case when v_da then 'aendern' else 'anlegen' end, 'wochen',
+        p_jahr || '-' || p_kw, case when v_da then to_jsonb(v_alt) end, to_jsonb(v_neu));
+    end if;
+  end if;
+  return pep.woche_kennzahlen(v_f, p_jahr, p_kw);
+end;
+$$;
+
+
+-- ---------------------------------------------------------------------------
 -- Rechte
 -- ---------------------------------------------------------------------------
 
@@ -4572,5 +4663,11 @@ grant execute on function public.pep_ersatz_uebernehmen(bigint, date, bigint) to
 -- Eckdaten
 revoke all on function public.pep_eckdaten(bigint, date) from public, anon, authenticated;
 grant execute on function public.pep_eckdaten(bigint, date) to authenticated;
+
+-- Vorausplanung
+revoke all on function public.pep_vorausplanung(int, int) from public, anon, authenticated;
+revoke all on function public.pep_woche_speichern(int, int, jsonb) from public, anon, authenticated;
+grant execute on function public.pep_vorausplanung(int, int) to authenticated;
+grant execute on function public.pep_woche_speichern(int, int, jsonb) to authenticated;
 
 commit;

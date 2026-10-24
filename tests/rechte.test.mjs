@@ -53,13 +53,13 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 // Nur lesende Funktionen; alles andere gilt als schreibend und muss unten abgedeckt sein.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
-  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten'];
+  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
   'pep_plan_malen', 'pep_plan_zeile_setzen', 'pep_kommentar_setzen',
   'pep_tag_kopieren', 'pep_woche_kopieren', 'pep_vorlage_speichern', 'pep_vorlage_laden', 'pep_vorlage_loeschen',
-  'pep_schnell_abwesend', 'pep_ersatz_uebernehmen'];
+  'pep_schnell_abwesend', 'pep_ersatz_uebernehmen', 'pep_woche_speichern'];
 // Legt für die Leitung ohne Filiale die Filiale an – das ist gewollt und in basis.test.mjs geprüft.
 const OHNE_FILIALE_ERLAUBT = ['pep_filiale_anlegen'];
 
@@ -105,6 +105,8 @@ const aufrufe = () => ({
   pep_vorlage_loeschen: `select public.pep_vorlage_loeschen(${vorlage})`,
   pep_schnell_abwesend: `select public.pep_schnell_abwesend(${ma}, 'ZA', '2027-05-04', '2027-05-04')`,
   pep_ersatz_uebernehmen: `select public.pep_ersatz_uebernehmen(${ma}, '2027-05-03', ${jo})`,
+  // Schreibt Planumsatz und Vorgabe der Woche (und ein Protokoll): ohne Rechtecheck wäre das sichtbar.
+  pep_woche_speichern: `select public.pep_woche_speichern(2027, 18, '{"planumsatz":61000,"stundenvorgabe_manuell":240}')`,
 });
 
 const zaehlen = async () => {

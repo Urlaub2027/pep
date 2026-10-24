@@ -102,6 +102,13 @@ console.log('Probe-Kopie KW 46 → KW 47:', JSON.stringify(await q(
   `select public.pep_woche_kopieren(2026, 46, '[{"jahr":2026,"kw":47}]', 'leere') as r`)));
 await db.exec('rollback');
 
+// Vorausplanung ab KW 46: Planumsatz für drei Wochen (eine mit eigener Stundenleistung), eine manuelle Vorgabe,
+// der Rest ohne Planumsatz. Zuletzt, damit die Wochen KW 46/47 die Abwesenheiten und Blöcke oben enthalten.
+const woche = (kw, daten) => q('select public.pep_woche_speichern(2026, $1, $2::jsonb) as r', [kw, JSON.stringify(daten)]);
+await woche(46, { planumsatz: 61000 });
+await woche(47, { planumsatz: 52500, stundenvorgabe_manuell: 240 });
+await woche(48, { planumsatz: 70000, stundenleistung_eur_pro_h: 210 });
+
 const aus = new URL('./daten/', import.meta.url);
 const schreib = (name, wert) => writeFileSync(new URL(`${name}.json`, aus), JSON.stringify(wert, null, 1));
 schreib('pep_ich', await q('select public.pep_ich() as r'));
@@ -120,4 +127,5 @@ schreib('pep_einsatzplan_woche', await q('select public.pep_einsatzplan_woche(20
 schreib('pep_vorlagen', await q('select public.pep_vorlagen() as r'));
 // Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
 schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
+schreib('pep_vorausplanung', await q('select public.pep_vorausplanung(2026, 46) as r'));
 console.log('Vorschau-Daten geschrieben');
