@@ -39,7 +39,7 @@ test('Grundausstattung: 7 Rahmen, So geschlossen, 9 Codes, 18 Einstellungen', as
   assert.equal(e.werte.kassierleistung_eur_halbe_h, 900);
   assert.equal(e.bereiche.length, 15);
   assert.equal(e.filiale.bundesland, 'BY');
-  // Nachholen: gelöschte Zeilen kommen zurück, geänderte bleiben
+  // Nachholen: gelöschte Rahmen/Einstellungen kommen zurück (on conflict do nothing), geänderte bleiben
   await db.query('delete from pep.rahmen where filiale_id = $1 and wochentag = 3', [fil]);
   await db.query("update pep.einstellungen set wert = '7' where filiale_id = $1 and schluessel = 'ruhezeit_h'", [fil]);
   await db.query('select pep.grundausstattung($1)', [fil]);
@@ -122,6 +122,20 @@ test('Einstellung setzen und lesen; unbekannter Schlüssel → EINSTELLUNG_UNBEK
   await wirft(db.query('select pep.einstellung($1, $2)', [fil, 'gibt_es_nicht']), 'EINSTELLUNG_FEHLT');
   await setze('ruhezeit_h', 11);
   await setze('spaet_grenze', '18:00');
+});
+
+test('grundausstattung nach Umbenennen: kein neues U/KA, Anzahlen unverändert', async () => {
+  const f2 = await filiale(db, await pepBenutzer(db, 'chef3'), { name: 'Netto Fulda', nummer: '1111' });
+  const zaehle = async () => (await db.query(
+    `select (select count(*) from pep.abwesenheitscodes where filiale_id = $1)::int as c,
+            (select count(*) from pep.bereiche where filiale_id = $1)::int as b`, [f2])).rows[0];
+  const vorher = await zaehle();
+  await db.query("update pep.abwesenheitscodes set code = 'UR' where filiale_id = $1 and code = 'U'", [f2]);
+  await db.query("update pep.bereiche set kuerzel = 'KS' where filiale_id = $1 and kuerzel = 'KA'", [f2]);
+  await db.query('select pep.grundausstattung($1)', [f2]);
+  assert.deepEqual(await zaehle(), vorher);
+  assert.equal((await db.query("select 1 from pep.abwesenheitscodes where filiale_id = $1 and code = 'U'", [f2])).rows.length, 0);
+  assert.equal((await db.query("select 1 from pep.bereiche where filiale_id = $1 and kuerzel = 'KA'", [f2])).rows.length, 0);
 });
 
 test('Code anlegen "SP" und Kürzel doppelt → KUERZEL_DOPPELT; Bereich art ändern → ART_FEST', async () => {
@@ -211,6 +225,11 @@ test('eigene Rolle ändern → NICHT_SELBST; unbekannter Name → BENUTZER_NICHT
   const chef2 = await pepBenutzer(db, 'chef2');
   await filiale(db, chef2, { name: 'Netto Hanau', nummer: '9999' });
   await wirft(setze(leitung, 'chef2', 'stellvertretung'), 'BENUTZER_NICHT_GEFUNDEN');
+  // Leitung ohne Filiale (start_leitung) darf zugeordnet werden
+  const ohne = await pepBenutzer(db, 'ohnefiliale');
+  await setze(leitung, 'ohnefiliale', 'stellvertretung');
+  const z = (await alle()).benutzer.find((x) => x.user_id === ohne);
+  assert.equal(z.rolle, 'stellvertretung');
 });
 
 test('Schreibzugriffe landen im Protokoll', async () => {

@@ -220,24 +220,27 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  insert into pep.bereiche (filiale_id, kuerzel, name, farbe, art, kompetenz_noetig, aktiv, position)
-  values
-    (p_filiale_id, 'KA', 'Kasse',         '#7FD1FF', 'bereich',  true,  true,  1),
-    (p_filiale_id, 'OG', 'Obst',          '#9BE38A', 'bereich',  false, true,  2),
-    (p_filiale_id, 'BB', 'Backen',        '#F3C96B', 'bereich',  false, true,  3),
-    (p_filiale_id, 'TS', 'TroSo',         '#D9B38C', 'bereich',  false, true,  4),
-    (p_filiale_id, 'MO', 'MoPro',         '#F5F5F5', 'bereich',  false, true,  5),
-    (p_filiale_id, 'TK', 'TK',            '#B8C4FF', 'bereich',  false, true,  6),
-    (p_filiale_id, 'FÜ', 'Führung',       '#2E7D4F', 'bereich',  false, true,  7),
-    (p_filiale_id, 'RE', 'Reinigung',     '#C9C9C9', 'bereich',  false, true,  8),
-    (p_filiale_id, 'BO', 'Backoffice',    '#AEE0D6', 'bereich',  false, true,  9),
-    (p_filiale_id, 'PA', 'Pause',         '#555555', 'pause',    false, true,  10),
-    (p_filiale_id, 'PO', 'Post',          '#E6E600', 'bereich',  false, false, 11),
-    (p_filiale_id, 'KI', 'Kiosk',         '#FF8C42', 'bereich',  false, false, 12),
-    (p_filiale_id, 'GM', 'Getränkemarkt', '#333333', 'bereich',  false, false, 13),
-    (p_filiale_id, 'BE', 'Bedienbäckerei','#B5651D', 'bereich',  false, false, 14),
-    (p_filiale_id, 'VP', 'VP',            '#9A5AD0', 'funktion', false, true,  15)
-  on conflict (filiale_id, kuerzel) do nothing;
+  -- Nur bei einer Filiale ohne Bereiche: umbenannte oder gelöschte Bereiche kommen nicht zurück.
+  if not exists (select 1 from pep.bereiche where filiale_id = p_filiale_id) then
+    insert into pep.bereiche (filiale_id, kuerzel, name, farbe, art, kompetenz_noetig, aktiv, position)
+    values
+      (p_filiale_id, 'KA', 'Kasse',         '#7FD1FF', 'bereich',  true,  true,  1),
+      (p_filiale_id, 'OG', 'Obst',          '#9BE38A', 'bereich',  false, true,  2),
+      (p_filiale_id, 'BB', 'Backen',        '#F3C96B', 'bereich',  false, true,  3),
+      (p_filiale_id, 'TS', 'TroSo',         '#D9B38C', 'bereich',  false, true,  4),
+      (p_filiale_id, 'MO', 'MoPro',         '#F5F5F5', 'bereich',  false, true,  5),
+      (p_filiale_id, 'TK', 'TK',            '#B8C4FF', 'bereich',  false, true,  6),
+      (p_filiale_id, 'FÜ', 'Führung',       '#2E7D4F', 'bereich',  false, true,  7),
+      (p_filiale_id, 'RE', 'Reinigung',     '#C9C9C9', 'bereich',  false, true,  8),
+      (p_filiale_id, 'BO', 'Backoffice',    '#AEE0D6', 'bereich',  false, true,  9),
+      (p_filiale_id, 'PA', 'Pause',         '#555555', 'pause',    false, true,  10),
+      (p_filiale_id, 'PO', 'Post',          '#E6E600', 'bereich',  false, false, 11),
+      (p_filiale_id, 'KI', 'Kiosk',         '#FF8C42', 'bereich',  false, false, 12),
+      (p_filiale_id, 'GM', 'Getränkemarkt', '#333333', 'bereich',  false, false, 13),
+      (p_filiale_id, 'BE', 'Bedienbäckerei','#B5651D', 'bereich',  false, false, 14),
+      (p_filiale_id, 'VP', 'VP',            '#9A5AD0', 'funktion', false, true,  15)
+    on conflict (filiale_id, kuerzel) do nothing;
+  end if;
 
   -- Planungsrahmen: Mo–Sa 07:00–20:00 (Rahmen 06:00–21:30), Sonntag geschlossen.
   insert into pep.rahmen (filiale_id, wochentag, geoeffnet, oeffnung_von, oeffnung_bis, rahmen_von, rahmen_bis)
@@ -247,18 +250,21 @@ begin
     from generate_series(1, 7) t
   on conflict (filiale_id, wochentag) do nothing;
 
-  insert into pep.abwesenheitscodes (filiale_id, code, name, farbe, stundenregel, position)
-  values
-    (p_filiale_id, 'U',  'Urlaub',                  '#4CAF50', 'teiler',       1),
-    (p_filiale_id, 'KM', 'Krank',                   '#E53935', 'teiler',       2),
-    (p_filiale_id, 'BS', 'Berufsschule',            '#1E88E5', 'tatsaechlich', 3),
-    (p_filiale_id, 'ZA', 'Zeitausgleich',           '#F9A825', 'teiler',       4),
-    (p_filiale_id, 'AF', 'Andere Filiale',          '#1565C0', 'tatsaechlich', 5),
-    (p_filiale_id, 'BV', 'Berufliche Veranstaltung','#3949AB', 'teiler',       6),
-    (p_filiale_id, 'FT', 'Feiertag',                '#8E24AA', 'teiler',       7),
-    (p_filiale_id, 'NV', 'Nicht verfügbar',         '#80CBC4', 'keine',        8),
-    (p_filiale_id, 'T',  'Termin/Schulung',         '#5C6BC0', 'tatsaechlich', 9)
-  on conflict (filiale_id, code) do nothing;
+  -- Nur bei einer Filiale ohne Codes (siehe Bereiche).
+  if not exists (select 1 from pep.abwesenheitscodes where filiale_id = p_filiale_id) then
+    insert into pep.abwesenheitscodes (filiale_id, code, name, farbe, stundenregel, position)
+    values
+      (p_filiale_id, 'U',  'Urlaub',                  '#4CAF50', 'teiler',       1),
+      (p_filiale_id, 'KM', 'Krank',                   '#E53935', 'teiler',       2),
+      (p_filiale_id, 'BS', 'Berufsschule',            '#1E88E5', 'tatsaechlich', 3),
+      (p_filiale_id, 'ZA', 'Zeitausgleich',           '#F9A825', 'teiler',       4),
+      (p_filiale_id, 'AF', 'Andere Filiale',          '#1565C0', 'tatsaechlich', 5),
+      (p_filiale_id, 'BV', 'Berufliche Veranstaltung','#3949AB', 'teiler',       6),
+      (p_filiale_id, 'FT', 'Feiertag',                '#8E24AA', 'teiler',       7),
+      (p_filiale_id, 'NV', 'Nicht verfügbar',         '#80CBC4', 'keine',        8),
+      (p_filiale_id, 'T',  'Termin/Schulung',         '#5C6BC0', 'tatsaechlich', 9)
+    on conflict (filiale_id, code) do nothing;
+  end if;
 
   insert into pep.einstellungen (filiale_id, schluessel, wert)
   values
@@ -1330,7 +1336,8 @@ end;
 $$;
 
 -- Ordnet einen Organisator des Urlaubstools der eigenen Filiale zu (oder ändert
--- seine Rolle). Benutzer, die schon zu einer anderen Filiale gehören, bleiben unberührt.
+-- seine Rolle). Ohne Filiale (start_leitung) wird zugeordnet; Benutzer einer
+-- anderen Filiale bleiben unberührt.
 create or replace function public.pep_benutzer_setzen(p_benutzername text, p_rolle text)
 returns void
 language plpgsql
@@ -1355,12 +1362,12 @@ begin
     raise exception 'NICHT_SELBST';
   end if;
   select * into v_alt from pep.benutzer where user_id = v_uid;
-  if found and v_alt.filiale_id is distinct from v_b.filiale_id then
+  if found and v_alt.filiale_id is not null and v_alt.filiale_id <> v_b.filiale_id then
     raise exception 'BENUTZER_NICHT_GEFUNDEN';
   end if;
 
   insert into pep.benutzer (user_id, filiale_id, rolle) values (v_uid, v_b.filiale_id, p_rolle)
-  on conflict (user_id) do update set rolle = excluded.rolle
+  on conflict (user_id) do update set rolle = excluded.rolle, filiale_id = excluded.filiale_id
   returning * into v_neu;
   perform pep.protokolliere(v_b.filiale_id, case when v_alt.user_id is null then 'anlegen' else 'aendern' end,
     'benutzer', v_uid::text,
@@ -1424,8 +1431,6 @@ grant execute on function public.pep_wochenvorgabe_speichern(bigint, jsonb)     
 grant execute on function public.pep_wochenvorgabe_loeschen(bigint)                     to authenticated;
 grant execute on function public.pep_urlaubsjahr_speichern(bigint, int, numeric, numeric) to authenticated;
 
-commit;
-
 -- Einstellungen
 revoke all on function public.pep_einstellungen() from public, anon, authenticated;
 revoke all on function public.pep_feiertage(int) from public, anon, authenticated;
@@ -1451,3 +1456,5 @@ grant execute on function public.pep_schulferien_speichern(bigint, date, date, t
 grant execute on function public.pep_schulferien_loeschen(bigint) to authenticated;
 grant execute on function public.pep_benutzer_setzen(text, text) to authenticated;
 grant execute on function public.pep_benutzer_entfernen(uuid) to authenticated;
+
+commit;
