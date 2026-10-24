@@ -77,7 +77,7 @@ export function element(tag, attrs = {}, ...kinder) {
     else if (name === 'class') e.className = wert;
     else e.setAttribute(name, wert === true ? '' : wert);
   }
-  for (const k of kinder.flat()) {
+  for (const k of kinder.flat(Infinity)) {
     if (k == null || k === false) continue;
     e.append(k instanceof Node ? k : document.createTextNode(String(k)));
   }

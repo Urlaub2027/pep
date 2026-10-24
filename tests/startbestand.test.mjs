@@ -18,7 +18,7 @@ async function mitFiliale() {
 
 const zaehlen = async (db, tabelle) => (await db.query(`select count(*)::int as n from pep.${tabelle}`)).rows[0].n;
 
-test('Startbestand: 19 Mitarbeiter, 2 inaktiv, alle mit Vertrag ab 2026-01-01 und Urlaubsjahr 2027 = wochenstunden × 6',
+test('Startbestand: 19 Mitarbeiter, 2 inaktiv, alle mit Vertrag ab 2026-01-01 (42 h = Führung) und Urlaubsjahr 2027 = wochenstunden × 6',
   { skip: !stammVorhanden && 'privat/stammdaten-aschaffenburg.sql fehlt (nicht im Repo) - Test übersprungen' },
   async () => {
     const { db } = await mitFiliale();
@@ -36,7 +36,8 @@ test('Startbestand: 19 Mitarbeiter, 2 inaktiv, alle mit Vertrag ab 2026-01-01 un
       assert.equal(z.ab, '2026-01-01');
       assert.equal(Number(z.anspruch_stunden), Number(z.wochenstunden) * 6);
       assert.equal(Number(z.rest_vorjahr_stunden), 0);
-      assert.equal(z.vertragsart, Number(z.wochenstunden) === 37.5 ? 'vollzeit' : 'teilzeit');
+      const std = Number(z.wochenstunden);
+      assert.equal(z.vertragsart, std === 42 ? 'fuehrung' : std === 37.5 ? 'vollzeit' : 'teilzeit');
     }
   });
 

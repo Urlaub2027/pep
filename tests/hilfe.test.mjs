@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { fehlerText, datumDE, stundenDE } from '../docs/hilfe.js';
+import { fehlerText, datumDE, stundenDE, element } from '../docs/hilfe.js';
 
 test('fehlerText kennt alle Codes des Schemas', () => {
   const schema = readFileSync('supabase/schema.sql', 'utf8');
@@ -21,4 +21,27 @@ test('datumDE("2027-03-02") = "02.03.2027"; stundenDE(6.25) = "6,25"; stundenDE(
   assert.equal(datumDE('2027-03-02'), '02.03.2027');
   assert.equal(stundenDE(6.25), '6,25');
   assert.equal(stundenDE(5), '5,00');
+});
+
+// Minimales DOM-Double: element() braucht nur createElement, createTextNode und Node.
+function kleinesDom() {
+  class Knoten { constructor(name) { this.name = name; this.kinder = []; } append(k) { this.kinder.push(k); } }
+  globalThis.Node = Knoten;
+  globalThis.document = {
+    createElement: (tag) => Object.assign(new Knoten(tag), { setAttribute() {}, addEventListener() {} }),
+    createTextNode: (t) => Object.assign(new Knoten('#text'), { text: t }),
+  };
+  return () => { delete globalThis.Node; delete globalThis.document; };
+}
+
+test('element() hängt beliebig tief verschachtelte Kinderlisten als Elemente an, nie als Text', () => {
+  const aufraeumen = kleinesDom();
+  try {
+    const a = element('label'); const b = element('label'); const c = element('label');
+    const box = element('div', {}, [a, [b, [c]], null, false, 'Text']);
+    assert.deepEqual(box.kinder.map((k) => k.name), ['label', 'label', 'label', '#text']);
+    assert.equal(box.kinder[3].text, 'Text');
+  } finally {
+    aufraeumen();
+  }
 });
