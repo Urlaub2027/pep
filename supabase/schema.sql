@@ -3293,8 +3293,8 @@ $$;
 -- Hinweisen, dann von (ohne Uhrzeit zuerst), dann Mitarbeitername. Zusammenhängende halbe Stunden derselben
 -- Art und desselben Mitarbeiters ergeben einen Eintrag. Regeln über die ganze Filiale (Kasse, VP, eine Person)
 -- haben mitarbeiter_id NULL. Unbesetzte Zeit zählt nirgends mit (F2), Pause zählt als anwesend (F3).
--- Wochenregeln (wochenstunden, wochenstunden_unter, Woche unter 18) stehen an jedem geöffneten Tag der
--- ISO-Woche und an jedem Tag mit Blöcken des Mitarbeiters.
+-- Wochenregeln (wochenstunden, wochenstunden_unter, Woche unter 18) stehen an jedem Tag der ISO-Woche,
+-- an dem der Mitarbeiter besetzte Blöcke hat.
 create or replace function pep.pruefung(p_filiale_id bigint, p_datum date)
 returns jsonb
 language plpgsql stable
@@ -3386,13 +3386,13 @@ begin
       union all
       select 'vp_allein', null, a.t, null from abdeckung a where a.offen and a.anwesend = 1
       union all
-      -- Pause einer Kassenkraft: Kasse leer oder niemand mit Kassenkompetenz frei (nicht Kasse, nicht Pause)
+      -- Pause einer Kassenkraft: Kasse leer und niemand mit Kassenkompetenz frei (nicht Kasse, nicht Pause)
       select 'pausenabloese', p.mitarbeiter_id, p.t, null
         from da p
        where p.zustand = 'pause'
          and exists (select 1 from da k where k.mitarbeiter_id = p.mitarbeiter_id and k.zustand = 'kasse')
          and (not exists (select 1 from da k where k.t = p.t and k.zustand = 'kasse')
-              or not exists (select 1 from da f
+              and not exists (select 1 from da f
                               where f.t = p.t and f.zustand = 'arbeit' and f.mitarbeiter_id <> p.mitarbeiter_id
                                 and (not v_kasse.kompetenz_noetig
                                      or exists (select 1 from pep.kompetenzen k
@@ -3438,9 +3438,7 @@ begin
         from pep.mitarbeiter m
         cross join lateral pep.wochenvertrag(m.id, v_mo) v
        where m.filiale_id = p_filiale_id and v.id is not null
-         and ((m.aktiv and (m.eintritt is null or m.eintritt <= v_mo + 6) and (m.austritt is null or m.austritt >= v_mo))
-              or exists (select 1 from pep.plan_bloecke b where b.mitarbeiter_id = m.id and b.datum between v_mo and v_mo + 6))
-         and (v_tag.geoeffnet or exists (select 1 from h where h.mitarbeiter_id = m.id))
+         and exists (select 1 from ma where ma.mitarbeiter_id = m.id)  -- nur an Tagen mit besetzten Blöcken
     ), lagen as (
       select ma.mitarbeiter_id, ma.arbeit_h, pep.lage(p_filiale_id, ma.mitarbeiter_id, p_datum) as lage from ma
     ), samstage as (  -- nur samstags: gearbeitete Samstage (F9) vom Jahresbeginn bis Monatsende
@@ -3480,13 +3478,13 @@ begin
              end
         from inseln i
       union all
-      -- Pause = Anwesenheit ohne Arbeit, also Pausenblöcke und Lücken
+      -- § 4 ArbZG: Schwellen an der Arbeitszeit; Pause = Anwesenheit ohne Arbeit (Pausenblöcke und Lücken)
       select 'pause_fehlt', 'warnung', p.mitarbeiter_id, p.erster, p.ende,
-             'Pause fehlt oder zu kurz: ' || pep.zahl_text(p.anwesend_h) || ' h anwesend, '
+             'Pause fehlt oder zu kurz: ' || pep.zahl_text(p.arbeit_h) || ' h Arbeit, '
              || pep.zahl_text(p.pause_min, true) || ' min Pause (mind. ' || pep.zahl_text(p.mind, true) || ' min)'
         from (select ma.*, (ma.anwesend_h - ma.arbeit_h) * 60 as pause_min,
-                     case when ma.anwesend_h > 9 and (ma.anwesend_h - ma.arbeit_h) * 60 < v_p9 then v_p9
-                          when ma.anwesend_h > 6 and (ma.anwesend_h - ma.arbeit_h) * 60 < v_p6 then v_p6 end as mind
+                     case when ma.arbeit_h > 9 and (ma.anwesend_h - ma.arbeit_h) * 60 < v_p9 then v_p9
+                          when ma.arbeit_h > 6 and (ma.anwesend_h - ma.arbeit_h) * 60 < v_p6 then v_p6 end as mind
                 from ma) p
        where p.mind is not null
       union all
@@ -3559,8 +3557,8 @@ begin
 end;
 $$;
 
--- Antwort auf einen Strich: Blöcke dieser Mitarbeiter an dem Tag und die Prüfung für Vortag, Tag und
--- Folgetag (Ruhezeit wirkt auf die Nachbartage).
+-- Antwort auf einen Strich: Blöcke dieser Mitarbeiter an dem Tag und die Prüfung für alle Tage der ISO-Woche
+-- (Wochenregeln) plus Vortag und Folgetag, wenn sie außerhalb der Woche liegen (Ruhezeit).
 create or replace function pep.tag_antwort(p_filiale_id bigint, p_datum date, p_mitarbeiter_ids bigint[])
 returns jsonb
 language sql stable
@@ -3569,8 +3567,11 @@ as $$
   select jsonb_build_object(
     'datum', to_char(p_datum, 'YYYY-MM-DD'),
     'bloecke', pep.bloecke_antwort(p_filiale_id, p_datum, p_datum, coalesce(p_mitarbeiter_ids, '{}')),
-    'pruefung', (select jsonb_object_agg(to_char(p_datum + i, 'YYYY-MM-DD'), pep.pruefung(p_filiale_id, p_datum + i))
-                   from generate_series(-1, 1) i))
+    'pruefung', (select jsonb_object_agg(to_char(d.tag, 'YYYY-MM-DD'), pep.pruefung(p_filiale_id, d.tag))
+                   from (select p_datum - extract(isodow from p_datum)::int + 1 + i as tag
+                           from generate_series(0, 6) i
+                         union
+                         select p_datum + i from generate_series(-1, 1) i) d))
 $$;
 
 -- Regelprüfung für einen Zeitraum von höchstens 42 Tagen (Startseite): {"YYYY-MM-DD": [...]}.

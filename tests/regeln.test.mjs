@@ -159,53 +159,57 @@ test('vp_allein: zwei Personen 07–20 → kein Eintrag', async () => {
 // ---------------------------------------------------------------------------
 // pausenabloese
 
-test('pausenabloese: Pause der Kassenkraft ohne Kasse → Eintrag; Kasse besetzt, aber niemand frei mit Kassenkompetenz → Eintrag', async () => {
+test('pausenabloese: Kasse in der Pause leer und niemand mit Kassenkompetenz frei → Eintrag', async () => {
   const k = await ma('Test, Kassia');
   const o = await ma('Test, Otto', { kompetenzen: ['OG'] });
+  const q = await ma('Test, Quirin', { kompetenzen: ['KA', 'OG'] });
   await plan(k, '2026-11-26', '08:00-12:00 KA, 12:00-12:30 PA, 12:30-16:00 KA');
   await plan(o, '2026-11-26', '08:00-16:00 OG');
-  let l = await pr('2026-11-26');
+  // Quirin hat Kassenkompetenz, macht aber zur selben Zeit Pause: nicht frei
+  await plan(q, '2026-11-26', '08:00-12:00 OG, 12:00-12:30 PA, 12:30-16:00 OG');
+  const l = await pr('2026-11-26');
   assert.deepEqual(nur(l, 'pausenabloese', k), [{ von: '12:00', bis: '12:30', text: 'Pausenablöse fehlt 12:00–12:30' }]);
   assert.deepEqual(schwere(l, 'pausenabloese'), ['warnung']);
-  // Zweite Kassenkraft an der Kasse, Otto ohne Kassenkompetenz: weiter niemand frei
-  const z = await ma('Test, Zweit');
-  await plan(z, '2026-11-26', '12:00-12:30 KA');
-  l = await pr('2026-11-26');
-  assert.deepEqual(nur(l, 'pausenabloese', k), [{ von: '12:00', bis: '12:30', text: 'Pausenablöse fehlt 12:00–12:30' }]);
+  assert.deepEqual(nur(l, 'pausenabloese', q), []); // Pause ohne Kassenblock
 });
 
-test('pausenabloese: Kasse besetzt und eine Kraft mit Kassenkompetenz im anderen Bereich → kein Eintrag; Pause ohne Kassenblock → kein Eintrag', async () => {
+test('pausenabloese: Kasse von jemand anderem besetzt → kein Eintrag; Kasse leer, aber Kraft mit Kassenkompetenz frei → kein Eintrag', async () => {
   const k = await ma('Test, Karla');
   const z = await ma('Test, Zora');
-  const f = await ma('Test, Fritz', { kompetenzen: ['KA', 'OG'] });
-  const p = await ma('Test, Pia', { kompetenzen: ['OG'] });
+  const o = await ma('Test, Olga', { kompetenzen: ['OG'] });
   await plan(k, '2026-11-27', '08:00-12:00 KA, 12:00-12:30 PA, 12:30-16:00 KA');
   await plan(z, '2026-11-27', '12:00-12:30 KA');
-  await plan(f, '2026-11-27', '08:00-16:00 OG');
-  await plan(p, '2026-11-27', '08:00-12:00 OG, 12:00-12:30 PA, 12:30-16:00 OG');
-  const l = await pr('2026-11-27');
+  await plan(o, '2026-11-27', '08:00-16:00 OG'); // niemand mit Kassenkompetenz frei
+  assert.deepEqual(nur(await pr('2026-11-27'), 'pausenabloese'), []);
+  const k2 = await ma('Test, Konrad');
+  const f = await ma('Test, Fritz', { kompetenzen: ['KA', 'OG'] });
+  await plan(k2, '2026-12-28', '08:00-12:00 KA, 12:00-12:30 PA, 12:30-16:00 KA');
+  await plan(f, '2026-12-28', '08:00-16:00 OG');
+  const l = await pr('2026-12-28');
+  assert.deepEqual(nur(l, 'kasse_unbesetzt').filter((e) => e.von === '12:00'), [
+    { von: '12:00', bis: '12:30', text: 'Kasse unbesetzt 12:00–12:30' }]);
   assert.deepEqual(nur(l, 'pausenabloese'), []);
 });
 
 // ---------------------------------------------------------------------------
-// pause_fehlt
+// pause_fehlt (§ 4 ArbZG: Schwellen an der Arbeitszeit, Pause = Anwesenheit ohne Arbeit)
 
-test('pause_fehlt: 7,50 h ohne Pause → Eintrag; über 9 h mit 30 min → Eintrag mit mind. 45 min', async () => {
+test('pause_fehlt: 6,5 h Arbeit ohne Pause → Eintrag; 9,5 h Arbeit mit 30 min → Eintrag mit mind. 45 min', async () => {
   const a = await ma('Test, Paula', { kompetenzen: ['OG'] });
-  await plan(a, '2026-11-09', '08:00-15:30 OG');
+  await plan(a, '2026-11-09', '08:00-14:30 OG');
   let l = await pr('2026-11-09');
   assert.deepEqual(nur(l, 'pause_fehlt', a),
-    [{ von: '08:00', bis: '15:30', text: 'Pause fehlt oder zu kurz: 7,50 h anwesend, 0 min Pause (mind. 30 min)' }]);
+    [{ von: '08:00', bis: '14:30', text: 'Pause fehlt oder zu kurz: 6,50 h Arbeit, 0 min Pause (mind. 30 min)' }]);
   assert.deepEqual(schwere(l, 'pause_fehlt'), ['warnung']);
   await plan(a, '2026-11-10', '07:00-12:00 OG, 12:00-12:30 PA, 12:30-17:00 OG');
   l = await pr('2026-11-10');
   assert.deepEqual(nur(l, 'pause_fehlt', a),
-    [{ von: '07:00', bis: '17:00', text: 'Pause fehlt oder zu kurz: 10,00 h anwesend, 30 min Pause (mind. 45 min)' }]);
+    [{ von: '07:00', bis: '17:00', text: 'Pause fehlt oder zu kurz: 9,50 h Arbeit, 30 min Pause (mind. 45 min)' }]);
 });
 
-test('pause_fehlt: 30 min Pause bei 7 h, genau 6 h ohne Pause, Lücke als Pause → kein Eintrag', async () => {
+test('pause_fehlt: 9 h Arbeit mit 30 min, genau 6 h ohne Pause, Lücke als Pause → kein Eintrag', async () => {
   const a = await ma('Test, Pit', { kompetenzen: ['OG'] });
-  await plan(a, '2026-11-11', '08:00-11:00 OG, 11:00-11:30 PA, 11:30-15:00 OG');
+  await plan(a, '2026-11-11', '07:00-12:00 OG, 12:00-12:30 PA, 12:30-16:30 OG');
   await plan(a, '2026-11-12', '08:00-14:00 OG');
   // Geteilter Dienst: die Lücke 11–15 ist Pause (Entscheidung im Bericht)
   await plan(a, '2026-11-13', '07:00-11:00 OG, 15:00-19:00 OG');
@@ -219,13 +223,14 @@ test('ruhezeit: Vortag bis 21:30, heute ab 07:00 → 9,50 h, Eintrag an beiden T
   const a = await ma('Test, Ruth', { kompetenzen: ['OG'] });
   await plan(a, '2026-11-30', '13:30-21:30 OG');
   const r = await malen(leitung, a, '2026-12-01', '07:00', '12:00', 'OG');
-  // pep_plan_malen liefert die Prüfung für Vortag, Tag und Folgetag
-  assert.deepEqual(Object.keys(r.pruefung).sort(), ['2026-11-30', '2026-12-01', '2026-12-02']);
+  // pep_plan_malen am Dienstag liefert die Prüfung für Mo–So dieser Woche (Vortag liegt darin)
+  assert.deepEqual(Object.keys(r.pruefung).sort(), ['2026-11-30', '2026-12-01', '2026-12-02', '2026-12-03',
+    '2026-12-04', '2026-12-05', '2026-12-06']);
   assert.deepEqual(nur(r.pruefung['2026-12-01'], 'ruhezeit', a),
     [{ von: '07:00', bis: null, text: 'Ruhezeit 9,50 h (mind. 11 h) vor 07:00' }]);
   assert.deepEqual(nur(r.pruefung['2026-11-30'], 'ruhezeit', a),
     [{ von: '21:30', bis: null, text: 'Ruhezeit 9,50 h (mind. 11 h) nach 21:30' }]);
-  assert.deepEqual(r.pruefung, await zeitraum('2026-11-30', '2026-12-02'));
+  assert.deepEqual(r.pruefung, await zeitraum('2026-11-30', '2026-12-06'));
   assert.deepEqual(schwere(r.pruefung['2026-12-01'], 'ruhezeit'), ['warnung']);
 });
 
@@ -293,8 +298,10 @@ test('wochenstunden: 40 h geplant + 6,25 h abwesend über Vertrag 37,5 → Eintr
     assert.deepEqual(nur(l, 'wochenstunden', m),
       [{ von: null, bis: null, text: 'Woche: 10,50 h geplant + 0,00 h abwesend, Vertrag 10,00 h' }]);
     assert.deepEqual(schwere(l, 'wochenstunden'), ['warnung']);
-    // Auch an einem geöffneten Tag ohne Arbeit in derselben Woche
-    assert.equal(nur(await pr('2026-12-19'), 'wochenstunden', a).length, 1);
+    // Nur an Tagen mit Arbeit: nicht am freien Samstag 19.12. und nicht am U-Tag 14.12.
+    assert.deepEqual(nur(await pr('2026-12-19'), 'wochenstunden', a), []);
+    assert.deepEqual(nur(await pr('2026-12-14'), 'wochenstunden', a), []);
+    assert.equal(nur(await pr('2026-12-15'), 'wochenstunden', a).length, 1);
   } finally {
     await einstellen('wochen_toleranz_h', 0);
   }
@@ -358,8 +365,8 @@ test('wochenstunden_unter: alle geöffneten Tage der KW geplant, 30 h von 37,5 �
   const l = await pr('2027-01-15');
   assert.deepEqual(nur(l, 'wochenstunden_unter', a), [{ von: null, bis: null, text: 'Woche: 30,00 h von 37,50 h verplant' }]);
   assert.deepEqual(schwere(l, 'wochenstunden_unter'), ['hinweis']);
-  // auch am Samstag ohne Arbeit für Ulla
-  assert.equal(nur(await pr('2027-01-16'), 'wochenstunden_unter', a).length, 1);
+  // nicht am Samstag ohne Arbeit für Ulla
+  assert.deepEqual(nur(await pr('2027-01-16'), 'wochenstunden_unter', a), []);
 });
 
 test('wochenstunden_unter: geplant + abwesend erreicht den Vertrag → kein Hinweis', async () => {
@@ -548,6 +555,30 @@ test('Sortierung: Warnungen vor Hinweisen, dann von, dann Mitarbeitername', asyn
   const ersterHinweis = l.findIndex((e) => e.schwere === 'hinweis');
   if (ersterHinweis >= 0) assert.ok(l.slice(ersterHinweis).every((e) => e.schwere === 'hinweis'));
   for (const e of l) assert.deepEqual(Object.keys(e).sort(), ['art', 'bis', 'mitarbeiter_id', 'schwere', 'text', 'von']);
+});
+
+// Tage ab mo (YYYY-MM-DD), n Stück
+const tageAb = (mo, n = 7) => Array.from({ length: n }, (_, i) => {
+  const d = new Date(mo + 'T12:00:00Z');
+  d.setUTCDate(d.getUTCDate() + i);
+  return d.toISOString().slice(0, 10);
+});
+
+test('pep_plan_malen: Mittwoch → Prüfung Mo–So der Woche; Montag zusätzlich der Sonntag davor; Wochenwarnung an allen Arbeitstagen', async () => {
+  const a = await ma('Test, Mattis', { kompetenzen: ['OG'] });
+  let r = await malen(leitung, a, '2026-12-23', '08:00', '12:00', 'OG');
+  assert.deepEqual(Object.keys(r.pruefung).sort(), tageAb('2026-12-21'));
+  r = await malen(leitung, a, '2026-12-21', '08:00', '12:00', 'OG');
+  assert.deepEqual(Object.keys(r.pruefung).sort(), tageAb('2026-12-20', 8));
+  // 3 × 10,5 h + 10 h = 41,5 h: nach dem Strich am Donnerstag steht die Wochenwarnung an allen Arbeitstagen
+  for (const d of ['2026-12-21', '2026-12-22', '2026-12-23']) {
+    await plan(a, d, '07:00-12:00 OG, 12:00-12:30 PA, 12:30-18:00 OG');
+  }
+  r = await malen(leitung, a, '2026-12-24', '07:00', '17:00', 'OG');
+  for (const d of ['2026-12-21', '2026-12-22', '2026-12-23', '2026-12-24']) {
+    assert.equal(nur(r.pruefung[d], 'wochenstunden', a).length, 1, d);
+  }
+  assert.deepEqual(nur(r.pruefung['2026-12-26'], 'wochenstunden', a), []);
 });
 
 test('pep_einsatzplan_woche().pruefung hat 7 Schlüssel mit den Listen von pep.pruefung', async () => {

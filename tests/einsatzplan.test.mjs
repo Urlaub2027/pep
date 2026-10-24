@@ -46,8 +46,9 @@ test('malen KA 08:00–12:00 → ein Block', async () => {
   const r = await malen(stellv, a, '2026-11-09', '08:00', '12:00', 'KA');
   assert.equal(r.datum, '2026-11-09');
   assert.deepEqual(zeile(r, a), [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA, unbesetzt: false }]);
-  // Prüfung für Vortag, Tag und Folgetag (Inhalt: tests/regeln.test.mjs)
-  assert.deepEqual(Object.keys(r.pruefung).sort(), ['2026-11-08', '2026-11-09', '2026-11-10']);
+  // Prüfung für die ganze ISO-Woche, am Montag zusätzlich der Sonntag davor (Inhalt: tests/regeln.test.mjs)
+  assert.deepEqual(Object.keys(r.pruefung).sort(), ['2026-11-08', '2026-11-09', '2026-11-10', '2026-11-11',
+    '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15']);
 });
 
 test('OG 10:00–11:00 in KA 08–12 → KA 08–10, OG 10–11, KA 11–12', async () => {
