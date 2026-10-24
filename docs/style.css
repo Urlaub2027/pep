@@ -244,6 +244,8 @@ input.schalter:checked::before { transform: translateX(16px); }
 .meldung[hidden] { display: none; }
 .meldung.fehler { color: var(--netto-rot); border-color: var(--netto-rot); background: #fff5f5; }
 .meldung.ok { color: var(--text); border-color: var(--ok); }
+/* Ergebnis mit Auffälligkeiten (Kopieren: ausgelassen, gekürzt …): bleibt stehen statt Toast */
+.meldung.ergebnis { color: var(--text); border-left: 4px solid var(--netto-gelb); background: var(--hinweis); }
 
 .toast {
   position: fixed;
@@ -411,6 +413,27 @@ th { background: var(--hell); font-weight: 600; }
 .abw-info { display: grid; grid-template-columns: auto 1fr; gap: var(--a1) var(--a3); margin: 0; }
 .abw-info dt { color: var(--text-2); }
 .abw-info dd { margin: 0; }
+
+/* Dialoge Kopieren und Vorlagen (plan-dialoge.js) */
+.dialog .pd-titel { margin: var(--a4) 0 var(--a2); font-size: 1rem; }
+.pd-gruppe { margin: 0 0 var(--a2); padding: 0; border: 0; }
+.pd-legende { margin-bottom: var(--a1); padding: 0; font-size: 0.9rem; color: var(--text-2); }
+.pd-unter { display: grid; gap: var(--a1); margin: 0 0 var(--a2) 26px; }
+.pd-unter.aus { opacity: 0.55; }
+.pd-option { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a1) var(--a2); }
+.pd-option input:not([type="radio"]), .pd-option select {
+  height: 40px; padding: 0 10px; font: inherit; color: var(--text);
+  border: 1px solid var(--linie-stark); border-radius: 6px; background: var(--flaeche);
+}
+.pd-option input[type="number"] { width: 5em; }
+.pd-ziele { min-height: 1.4em; margin: 0 0 var(--a2); }
+.pd-vorlagen { display: grid; gap: var(--a1); }
+.dialog.pd-breit { max-width: 580px; }
+.pd-vorlage { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--a1) var(--a2); padding: var(--a2) 0; border-bottom: 1px solid var(--linie); }
+.pd-vorlage-text { min-width: 0; }
+@media (max-width: 520px) { .pd-vorlage { grid-template-columns: 1fr 1fr; } .pd-vorlage-text { grid-column: 1 / -1; } }
+.pd-vorlage-text strong, .pd-vorlage-text small { display: block; overflow-wrap: anywhere; }
+.pd-vorlage-text small { color: var(--text-2); }
 
 /* ---------------------------------------------------------------- Reiter Mitarbeiter */
 

@@ -7,10 +7,13 @@ import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne } fr
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel,
 } from './plan-raster.js';
+import { kopierenDialog, vorlagenDialog } from './plan-dialoge.js';
 
 // Dialoge späterer Tasks tragen sich hier ein; ein Knopf erscheint erst, wenn sein Eintrag gesetzt ist.
 // ersatz(mitarbeiterId, datum), eckdaten(mitarbeiterId, datum), die übrigen ohne Argumente.
 export const aktionen = { kopieren: null, vorlagen: null, krank: null, ersatz: null, eckdaten: null, drucken: null };
+aktionen.kopieren = () => kopierenDialog(planKontext());
+aktionen.vorlagen = () => vorlagenDialog(planKontext());
 
 const VERTRAG_KURZ = { vollzeit: 'VZ', teilzeit: 'TZ', minijob: 'MJ', azubi: 'AZ', fuehrung: 'F' };
 const VERGANGEN_TEXT = 'Vergangene Tage sind schreibgeschützt. Die IST-Erfassung folgt in der nächsten Stufe.';
@@ -179,7 +182,8 @@ function pinselLeiste() {
 
 function aktionsKnopf(name, text) {
   return aktionen[name]
-    ? element('button', { type: 'button', class: 'knopf', onclick: () => starte(() => aktionen[name]()) }, text) : null;
+    ? element('button', { type: 'button', class: 'knopf', 'data-aktion': name, onclick: () => starte(() => aktionen[name]()) }, text)
+    : null;
 }
 
 // Aktionen aus den Dialog-Modulen: Fehler (auch synchrone) erscheinen als Meldung.

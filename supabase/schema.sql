@@ -3598,6 +3598,431 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- Kopieren und Vorlagen: interne Funktionen
+-- ---------------------------------------------------------------------------
+
+-- p_modus der Kopier- und Ladefunktionen: pruefen (schreibt nichts), ersetzen, leere.
+create or replace function pep.modus_pruefen(p_modus text)
+returns void
+language plpgsql immutable
+set search_path = ''
+as $$
+begin
+  if p_modus is null or p_modus not in ('pruefen', 'ersetzen', 'leere') then
+    raise exception 'MODUS_UNGUELTIG';
+  end if;
+end;
+$$;
+
+-- Gespeicherte Blöcke eines Tages der Filiale als [{mitarbeiter_id, von, bis, bereich_id}].
+create or replace function pep.tag_bloecke(p_filiale_id bigint, p_datum date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('mitarbeiter_id', b.mitarbeiter_id,
+           'von', to_char(b.von, 'HH24:MI'), 'bis', to_char(b.bis, 'HH24:MI'), 'bereich_id', b.bereich_id)
+         order by b.mitarbeiter_id, b.von), '[]'::jsonb)
+    from pep.plan_bloecke b
+   where b.filiale_id = p_filiale_id and b.datum = p_datum
+$$;
+
+-- F11: Fügt p_bloecke = [{mitarbeiter_id, von, bis, bereich_id}] am Tag p_ziel ein. Statt abzubrechen wird
+-- ausgelassen. Dieselben Sperren wie pep.zeile_pruefen, aber je Block und ohne ABWESEND; deshalb hier eigene
+-- Prüfungen statt zeile_pruefen (das bricht beim ersten Verstoß ab und lehnt Abwesende ab):
+-- - ganze Zeile: Mitarbeiter fehlt (gelöscht) oder inaktiv/ausgetreten → ausgeschieden; noch nicht eingetreten
+--   oder ohne Vertrag → nur ausgelassen;
+-- - je Block in Reihenfolge von: auf den Rahmen kürzen (ganz außerhalb = verworfen; beides zählt als gekuerzt),
+--   Bereich fehlt/inaktiv/Funktion, Kompetenz fehlt oder Pflicht-Vorgabe verletzt (gegen die bis dahin
+--   angenommenen Blöcke, Stundengrenzen also kumulativ) → ausgelassen;
+-- - Abwesenheit sperrt nicht: Der Block wird eingefügt und ist nach F2 unbesetzt (zählt in unbesetzt).
+-- p_modus: ersetzen = alle Zeilen des Tages werden ersetzt (auch die von Mitarbeitern ohne Quellblöcke →
+-- leer); leere = Mitarbeiter mit Blöcken am Ziel bleiben unberührt. Geschrieben wird je Zeile über
+-- pep.zeile_schreiben (ein Protokolleintrag „setzen“ je geänderter Zeile).
+-- Vergangene oder geschlossene Tage lehnt die Funktion ab; pep.kopie_ausfuehren überspringt sie vorher.
+-- Bericht: {bloecke, unbesetzt, gekuerzt, ausgelassen, ausgeschieden: [name]} (bloecke = eingefügte Quellblöcke).
+create or replace function pep.tag_einfuegen(
+  p_filiale_id bigint, p_ziel date, p_bloecke jsonb, p_modus text, p_user_id uuid)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_quelle    jsonb := coalesce(p_bloecke, '[]'::jsonb);
+  v_tag       record;
+  v_ma        bigint;
+  v_m         pep.mitarbeiter;
+  v_n         int;
+  v_e         jsonb;
+  v_von       time;
+  v_bis       time;
+  v_bereich   pep.bereiche;
+  v_zeile     jsonb;
+  v_kandidat  jsonb;
+  v_bloecke   int := 0;
+  v_unbesetzt int := 0;
+  v_gekuerzt  int := 0;
+  v_ausgel    int := 0;
+  v_weg       text[] := '{}';
+begin
+  perform pep.modus_pruefen(p_modus);
+  if p_modus = 'pruefen' then
+    raise exception 'MODUS_UNGUELTIG';
+  end if;
+  if p_ziel is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if p_ziel < pep.heute() then
+    raise exception 'VERGANGEN';
+  end if;
+  select * into v_tag from pep.tag_status(p_filiale_id, p_ziel);
+  if not v_tag.geoeffnet then
+    raise exception 'GESCHLOSSEN';
+  end if;
+
+  if p_modus = 'ersetzen' then
+    -- Zeilen von Mitarbeitern ohne Quellblöcke leeren; die übrigen ersetzt die Schleife unten.
+    for v_ma in select distinct b.mitarbeiter_id from pep.plan_bloecke b
+                 where b.filiale_id = p_filiale_id and b.datum = p_ziel
+                   and not exists (select 1 from jsonb_array_elements(v_quelle) e
+                                    where (e ->> 'mitarbeiter_id')::bigint = b.mitarbeiter_id)
+                 order by 1 loop
+      perform pep.zeile_schreiben(p_filiale_id, v_ma, p_ziel, '[]'::jsonb, p_user_id);
+    end loop;
+  end if;
+
+  for v_ma, v_n in select (e ->> 'mitarbeiter_id')::bigint, count(*)::int
+                     from jsonb_array_elements(v_quelle) e group by 1 order by 1 loop
+    select * into v_m from pep.mitarbeiter m where m.id = v_ma and m.filiale_id = p_filiale_id for update;
+    if not found then
+      v_weg := v_weg || 'gelöschter Mitarbeiter'::text;
+      v_ausgel := v_ausgel + v_n;
+      continue;
+    end if;
+    if p_modus = 'leere' and exists (select 1 from pep.plan_bloecke b where b.mitarbeiter_id = v_ma and b.datum = p_ziel) then
+      continue;
+    end if;
+    v_zeile := '[]'::jsonb;
+    if not v_m.aktiv or v_m.austritt < p_ziel then
+      v_weg := v_weg || v_m.name;
+      v_ausgel := v_ausgel + v_n;
+    elsif v_m.eintritt > p_ziel
+       or not exists (select 1 from pep.vertraege v where v.mitarbeiter_id = v_ma and v.gueltig_ab <= p_ziel) then
+      v_ausgel := v_ausgel + v_n;
+    else
+      for v_e in select e from jsonb_array_elements(v_quelle) e
+                  where (e ->> 'mitarbeiter_id')::bigint = v_ma order by (e ->> 'von')::time loop
+        v_von := greatest((v_e ->> 'von')::time, v_tag.rahmen_von);
+        v_bis := least((v_e ->> 'bis')::time, v_tag.rahmen_bis);
+        if v_von >= v_bis then
+          v_gekuerzt := v_gekuerzt + 1; -- ganz außerhalb des Rahmens: verworfen
+          continue;
+        end if;
+        select * into v_bereich from pep.bereiche b
+         where b.id = (v_e ->> 'bereich_id')::bigint and b.filiale_id = p_filiale_id and b.aktiv and b.art <> 'funktion';
+        if not found
+           or (v_bereich.kompetenz_noetig
+               and not exists (select 1 from pep.kompetenzen k where k.mitarbeiter_id = v_ma and k.bereich_id = v_bereich.id)) then
+          v_ausgel := v_ausgel + 1;
+          continue;
+        end if;
+        v_kandidat := v_zeile || jsonb_build_array(pep.block_json(v_von, v_bis, v_bereich.id));
+        if exists (select 1 from pep.vorgaben_verletzt(v_ma, p_ziel, v_zeile, v_kandidat, true)) then
+          v_ausgel := v_ausgel + 1;
+          continue;
+        end if;
+        if v_von <> (v_e ->> 'von')::time or v_bis <> (v_e ->> 'bis')::time then
+          v_gekuerzt := v_gekuerzt + 1;
+        end if;
+        v_zeile := v_kandidat;
+        v_bloecke := v_bloecke + 1;
+        if pep.unbesetzt(v_ma, p_ziel, v_von, v_bis) then
+          v_unbesetzt := v_unbesetzt + 1;
+        end if;
+      end loop;
+    end if;
+    -- leere: nur schreiben, was dazukommt; ersetzen: die Zeile immer ersetzen (auch durch eine leere)
+    if p_modus = 'ersetzen' or jsonb_array_length(v_zeile) > 0 then
+      perform pep.zeile_schreiben(p_filiale_id, v_ma, p_ziel, v_zeile, p_user_id);
+    end if;
+  end loop;
+
+  return jsonb_build_object('bloecke', v_bloecke, 'unbesetzt', v_unbesetzt, 'gekuerzt', v_gekuerzt,
+    'ausgelassen', v_ausgel,
+    'ausgeschieden', (select coalesce(jsonb_agg(x order by x), '[]'::jsonb) from (select distinct unnest(v_weg) x) s));
+end;
+$$;
+
+-- Gemeinsamer Ablauf für Kopieren und Vorlage laden. p_paare = [{ziel, bloecke, herkunft}] mit bloecke wie bei
+-- pep.tag_einfuegen und herkunft = {quelle: Datum} oder {vorlage: Name, vorlage_id} für das Protokoll.
+-- Vergangene und geschlossene Ziele werden übersprungen; gemeldet (uebersprungen) nur, wenn die Quelle dort
+-- Blöcke hätte – sonst geht nichts verloren, und bei jeder Wochenkopie stünde der Sonntag in der Liste.
+-- pruefen schreibt nichts: {belegt: [Zieltage mit Blöcken, ohne übersprungene], uebersprungen}.
+-- Sonst: {tage, bloecke, unbesetzt, gekuerzt, ausgelassen, ausgeschieden, uebersprungen} (Summe über die Tage).
+-- Protokoll: je bearbeitetem Zieltag genau ein Eintrag (p_aktion, 'plan_bloecke', 'YYYY-MM-DD') mit Herkunft,
+-- Modus und Bericht des Tages; die geänderten Zeilen protokolliert pep.zeile_schreiben zusätzlich wie beim Malen.
+create or replace function pep.kopie_ausfuehren(
+  p_filiale_id bigint, p_user_id uuid, p_aktion text, p_paare jsonb, p_modus text)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_p       jsonb;
+  v_ziel    date;
+  v_tag     record;
+  v_grund   text;
+  v_r       jsonb;
+  v_belegt  jsonb := '[]'::jsonb;
+  v_ueber   jsonb := '[]'::jsonb;
+  v_tage    int := 0;
+  v_summe   jsonb := '{"bloecke": 0, "unbesetzt": 0, "gekuerzt": 0, "ausgelassen": 0}'::jsonb;
+  v_weg     text[] := '{}';
+  v_k       text;
+begin
+  perform pep.modus_pruefen(p_modus);
+  for v_p in select p from jsonb_array_elements(p_paare) p order by (p ->> 'ziel')::date loop
+    v_ziel := (v_p ->> 'ziel')::date;
+    select * into v_tag from pep.tag_status(p_filiale_id, v_ziel);
+    v_grund := case when v_ziel < pep.heute() then 'vergangen' when not v_tag.geoeffnet then 'geschlossen' end;
+    if v_grund is not null then
+      if jsonb_array_length(coalesce(v_p -> 'bloecke', '[]'::jsonb)) > 0 then
+        v_ueber := v_ueber || jsonb_build_array(jsonb_build_object('datum', to_char(v_ziel, 'YYYY-MM-DD'), 'grund', v_grund));
+      end if;
+      continue;
+    end if;
+    if p_modus = 'pruefen' then
+      if exists (select 1 from pep.plan_bloecke b where b.filiale_id = p_filiale_id and b.datum = v_ziel) then
+        v_belegt := v_belegt || jsonb_build_array(to_char(v_ziel, 'YYYY-MM-DD'));
+      end if;
+      continue;
+    end if;
+    v_r := pep.tag_einfuegen(p_filiale_id, v_ziel, v_p -> 'bloecke', p_modus, p_user_id);
+    perform pep.protokolliere(p_filiale_id, p_aktion, 'plan_bloecke', to_char(v_ziel, 'YYYY-MM-DD'), null,
+      coalesce(v_p -> 'herkunft', '{}'::jsonb) || jsonb_build_object('modus', p_modus) || v_r);
+    v_tage := v_tage + 1;
+    foreach v_k in array array['bloecke', 'unbesetzt', 'gekuerzt', 'ausgelassen'] loop
+      v_summe := v_summe || jsonb_build_object(v_k, (v_summe ->> v_k)::int + (v_r ->> v_k)::int);
+    end loop;
+    v_weg := v_weg || array(select jsonb_array_elements_text(v_r -> 'ausgeschieden'));
+  end loop;
+
+  if p_modus = 'pruefen' then
+    return jsonb_build_object('belegt', v_belegt, 'uebersprungen', v_ueber);
+  end if;
+  return jsonb_build_object('tage', v_tage) || v_summe || jsonb_build_object(
+    'ausgeschieden', (select coalesce(jsonb_agg(x order by x = 'gelöschter Mitarbeiter', x), '[]'::jsonb)
+                        from (select distinct unnest(v_weg) x) s),
+    'uebersprungen', v_ueber);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Kopieren und Vorlagen: Funktionen für den Browser (Leitung und Stellvertretung)
+-- ---------------------------------------------------------------------------
+
+-- Kopiert alle Blöcke des Tages p_quelle auf bis zu 60 Zieltage (die Quelle selbst und doppelte Ziele fallen weg).
+create or replace function public.pep_tag_kopieren(p_quelle date, p_ziele date[], p_modus text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b       pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_ziele   date[];
+  v_bloecke jsonb;
+begin
+  perform pep.modus_pruefen(p_modus);
+  if p_quelle is null or p_ziele is null or array_position(p_ziele, null) is not null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  select coalesce(array_agg(distinct z), '{}') into v_ziele from unnest(p_ziele) z where z <> p_quelle;
+  if cardinality(v_ziele) > 60 then
+    raise exception 'ZU_VIELE_ZIELE';
+  end if;
+  v_bloecke := pep.tag_bloecke(v_b.filiale_id, p_quelle);
+  return pep.kopie_ausfuehren(v_b.filiale_id, v_b.user_id, 'kopieren',
+    (select coalesce(jsonb_agg(jsonb_build_object('ziel', to_char(z, 'YYYY-MM-DD'), 'bloecke', v_bloecke,
+                                                  'herkunft', jsonb_build_object('quelle', to_char(p_quelle, 'YYYY-MM-DD')))), '[]'::jsonb)
+       from unnest(v_ziele) z),
+    p_modus);
+end;
+$$;
+
+-- Kopiert die ISO-Woche (p_jahr, p_kw) Tag für Tag (Mo → Mo … So → So) auf bis zu 12 Zielwochen
+-- p_ziele = [{jahr, kw}] (die Quellwoche selbst und doppelte Ziele fallen weg). Antwort wie pep_tag_kopieren.
+create or replace function public.pep_woche_kopieren(p_jahr int, p_kw int, p_ziele jsonb, p_modus text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b       pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_mo      date;
+  v_e       jsonb;
+  v_montage date[] := '{}';
+  v_quelle  jsonb[] := '{}';
+  v_paare   jsonb := '[]'::jsonb;
+  v_zm      date;
+  i         int;
+begin
+  perform pep.modus_pruefen(p_modus);
+  v_mo := pep.kw_montag(p_jahr, p_kw);
+  if p_ziele is null or jsonb_typeof(p_ziele) <> 'array' then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  for v_e in select e from jsonb_array_elements(p_ziele) e loop
+    if jsonb_typeof(v_e) <> 'object' or coalesce(jsonb_typeof(v_e -> 'jahr'), '') <> 'number'
+       or coalesce(jsonb_typeof(v_e -> 'kw'), '') <> 'number'
+       or (v_e ->> 'jahr') !~ '^[0-9]{4}$' or (v_e ->> 'kw') !~ '^[0-9]{1,2}$' then
+      raise exception 'DATUM_UNGUELTIG';
+    end if;
+    v_zm := pep.kw_montag((v_e ->> 'jahr')::int, (v_e ->> 'kw')::int);
+    if v_zm <> v_mo and not v_zm = any (v_montage) then
+      v_montage := v_montage || v_zm;
+    end if;
+  end loop;
+  if cardinality(v_montage) > 12 then
+    raise exception 'ZU_VIELE_ZIELE';
+  end if;
+  for i in 0 .. 6 loop
+    v_quelle := array_append(v_quelle, pep.tag_bloecke(v_b.filiale_id, v_mo + i));
+  end loop;
+  foreach v_zm in array v_montage loop
+    for i in 0 .. 6 loop
+      v_paare := v_paare || jsonb_build_array(jsonb_build_object('ziel', to_char(v_zm + i, 'YYYY-MM-DD'),
+        'bloecke', v_quelle[i + 1], 'herkunft', jsonb_build_object('quelle', to_char(v_mo + i, 'YYYY-MM-DD'))));
+    end loop;
+  end loop;
+  return pep.kopie_ausfuehren(v_b.filiale_id, v_b.user_id, 'kopieren', v_paare, p_modus);
+end;
+$$;
+
+-- Speichert die Blöcke eines Tages (art tag) oder der ISO-Woche von p_datum (art woche) als Vorlage.
+-- daten = [{wochentag (1–7, bei tag null), mitarbeiter_id, von, bis, bereich_id}]. Liefert die Id.
+create or replace function public.pep_vorlage_speichern(p_name text, p_art text, p_datum date)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b     pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_name  text := regexp_replace(urlaub.trim_alles(p_name), '\s+', ' ', 'g');
+  v_von   date;
+  v_bis   date;
+  v_daten jsonb;
+  v_neu   pep.vorlagen;
+begin
+  if v_name is null or v_name = '' then
+    raise exception 'NAME_LEER';
+  end if;
+  if char_length(v_name) > 200 then
+    raise exception 'TEXT_ZU_LANG';
+  end if;
+  if p_art is null or p_art not in ('tag', 'woche') then
+    raise exception 'ART_UNGUELTIG';
+  end if;
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  v_von := case when p_art = 'tag' then p_datum else p_datum - (extract(isodow from p_datum)::int - 1) end;
+  v_bis := case when p_art = 'tag' then p_datum else v_von + 6 end;
+  select jsonb_agg(jsonb_build_object(
+           'wochentag', case when p_art = 'woche' then extract(isodow from b.datum)::int end,
+           'mitarbeiter_id', b.mitarbeiter_id, 'von', to_char(b.von, 'HH24:MI'), 'bis', to_char(b.bis, 'HH24:MI'),
+           'bereich_id', b.bereich_id)
+         order by b.datum, b.mitarbeiter_id, b.von)
+    into v_daten
+    from pep.plan_bloecke b
+   where b.filiale_id = v_b.filiale_id and b.datum between v_von and v_bis;
+  if v_daten is null then
+    raise exception 'VORLAGE_LEER';
+  end if;
+  if exists (select 1 from pep.vorlagen v where v.filiale_id = v_b.filiale_id and v.name = v_name) then
+    raise exception 'VORLAGE_DOPPELT';
+  end if;
+  begin
+    insert into pep.vorlagen (filiale_id, name, art, daten)
+    values (v_b.filiale_id, v_name, p_art, v_daten)
+    returning * into v_neu;
+  exception when unique_violation then
+    raise exception 'VORLAGE_DOPPELT';
+  end;
+  perform pep.protokolliere(v_b.filiale_id, 'anlegen', 'vorlagen', v_neu.id::text, null, to_jsonb(v_neu));
+  return v_neu.id;
+end;
+$$;
+
+-- Vorlagen der Filiale: [{id, name, art, angelegt_am, bloecke (Anzahl)}], nach Name.
+create or replace function public.pep_vorlagen()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung_oder_stellvertretung();
+begin
+  return (select coalesce(jsonb_agg(jsonb_build_object('id', v.id, 'name', v.name, 'art', v.art,
+                   'angelegt_am', v.angelegt_am, 'bloecke', jsonb_array_length(v.daten)) order by v.name, v.id), '[]'::jsonb)
+            from pep.vorlagen v where v.filiale_id = v_b.filiale_id);
+end;
+$$;
+
+-- Lädt eine Vorlage auf p_ziel (art woche: p_ziel muss ein Montag sein, Wochentag 1 → p_ziel, … 7 → Sonntag).
+-- Antwort wie pep_tag_kopieren; ausgeschieden nennt inaktive oder ausgetretene Mitarbeiter der Vorlage,
+-- gelöschte als „gelöschter Mitarbeiter“.
+create or replace function public.pep_vorlage_laden(p_id bigint, p_ziel date, p_modus text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b     pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_v     pep.vorlagen;
+  v_paare jsonb;
+begin
+  perform pep.modus_pruefen(p_modus);
+  select * into v_v from pep.vorlagen where id = p_id and filiale_id = v_b.filiale_id;
+  if not found then
+    raise exception 'VORLAGE_NICHT_GEFUNDEN';
+  end if;
+  if p_ziel is null or (v_v.art = 'woche' and extract(isodow from p_ziel)::int <> 1) then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  select jsonb_agg(jsonb_build_object('ziel', to_char(p_ziel + t.i - 1, 'YYYY-MM-DD'),
+           'bloecke', coalesce((select jsonb_agg(e) from jsonb_array_elements(v_v.daten) e
+                                 where v_v.art = 'tag' or (e ->> 'wochentag')::int = t.i), '[]'::jsonb),
+           'herkunft', jsonb_build_object('vorlage', v_v.name, 'vorlage_id', v_v.id)))
+    into v_paare
+    from generate_series(1, case when v_v.art = 'tag' then 1 else 7 end) t (i);
+  return pep.kopie_ausfuehren(v_b.filiale_id, v_b.user_id, 'vorlage_laden', v_paare, p_modus);
+end;
+$$;
+
+create or replace function public.pep_vorlage_loeschen(p_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_v pep.vorlagen;
+begin
+  delete from pep.vorlagen where id = p_id and filiale_id = v_b.filiale_id returning * into v_v;
+  if not found then
+    raise exception 'VORLAGE_NICHT_GEFUNDEN';
+  end if;
+  perform pep.protokolliere(v_b.filiale_id, 'loeschen', 'vorlagen', v_v.id::text, to_jsonb(v_v), null);
+end;
+$$;
+
 -- Bestehende Filialen nachrüsten (zweiter Schema-Lauf nach einem Update).
 select pep.grundausstattung(id) from pep.filialen;
 
@@ -3701,5 +4126,19 @@ grant execute on function public.pep_mitarbeiter_reihenfolge(bigint[]) to authen
 -- Regelprüfung
 revoke all on function public.pep_pruefung_zeitraum(date, date) from public, anon, authenticated;
 grant execute on function public.pep_pruefung_zeitraum(date, date) to authenticated;
+
+-- Kopieren und Vorlagen
+revoke all on function public.pep_tag_kopieren(date, date[], text) from public, anon, authenticated;
+revoke all on function public.pep_woche_kopieren(int, int, jsonb, text) from public, anon, authenticated;
+revoke all on function public.pep_vorlage_speichern(text, text, date) from public, anon, authenticated;
+revoke all on function public.pep_vorlagen() from public, anon, authenticated;
+revoke all on function public.pep_vorlage_laden(bigint, date, text) from public, anon, authenticated;
+revoke all on function public.pep_vorlage_loeschen(bigint) from public, anon, authenticated;
+grant execute on function public.pep_tag_kopieren(date, date[], text) to authenticated;
+grant execute on function public.pep_woche_kopieren(int, int, jsonb, text) to authenticated;
+grant execute on function public.pep_vorlage_speichern(text, text, date) to authenticated;
+grant execute on function public.pep_vorlagen() to authenticated;
+grant execute on function public.pep_vorlage_laden(bigint, date, text) to authenticated;
+grant execute on function public.pep_vorlage_loeschen(bigint) to authenticated;
 
 commit;

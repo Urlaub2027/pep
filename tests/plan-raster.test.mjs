@@ -6,7 +6,7 @@ import {
 } from '../docs/zeit.js';
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
-  rueckgaengigStapel,
+  rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis,
 } from '../docs/plan-raster.js';
 
 test('Zeit: Minuten, Uhrzeit, Halbstunden', () => {
@@ -171,4 +171,26 @@ test('rueckgaengigStapel: begrenzt, ältester fällt heraus', () => {
   let n = 0;
   while (g.holen() !== undefined) n++;
   assert.equal(n, 20);
+});
+
+test('Kopier-Ziele: gleiche Wochentage bis Datum, nächste n Wochen über den Jahreswechsel', () => {
+  assert.deepEqual(gleicheWochentageBis('2026-11-09', '2026-11-30'), ['2026-11-16', '2026-11-23', '2026-11-30']);
+  assert.deepEqual(gleicheWochentageBis('2026-11-09', '2026-11-15'), []);
+  assert.deepEqual(gleicheWochentageBis('2026-11-09', ''), []);
+  assert.deepEqual(naechsteWochen(2026, 52, 3), [{ jahr: 2026, kw: 53 }, { jahr: 2027, kw: 1 }, { jahr: 2027, kw: 2 }]);
+  assert.deepEqual(naechsteWochen(2026, 46, 0), []);
+  assert.equal(tagKurz('2026-11-16'), 'Mo 16.11.');
+  assert.equal(tagKurz('2027-01-03'), 'So 03.01.');
+});
+
+test('kopierErgebnis: Meldung nach dem Kopieren, Nullen fallen weg', () => {
+  const r = { tage: 5, bloecke: 42, unbesetzt: 3, gekuerzt: 1, ausgelassen: 2, ausgeschieden: [], uebersprungen: [] };
+  assert.equal(kopierErgebnis(r), '5 Tage kopiert: 42 Blöcke, 3 unbesetzt, 1 gekürzt, 2 ausgelassen');
+  assert.equal(kopierErgebnis({ ...r, tage: 1, bloecke: 1, unbesetzt: 0, gekuerzt: 0, ausgelassen: 0 }),
+    '1 Tag kopiert: 1 Block');
+  assert.equal(kopierErgebnis({ ...r, tage: 6, bloecke: 12, unbesetzt: 0, gekuerzt: 0, ausgelassen: 3,
+    ausgeschieden: ['Test, Anna', 'gelöschter Mitarbeiter'],
+    uebersprungen: [{ datum: '2026-11-15', grund: 'geschlossen' }] }, 'geladen'),
+  '6 Tage geladen: 12 Blöcke, 3 ausgelassen. Übersprungen: So 15.11. (geschlossen). '
+    + 'Nicht mehr beschäftigt: Test, Anna · gelöschter Mitarbeiter');
 });

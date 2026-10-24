@@ -71,6 +71,14 @@ await q('select public.pep_kommentar_setzen($1, $2::date, $3) as r', [ids[5], TA
 await q('select public.pep_kommentar_setzen($1, $2::date, $3) as r', [ids[11], TAGE[0], 'Abschluss, Schlüssel']);
 await q('select public.pep_kommentar_setzen($1, $2::date, $3) as r', [ids[7], TAGE[1], 'Inventur TK vorbereiten']);
 console.log(`Einsatzplan: ${gesperrt} Striche wegen Abwesenheit übersprungen`);
+// Vorlagen für den Dialog „Vorlagen“; die Probe-Kopie KW 46 → KW 47 zeigt den Bericht mit echten Daten
+// (Urlaub, Krankmeldung, Berufsschule) und wird danach zurückgerollt, damit KW 47 leer bleibt.
+await q(`select public.pep_vorlage_speichern('Standardwoche November', 'woche', $1::date) as r`, [TAGE[0]]);
+await q(`select public.pep_vorlage_speichern('Samstag kurz', 'tag', $1::date) as r`, [TAGE[5]]);
+await db.exec('begin');
+console.log('Probe-Kopie KW 46 → KW 47:', JSON.stringify(await q(
+  `select public.pep_woche_kopieren(2026, 46, '[{"jahr":2026,"kw":47}]', 'leere') as r`)));
+await db.exec('rollback');
 
 const aus = new URL('./daten/', import.meta.url);
 const schreib = (name, wert) => writeFileSync(new URL(`${name}.json`, aus), JSON.stringify(wert, null, 1));
@@ -85,4 +93,5 @@ schreib('pep_feiertage', await q('select public.pep_feiertage(2026) as r'));
 schreib('pep_urlaub_umfragen', await q('select public.pep_urlaub_umfragen() as r'));
 schreib('pep_urlaub_zuordnung', await q('select public.pep_urlaub_zuordnung() as r'));
 schreib('pep_einsatzplan_woche', await q('select public.pep_einsatzplan_woche(2026, 46) as r'));
+schreib('pep_vorlagen', await q('select public.pep_vorlagen() as r'));
 console.log('Vorschau-Daten geschrieben');

@@ -3,7 +3,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { neueDatenbank, als, pepBenutzer, filiale } from './helfer.mjs';
 
-let db, leitung, stellv, azubi, ohne, fil, ma;
+let db, leitung, stellv, azubi, ohne, fil, ma, vorlage;
 
 const aufruf = (nutzer, sql) => als(db, 'authenticated', nutzer, sql);
 
@@ -15,6 +15,10 @@ before(async () => {
   azubi = await pepBenutzer(db, 'azubi', 'mitarbeiter', fil);
   ohne = await pepBenutzer(db, 'chefOhne'); // Leitung ohne Filiale
   ma = (await aufruf(leitung, `select public.pep_mitarbeiter_speichern(null, '{"name":"Test, Ida"}') as r`))[0].r;
+  // Echte Vorlage: ohne Rechtecheck würde Laden protokollieren, Löschen sie entfernen.
+  vorlage = (await db.query(`insert into pep.vorlagen (filiale_id, name, art, daten)
+    values ($1, 'Rechte', 'tag', $2::jsonb) returning id`,
+    [fil, JSON.stringify([{ wochentag: null, mitarbeiter_id: ma, von: '08:00', bis: '12:00', bereich_id: 2 }])])).rows[0].id;
 });
 
 const pepFunktionen = async () => (await db.query(`
@@ -38,11 +42,12 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 // Nur lesende Funktionen; alles andere gilt als schreibend und muss unten abgedeckt sein.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
-  'pep_pruefung_zeitraum'];
+  'pep_pruefung_zeitraum', 'pep_vorlagen'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
-  'pep_plan_malen', 'pep_plan_zeile_setzen', 'pep_kommentar_setzen'];
+  'pep_plan_malen', 'pep_plan_zeile_setzen', 'pep_kommentar_setzen',
+  'pep_tag_kopieren', 'pep_woche_kopieren', 'pep_vorlage_speichern', 'pep_vorlage_laden', 'pep_vorlage_loeschen'];
 // Legt für die Leitung ohne Filiale die Filiale an – das ist gewollt und in basis.test.mjs geprüft.
 const OHNE_FILIALE_ERLAUBT = ['pep_filiale_anlegen'];
 
@@ -80,6 +85,12 @@ const aufrufe = () => ({
   pep_kommentar_setzen: `select public.pep_kommentar_setzen(${ma}, '2027-05-03', 'Test')`,
   // Ida ist die einzige aktive Mitarbeiterin: ohne Rechtecheck würde die Position geschrieben.
   pep_mitarbeiter_reihenfolge: `select public.pep_mitarbeiter_reihenfolge(array[${ma}]::bigint[])`,
+  // Kopieren und Laden schreiben je geöffnetem Zieltag einen Protokolleintrag, auch ohne passende Blöcke.
+  pep_tag_kopieren: `select public.pep_tag_kopieren('2027-05-03', array['2027-05-10']::date[], 'ersetzen')`,
+  pep_woche_kopieren: `select public.pep_woche_kopieren(2027, 18, '[{"jahr":2027,"kw":19}]', 'ersetzen')`,
+  pep_vorlage_speichern: `select public.pep_vorlage_speichern('Test', 'tag', '2027-05-03')`,
+  pep_vorlage_laden: `select public.pep_vorlage_laden(${vorlage}, '2027-05-10', 'ersetzen')`,
+  pep_vorlage_loeschen: `select public.pep_vorlage_loeschen(${vorlage})`,
 });
 
 const zaehlen = async () => {

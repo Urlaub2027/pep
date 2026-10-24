@@ -1,0 +1,16 @@
+[
+ {
+  "id": 2,
+  "art": "tag",
+  "name": "Samstag kurz",
+  "bloecke": 21,
+  "angelegt_am": "2026-10-24T20:45:02.901+01:00"
+ },
+ {
+  "id": 1,
+  "art": "woche",
+  "name": "Standardwoche November",
+  "bloecke": 138,
+  "angelegt_am": "2026-10-24T20:45:02.898+01:00"
+ }
+]

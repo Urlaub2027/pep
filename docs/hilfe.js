@@ -59,7 +59,9 @@ const FEHLER = {
   LETZTER_VERTRAG: 'Der letzte Vertrag eines Mitarbeiters kann nicht gelöscht werden.',
   MITARBEITER_INAKTIV: 'Dieser Mitarbeiter ist an diesem Tag nicht beschäftigt (inaktiv, noch nicht eingetreten oder schon ausgetreten).',
   MITARBEITER_NICHT_GEFUNDEN: 'Diesen Mitarbeiter gibt es nicht (mehr).',
+  MODUS_UNGUELTIG: 'Bitte wählen, ob belegte Tage ersetzt oder nur leere Zeilen gefüllt werden sollen.',
   NAME_LEER: 'Bitte einen Namen eingeben.',
+  NICHTS_ZU_KOPIEREN: 'An diesem Tag bzw. in dieser Woche ist nichts geplant – es gibt nichts zu kopieren.',
   NICHT_SELBST: 'Das kannst du bei dir selbst nicht machen.',
   NUR_LEITUNG: 'Das darf nur die Filialleitung.',
   ROLLE_UNGUELTIG: 'Die Rolle ist ungültig.',
@@ -76,6 +78,9 @@ const FEHLER = {
   VERTRAG_DOPPELT: 'Für diesen Zeitraum gibt es schon einen Vertrag.',
   VERTRAG_NICHT_GEFUNDEN: 'Diesen Vertrag gibt es nicht (mehr).',
   VORGABE_VERLETZT: 'Das verstößt gegen eine Pflicht-Vorgabe des Mitarbeiters (siehe Mitarbeiterkarte).',
+  VORLAGE_DOPPELT: 'Eine Vorlage mit diesem Namen gibt es schon.',
+  VORLAGE_LEER: 'An diesem Tag bzw. in dieser Woche ist nichts geplant – eine leere Vorlage lässt sich nicht speichern.',
+  VORLAGE_NICHT_GEFUNDEN: 'Diese Vorlage gibt es nicht (mehr).',
   WERT_UNGUELTIG: 'Der Wert ist ungültig.',
   WIEDERHOLUNG_NICHT_GEFUNDEN: 'Diese Wiederholung gibt es nicht (mehr).',
   WOCHENTAG_UNGUELTIG: 'Der Wochentag ist ungültig.',
@@ -84,6 +89,7 @@ const FEHLER = {
   ZEITEN_UNGUELTIG: 'Die Zeiten sind ungültig. „Bis“ muss nach „von“ liegen.',
   ZEITRAUM_UNGUELTIG: 'Der Zeitraum ist ungültig. „Bis“ darf nicht vor „von“ liegen.',
   ZEITRAUM_ZU_LANG: 'Der Zeitraum ist zu lang.',
+  ZU_VIELE_ZIELE: 'Zu viele Ziele auf einmal (höchstens 60 Tage oder 12 Wochen).',
 };
 
 export function fehlerText(code) {

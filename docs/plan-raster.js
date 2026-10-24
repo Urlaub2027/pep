@@ -1,7 +1,8 @@
 // Reine Plan-Logik (kein DOM). Eingabe `woche` = Antwort von public.pep_einsatzplan_woche.
 // Blöcke sind Abschnitte: dieselbe id kann mehrfach vorkommen, jeder Abschnitt hat sein eigenes
 // `unbesetzt`. Unbesetzte Abschnitte zählen nirgends (F2).
-import { minuten, uhrzeit } from './zeit.js';
+import { minuten, uhrzeit, plusTage, kwVorZurueck } from './zeit.js';
+import { WOCHENTAGE } from './hilfe.js';
 
 const stunden = (b) => (minuten(b.bis) - minuten(b.von)) / 60;
 const alsMenge = (ids) => (ids instanceof Set ? ids : new Set(ids ?? []));
@@ -102,4 +103,41 @@ export function rueckgaengigStapel(max = 20) {
     holen: () => eintraege.pop(),
     leer: () => eintraege.length === 0,
   };
+}
+
+// ---------------------------------------------------------------- Kopieren und Vorlagen
+
+// Derselbe Wochentag wie `datum` in jeder folgenden Woche bis einschließlich `bis` (ISO-Text vergleicht wie Datum).
+export function gleicheWochentageBis(datum, bis) {
+  const liste = [];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(bis ?? '')) return liste;
+  for (let d = plusTage(datum, 7); d <= bis; d = plusTage(d, 7)) liste.push(d);
+  return liste;
+}
+
+// Die n ISO-Wochen nach (jahr, kw) als [{ jahr, kw }].
+export function naechsteWochen(jahr, kw, n) {
+  return Array.from({ length: Math.max(0, n) }, (_, i) => kwVorZurueck(jahr, kw, i + 1));
+}
+
+// „Mo 16.11.“
+export function tagKurz(iso) {
+  const [j, m, t] = iso.split('-').map(Number);
+  return `${WOCHENTAGE[(new Date(Date.UTC(j, m - 1, t)).getUTCDay() + 6) % 7]} ${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+}
+
+const anzahl = (n, eins, mehr) => `${n} ${n === 1 ? eins : mehr}`;
+
+// Meldung nach Kopieren oder Vorlage laden, z. B. „5 Tage kopiert: 42 Blöcke, 3 unbesetzt, 1 gekürzt, 2 ausgelassen“.
+export function kopierErgebnis(r, verb = 'kopiert') {
+  const teile = [anzahl(r.bloecke, 'Block', 'Blöcke')];
+  if (r.unbesetzt) teile.push(`${r.unbesetzt} unbesetzt`);
+  if (r.gekuerzt) teile.push(`${r.gekuerzt} gekürzt`);
+  if (r.ausgelassen) teile.push(`${r.ausgelassen} ausgelassen`);
+  let text = `${anzahl(r.tage, 'Tag', 'Tage')} ${verb}: ${teile.join(', ')}`;
+  if (r.uebersprungen?.length) {
+    text += `. Übersprungen: ${r.uebersprungen.map((u) => `${tagKurz(u.datum)} (${u.grund})`).join(', ')}`;
+  }
+  if (r.ausgeschieden?.length) text += `. Nicht mehr beschäftigt: ${r.ausgeschieden.join(' · ')}`;
+  return text;
 }
