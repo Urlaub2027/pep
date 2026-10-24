@@ -194,6 +194,11 @@ test('kopierErgebnis: Meldung nach dem Kopieren, Nullen fallen weg', () => {
     uebersprungen: [{ datum: '2026-11-15', grund: 'geschlossen' }] }, 'geladen'),
   '6 Tage geladen: 12 Blöcke, 3 ausgelassen. Übersprungen: So 15.11. (geschlossen). '
     + 'Nicht mehr beschäftigt: Test, Anna · gelöschter Mitarbeiter');
+  // leere: Zeilen mit vorhandenen Blöcken bleiben unverändert und werden genannt
+  assert.equal(kopierErgebnis({ ...r, tage: 2, bloecke: 3, unbesetzt: 0, gekuerzt: 0, ausgelassen: 0,
+    belegt_uebersprungen: 3 }), '2 Tage kopiert: 3 Blöcke. 3 Zeilen schon belegt, nicht geändert');
+  assert.equal(kopierErgebnis({ ...r, tage: 1, bloecke: 0, unbesetzt: 0, gekuerzt: 0, ausgelassen: 0,
+    belegt_uebersprungen: 1 }), '1 Tag kopiert: 0 Blöcke. 1 Zeile schon belegt, nicht geändert');
 });
 
 test('tageText: ein Tag oder Spanne mit Wochentagen', () => {

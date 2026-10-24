@@ -38,7 +38,7 @@ async function aufbau() {
     zeile, anzahl, protokolle };
 }
 
-const LEER = { unbesetzt: 0, gekuerzt: 0, ausgelassen: 0, ausgeschieden: [], uebersprungen: [] };
+const LEER = { unbesetzt: 0, gekuerzt: 0, ausgelassen: 0, belegt_uebersprungen: 0, ausgeschieden: [], uebersprungen: [] };
 
 test('Tag Mo 09.11. → Mo 16.11.: gleiche Blöcke, Bericht bloecke = Anzahl', async () => {
   const t = await aufbau();
@@ -144,9 +144,10 @@ test('pruefen schreibt nichts und meldet belegte Ziele; leere füllt nur leere Z
   assert.deepEqual(p, { belegt: ['2026-11-17'], uebersprungen: [] });
   assert.deepEqual({ bloecke: await t.anzahl(), protokoll: await t.protokolle() }, vorher);
 
-  // leere: Anna hat am 17.11. schon Blöcke und bleibt unverändert, Bert kommt dazu; am 24.11. beide
+  // leere: Anna hat am 17.11. schon Blöcke und bleibt unverändert (belegt_uebersprungen 1), Bert kommt dazu;
+  // Cora hat keine Quellblöcke und zählt nicht mit; am 24.11. beide
   let r = await t.kopieren('2026-11-10', ['2026-11-17', '2026-11-24'], 'leere');
-  assert.deepEqual(r, { tage: 2, bloecke: 3, ...LEER });
+  assert.deepEqual(r, { tage: 2, bloecke: 3, ...LEER, belegt_uebersprungen: 1 });
   assert.deepEqual(await t.zeile(a, '2026-11-17'), [{ von: '14:00', bis: '18:00', k: 'KA' }]);
   assert.deepEqual(await t.zeile(b, '2026-11-17'), [{ von: '08:00', bis: '12:00', k: 'KA' }]);
   assert.deepEqual(await t.zeile(c, '2026-11-17'), [{ von: '16:00', bis: '18:00', k: 'OG' }]);
@@ -252,7 +253,7 @@ test('Vorlage Woche speichern, Mitarbeiter danach inaktiv, Laden auf KW 48 → a
   await t.json(t.leitung, 'select public.pep_mitarbeiter_speichern($1, $2::jsonb) as r', [a, '{"aktiv":false}']);
   await t.db.query('delete from pep.mitarbeiter where id = $1', [c]); // gelöscht (seine Blöcke gehen mit)
   const r = await t.laden(id, '2026-11-23');
-  assert.deepEqual(r, { tage: 6, bloecke: 2, unbesetzt: 0, gekuerzt: 0, ausgelassen: 3,
+  assert.deepEqual(r, { tage: 6, bloecke: 2, unbesetzt: 0, gekuerzt: 0, ausgelassen: 3, belegt_uebersprungen: 0,
     ausgeschieden: ['Test, Anna', 'gelöschter Mitarbeiter'], uebersprungen: [] });
   assert.deepEqual(await t.zeile(a, '2026-11-23'), []);
   assert.deepEqual(await t.zeile(b, '2026-11-23'), [{ von: '10:00', bis: '14:00', k: 'KA' }]);
@@ -260,7 +261,7 @@ test('Vorlage Woche speichern, Mitarbeiter danach inaktiv, Laden auf KW 48 → a
   // Tagesvorlage auf einen beliebigen Tag; pruefen meldet den belegten Tag
   assert.deepEqual(await t.laden(tagId, '2026-11-28', 'pruefen'), { belegt: ['2026-11-28'], uebersprungen: [] });
   const rt = await t.laden(tagId, '2026-12-01');
-  assert.deepEqual(rt, { tage: 1, bloecke: 1, unbesetzt: 0, gekuerzt: 0, ausgelassen: 1,
+  assert.deepEqual(rt, { tage: 1, bloecke: 1, unbesetzt: 0, gekuerzt: 0, ausgelassen: 1, belegt_uebersprungen: 0,
     ausgeschieden: ['Test, Anna'], uebersprungen: [] });
   await wirft(t.laden(tagId, '2026-12-01', 'quatsch'), 'MODUS_UNGUELTIG');
 });
@@ -389,7 +390,7 @@ test('Isolation: Vorlagen-Daten mit fremdem Mitarbeiter oder Bereich werden ausg
       { wochentag: null, mitarbeiter_id: fremdMa, von: '08:00', bis: '12:00', bereich_id: t.bereich.KA },
       { wochentag: null, mitarbeiter_id: a, von: '13:00', bis: '15:00', bereich_id: fremdBereich }])])).rows[0].id;
   const r = await t.laden(id, '2026-11-17');
-  assert.deepEqual(r, { tage: 1, bloecke: 0, unbesetzt: 0, gekuerzt: 0, ausgelassen: 2,
+  assert.deepEqual(r, { tage: 1, bloecke: 0, unbesetzt: 0, gekuerzt: 0, ausgelassen: 2, belegt_uebersprungen: 0,
     ausgeschieden: ['gelöschter Mitarbeiter'], uebersprungen: [] });
   assert.equal((await t.db.query(`select count(*)::int as n from pep.plan_bloecke where datum = '2026-11-17'`)).rows[0].n, 0);
   // Zweite Filiale kopiert den 09.11.: sieht keine Blöcke der ersten, schreibt nichts

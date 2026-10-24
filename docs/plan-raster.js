@@ -135,6 +135,7 @@ export function kopierErgebnis(r, verb = 'kopiert') {
   if (r.gekuerzt) teile.push(`${r.gekuerzt} gekürzt`);
   if (r.ausgelassen) teile.push(`${r.ausgelassen} ausgelassen`);
   let text = `${anzahl(r.tage, 'Tag', 'Tage')} ${verb}: ${teile.join(', ')}`;
+  if (r.belegt_uebersprungen) text += `. ${anzahl(r.belegt_uebersprungen, 'Zeile', 'Zeilen')} schon belegt, nicht geändert`;
   if (r.uebersprungen?.length) {
     text += `. Übersprungen: ${r.uebersprungen.map((u) => `${tagKurz(u.datum)} (${u.grund})`).join(', ')}`;
   }

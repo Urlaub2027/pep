@@ -3690,10 +3690,12 @@ $$;
 -- - Bleibt einem Mitarbeiter kein Arbeitsblock (nur Pausen), fallen auch die Pausen weg und zählen als
 --   ausgelassen: Eine Pause allein würde Anwesenheit und VP verfälschen (F3).
 -- p_modus: ersetzen = alle Zeilen des Tages werden ersetzt (auch die von Mitarbeitern ohne Quellblöcke →
--- leer); leere = Mitarbeiter mit Blöcken am Ziel bleiben unberührt. Geschrieben wird je Zeile über
+-- leer); leere = Mitarbeiter mit Blöcken am Ziel bleiben unberührt (je Zeile mit Quellblöcken zählt
+-- belegt_uebersprungen). Geschrieben wird je Zeile über
 -- pep.zeile_schreiben (ein Protokolleintrag „setzen“ je geänderter Zeile).
 -- Vergangene oder geschlossene Tage lehnt die Funktion ab; pep.kopie_ausfuehren überspringt sie vorher.
--- Bericht: {bloecke, unbesetzt, gekuerzt, ausgelassen, ausgeschieden: [name]} (bloecke = eingefügte Quellblöcke).
+-- Bericht: {bloecke, unbesetzt, gekuerzt, ausgelassen, belegt_uebersprungen, ausgeschieden: [name]}
+-- (bloecke = eingefügte Quellblöcke).
 create or replace function pep.tag_einfuegen(
   p_filiale_id bigint, p_ziel date, p_bloecke jsonb, p_modus text, p_user_id uuid)
 returns jsonb
@@ -3716,6 +3718,7 @@ declare
   v_unbesetzt int := 0;
   v_gekuerzt  int := 0;
   v_ausgel    int := 0;
+  v_belegt    int := 0; -- leere: Zeilen mit Blöcken am Ziel, unverändert gelassen
   v_weg       text[] := '{}';
   l_bloecke   int; -- Zähler je Mitarbeiter, erst am Ende übernommen (Pausen-Regel)
   l_unbesetzt int;
@@ -3757,6 +3760,7 @@ begin
       continue;
     end if;
     if p_modus = 'leere' and exists (select 1 from pep.plan_bloecke b where b.mitarbeiter_id = v_ma and b.datum = p_ziel) then
+      v_belegt := v_belegt + 1;
       continue;
     end if;
     v_zeile := '[]'::jsonb;
@@ -3817,7 +3821,7 @@ begin
   end loop;
 
   return jsonb_build_object('bloecke', v_bloecke, 'unbesetzt', v_unbesetzt, 'gekuerzt', v_gekuerzt,
-    'ausgelassen', v_ausgel,
+    'ausgelassen', v_ausgel, 'belegt_uebersprungen', v_belegt,
     'ausgeschieden', (select coalesce(jsonb_agg(x order by x), '[]'::jsonb) from (select distinct unnest(v_weg) x) s));
 end;
 $$;
@@ -3827,7 +3831,8 @@ $$;
 -- Vergangene und geschlossene Ziele werden übersprungen; gemeldet (uebersprungen) nur, wenn die Quelle dort
 -- Blöcke hätte – sonst geht nichts verloren, und bei jeder Wochenkopie stünde der Sonntag in der Liste.
 -- pruefen schreibt nichts: {belegt: [Zieltage mit Blöcken, ohne übersprungene], uebersprungen}.
--- Sonst: {tage, bloecke, unbesetzt, gekuerzt, ausgelassen, ausgeschieden, uebersprungen} (Summe über die Tage).
+-- Sonst: {tage, bloecke, unbesetzt, gekuerzt, ausgelassen, belegt_uebersprungen, ausgeschieden, uebersprungen}
+-- (Summe über die Tage).
 -- ersetzen leert zuerst ALLE bearbeiteten Zieltage und fügt erst danach ein. Sonst rechnete die Wochengrenze
 -- (max_stunden_woche in pep.vorgaben_verletzt) für frühe Tage noch mit den alten Blöcken späterer Zieltage,
 -- die gleich ersetzt werden, und ließe gültige Blöcke aus. Der Aufruf ist eine Transaktion: Scheitert
@@ -3850,7 +3855,7 @@ declare
   v_belegt  jsonb := '[]'::jsonb;
   v_ueber   jsonb := '[]'::jsonb;
   v_tage    int := 0;
-  v_summe   jsonb := '{"bloecke": 0, "unbesetzt": 0, "gekuerzt": 0, "ausgelassen": 0}'::jsonb;
+  v_summe   jsonb := '{"bloecke": 0, "unbesetzt": 0, "gekuerzt": 0, "ausgelassen": 0, "belegt_uebersprungen": 0}'::jsonb;
   v_weg     text[] := '{}';
   v_k       text;
   v_offen   jsonb := '[]'::jsonb; -- zu bearbeitende Paare, nach Ziel sortiert
@@ -3898,7 +3903,7 @@ begin
     perform pep.protokolliere(p_filiale_id, p_aktion, 'plan_bloecke', to_char(v_ziel, 'YYYY-MM-DD'), null,
       coalesce(v_p -> 'herkunft', '{}'::jsonb) || jsonb_build_object('modus', p_modus) || v_r);
     v_tage := v_tage + 1;
-    foreach v_k in array array['bloecke', 'unbesetzt', 'gekuerzt', 'ausgelassen'] loop
+    foreach v_k in array array['bloecke', 'unbesetzt', 'gekuerzt', 'ausgelassen', 'belegt_uebersprungen'] loop
       v_summe := v_summe || jsonb_build_object(v_k, (v_summe ->> v_k)::int + (v_r ->> v_k)::int);
     end loop;
     v_weg := v_weg || array(select jsonb_array_elements_text(v_r -> 'ausgeschieden'));

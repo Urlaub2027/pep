@@ -27,7 +27,7 @@ const liste = (eintraege, max = 6) =>
 // Ergebnis als Meldung: ohne Auffälligkeiten als Toast, sonst stehend, damit Ausgelassenes lesbar bleibt.
 async function fertig(ergebnis, kontext, verb, vorne = '') {
   if (!ergebnis) return; // Vorschau ohne Datenbank
-  const auffaellig = ergebnis.unbesetzt || ergebnis.gekuerzt || ergebnis.ausgelassen
+  const auffaellig = ergebnis.unbesetzt || ergebnis.gekuerzt || ergebnis.ausgelassen || ergebnis.belegt_uebersprungen
     || ergebnis.uebersprungen?.length || ergebnis.ausgeschieden?.length;
   await kontext.neuLaden();
   meldung(`${vorne}${kopierErgebnis(ergebnis, verb)}.`, auffaellig ? 'ergebnis' : 'ok');
