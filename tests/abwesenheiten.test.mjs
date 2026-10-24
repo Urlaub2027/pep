@@ -320,3 +320,19 @@ test('pep_abwesenheiten liefert die Notiz des Tages (notiz); ohne Notiz null', a
   assert.equal(tage['2027-08-10'].notiz, 'Arzttermin');
   assert.equal(tage['2027-08-11'].notiz, null);
 });
+
+test('Wiederholung setzt in Schulferien aus; mit schulferien_aussetzen false nicht', async () => {
+  await aufruf(leitung, 'select public.pep_schulferien_speichern(null, $1::date, $2::date, $3)',
+    ['2027-04-05', '2027-04-16', 'Osterferien Test']);
+  const regel = (extra) => JSON.stringify({ code_id: code.BS, wochentag: 2, von_datum: '2027-03-01',
+    bis_datum: '2027-04-30', stunden: 8, ...extra });
+  const m1 = await neuerMa('Test, Ferienfrei', 30);
+  await aufruf(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb)', [m1, regel({})]);
+  const d1 = (await zeilen(m1, '2027-03-01', '2027-04-30')).map((x) => x.datum);
+  assert.ok(!d1.includes('2027-04-06') && !d1.includes('2027-04-13'));
+  assert.ok(d1.includes('2027-03-30') && d1.includes('2027-04-20'));
+  const m2 = await neuerMa('Test, Ferienmit', 30);
+  await aufruf(leitung, 'select public.pep_wiederholung_speichern($1, $2::jsonb)', [m2, regel({ schulferien_aussetzen: false })]);
+  const d2 = (await zeilen(m2, '2027-03-01', '2027-04-30')).map((x) => x.datum);
+  assert.ok(d2.includes('2027-04-06') && d2.includes('2027-04-13'));
+});

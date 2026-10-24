@@ -185,6 +185,9 @@ begin
   if v_b.rolle <> 'leitung' then
     raise exception 'NUR_LEITUNG';
   end if;
+  if v_b.filiale_id is null then
+    raise exception 'KEINE_FILIALE';
+  end if;
   return v_b;
 end;
 $$;
@@ -395,11 +398,14 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_b      pep.benutzer := pep.leitung();
+  v_b      pep.benutzer := pep.ich();
   v_name   text := urlaub.trim_alles(p_name);
   v_nummer text := nullif(urlaub.trim_alles(p_nummer), '');
   v_f      pep.filialen;
 begin
+  if v_b.rolle <> 'leitung' then
+    raise exception 'NUR_LEITUNG';
+  end if;
   if v_b.filiale_id is not null then
     raise exception 'FILIALE_VORHANDEN';
   end if;
@@ -436,8 +442,7 @@ as $$
 declare
   v_f bigint;
 begin
-  perform pep.ich();
-  v_f := pep.meine_filiale();
+  v_f := (pep.leitung_oder_stellvertretung()).filiale_id;
   return coalesce((select jsonb_agg(to_jsonb(b) order by b.position, b.id)
                      from pep.bereiche b where b.filiale_id = v_f), '[]'::jsonb);
 end;
@@ -452,8 +457,7 @@ as $$
 declare
   v_f bigint;
 begin
-  perform pep.ich();
-  v_f := pep.meine_filiale();
+  v_f := (pep.leitung_oder_stellvertretung()).filiale_id;
   return coalesce((
     select jsonb_agg(jsonb_build_object(
              'id', m.id,
@@ -486,7 +490,7 @@ as $$
 declare
   v_m pep.mitarbeiter;
 begin
-  perform pep.ich();
+  perform pep.leitung_oder_stellvertretung();
   v_m := pep.eigener_mitarbeiter(p_id);
   return to_jsonb(v_m) || jsonb_build_object(
     'vertraege', coalesce((select jsonb_agg(to_jsonb(v) order by v.gueltig_ab desc)
@@ -1427,6 +1431,7 @@ create table if not exists pep.wiederholungen (
   check ((von is null) = (bis is null)),
   check (von is null or von < bis)
 );
+alter table pep.wiederholungen add column if not exists schulferien_aussetzen boolean not null default true;
 create index if not exists wiederholungen_mitarbeiter_idx on pep.wiederholungen (mitarbeiter_id);
 
 -- Ein Tag, eine Abwesenheit je Mitarbeiter. Mit von/bis ist der Tag nur teilweise abwesend.
@@ -1639,6 +1644,12 @@ begin
       v_belegt := v_belegt + 1;
       continue;
     end if;
+    -- In den Schulferien der Filiale fällt die Berufsschule aus.
+    if p_w.schulferien_aussetzen and exists (
+         select 1 from pep.schulferien sf
+          where sf.filiale_id = p_w.filiale_id and v_tag between sf.von and sf.bis) then
+      continue;
+    end if;
     perform pep.abwesenheit_schreiben(p_w.filiale_id, p_w.mitarbeiter_id, p_w.code_id, v_tag, v_tag,
       p_w.stunden, p_w.von, p_w.bis, 'wiederholung', p_w.id, null, p_w.notiz, p_user_id);
   end loop;
@@ -1705,7 +1716,8 @@ begin
 end;
 $$;
 
--- p_daten: id (zum Ändern), code_id, wochentag (1–7), von_datum, bis_datum, von, bis, stunden, notiz.
+-- p_daten: id (zum Ändern), code_id, wochentag (1–7), von_datum, bis_datum, von, bis, stunden, notiz,
+-- schulferien_aussetzen (Standard true; beim Ändern bleibt der bisherige Wert, wenn der Schlüssel fehlt).
 -- Ändern löscht die künftigen Tage der Regel und erzeugt sie neu.
 create or replace function public.pep_wiederholung_speichern(p_mitarbeiter_id bigint, p_daten jsonb)
 returns bigint
@@ -1724,6 +1736,7 @@ declare
   v_vz   time := (p_daten ->> 'von')::time;
   v_bz   time := (p_daten ->> 'bis')::time;
   v_std  numeric := (p_daten ->> 'stunden')::numeric;
+  v_ferien boolean := (p_daten ->> 'schulferien_aussetzen')::boolean;
   v_regel text;
   v_alt  pep.wiederholungen;
   v_neu  pep.wiederholungen;
@@ -1755,8 +1768,9 @@ begin
 
   if v_id is null then
     insert into pep.wiederholungen (filiale_id, mitarbeiter_id, code_id, wochentag, von_datum, bis_datum,
-                                    von, bis, stunden, notiz)
-    values (v_b.filiale_id, v_m.id, v_code, v_wt, v_von, v_bis, v_vz, v_bz, v_std, p_daten ->> 'notiz')
+                                    von, bis, stunden, notiz, schulferien_aussetzen)
+    values (v_b.filiale_id, v_m.id, v_code, v_wt, v_von, v_bis, v_vz, v_bz, v_std, p_daten ->> 'notiz',
+            coalesce(v_ferien, true))
     returning * into v_neu;
     perform pep.protokolliere(v_b.filiale_id, 'anlegen', 'wiederholungen', v_neu.id::text, null, to_jsonb(v_neu));
   else
@@ -1768,7 +1782,8 @@ begin
     delete from pep.abwesenheiten where wiederholung_id = v_id and datum >= pep.heute();
     update pep.wiederholungen
        set code_id = v_code, wochentag = v_wt, von_datum = v_von, bis_datum = v_bis,
-           von = v_vz, bis = v_bz, stunden = v_std, notiz = p_daten ->> 'notiz'
+           von = v_vz, bis = v_bz, stunden = v_std, notiz = p_daten ->> 'notiz',
+           schulferien_aussetzen = coalesce(v_ferien, v_alt.schulferien_aussetzen)
      where id = v_id returning * into v_neu;
     perform pep.protokolliere(v_b.filiale_id, 'aendern', 'wiederholungen', v_neu.id::text, to_jsonb(v_alt), to_jsonb(v_neu));
   end if;
@@ -2076,6 +2091,7 @@ as $$
     from pep.urlaub_umfragen s
     join urlaub.mitarbeiter t on t.umfrage_id = s.umfrage_id
     join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id and z.mitarbeiter_id is not null
+                              and z.filiale_id = s.filiale_id
     join urlaub.abgaben ab on ab.mitarbeiter_id = t.id
     join urlaub.fragen f on f.umfrage_id = s.umfrage_id and f.typ = 'urlaubswochen'
     join urlaub.antworten an on an.mitarbeiter_id = t.id and an.frage_id = f.id
@@ -2094,7 +2110,7 @@ $$;
 -- Urlaubstool-Anbindung: Funktionen für den Browser
 -- ---------------------------------------------------------------------------
 
--- Umfragen mit Urlaubswochen-Frage, deren Organisator zur eigenen Filiale gehört.
+-- Umfragen mit Urlaubswochen-Frage: die eigenen des Aufrufers sowie die für die Filiale eingeschalteten.
 create or replace function public.pep_urlaub_umfragen()
 returns jsonb
 language plpgsql stable
@@ -2114,7 +2130,8 @@ begin
            order by u.angelegt_am desc, u.id desc)
       from urlaub.umfragen u
       join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
-     where exists (select 1 from pep.benutzer b where b.user_id = u.organisator_id and b.filiale_id = v_f)), '[]'::jsonb);
+     where u.organisator_id = auth.uid()
+        or exists (select 1 from pep.urlaub_umfragen s where s.umfrage_id = u.id and s.filiale_id = v_f)), '[]'::jsonb);
 end;
 $$;
 
@@ -2130,11 +2147,14 @@ begin
   if p_aktiv is null then
     raise exception 'WERT_UNGUELTIG';
   end if;
+  -- Einschalten nur für die eigenen Umfragen; Ausschalten darf die Leitung der Filiale.
   if not exists (select 1 from urlaub.umfragen u
                    join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
                   where u.id = p_umfrage_id
-                    and exists (select 1 from pep.benutzer o
-                                 where o.user_id = u.organisator_id and o.filiale_id = v_b.filiale_id)) then
+                    and case when p_aktiv then u.organisator_id = v_b.user_id
+                             else exists (select 1 from pep.benutzer o
+                                           where o.user_id = u.organisator_id and o.filiale_id = v_b.filiale_id)
+                         end) then
     raise exception 'UMFRAGE_NICHT_GEFUNDEN';
   end if;
   if p_aktiv then
@@ -2171,7 +2191,7 @@ begin
       from pep.urlaub_umfragen s
       join urlaub.umfragen u on u.id = s.umfrage_id
       join urlaub.mitarbeiter t on t.umfrage_id = u.id
-      left join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id
+      left join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id and z.filiale_id = s.filiale_id
      where s.filiale_id = v_f), '[]'::jsonb);
 end;
 $$;

@@ -249,3 +249,11 @@ test('fremde Filiale: Löschen, Kompetenz und Wochenvorgabe sind gesperrt, nicht
   const k = await db.query('select count(*)::int n from pep.kompetenzen where mitarbeiter_id in ($1, $2)', [m, m2]);
   assert.equal(k.rows[0].n, 0);
 });
+
+test('Rolle mitarbeiter darf Stammdaten nicht lesen: NUR_LEITUNG', async () => {
+  const id = await neuerMitarbeiter('Geheim, Gerd');
+  const ma = await pepBenutzer(db, 'azubi', 'mitarbeiter', fil);
+  await fehler(ma, 'select public.pep_bereiche() as r', [], 'NUR_LEITUNG');
+  await fehler(ma, 'select public.pep_mitarbeiter_liste() as r', [], 'NUR_LEITUNG');
+  await fehler(ma, 'select public.pep_mitarbeiter($1) as r', [id], 'NUR_LEITUNG');
+});

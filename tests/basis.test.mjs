@@ -88,3 +88,16 @@ test('pep.heute(): ohne Testdatum Berliner Datum, mit heuteSetzen fixiert, danac
   }
   assert.equal(await berlin(), true);
 });
+
+test('Leitung ohne Filiale: pep_benutzer_setzen/entfernen → KEINE_FILIALE, fremde Zeilen unverändert', async () => {
+  const chef = await pepBenutzer(db, 'chefA');
+  const fil = await filiale(db, chef);
+  const vize = await pepBenutzer(db, 'vizeA', 'stellvertretung', fil);
+  const ohne = await pepBenutzer(db, 'chefOhne'); // start_leitung, noch keine Filiale
+  const vorher = (await db.query('select user_id, filiale_id, rolle from pep.benutzer order by user_id')).rows;
+  await assert.rejects(als(db, 'authenticated', ohne, "select public.pep_benutzer_setzen('vizeA', 'leitung')"), /KEINE_FILIALE/);
+  await assert.rejects(als(db, 'authenticated', ohne, 'select public.pep_benutzer_entfernen($1)', [vize]), /KEINE_FILIALE/);
+  assert.deepEqual((await db.query('select user_id, filiale_id, rolle from pep.benutzer order by user_id')).rows, vorher);
+  // Filiale anlegen funktioniert für die Leitung ohne Filiale weiterhin
+  assert.ok(await filiale(db, ohne, { name: 'Netto Zweitstadt', nummer: '2' }));
+});

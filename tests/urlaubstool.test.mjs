@@ -2,7 +2,7 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  neueDatenbank, als, pepBenutzer, filiale, heuteSetzen, umfrageAnlegen, urlaubsfrageId,
+  neueDatenbank, als, pepBenutzer, organisator, filiale, heuteSetzen, umfrageAnlegen, urlaubsfrageId,
   umfrageMitarbeiter, abgeben,
 } from './helfer.mjs';
 
@@ -53,8 +53,8 @@ before(async () => {
   fremdeUmfrage = await umfrageAnlegen(db, fremd, { titel: 'Fremd 2027' });
 });
 
-test('pep_urlaub_umfragen listet die Umfrage mit teilnehmer 2, abgaben 0; fremde Organisatoren nicht', async () => {
-  const l = await json(stellv, 'select public.pep_urlaub_umfragen() as r');
+test('pep_urlaub_umfragen listet die eigene Umfrage mit teilnehmer 2, abgaben 0; fremde Organisatoren nicht', async () => {
+  const l = await json(leitung, 'select public.pep_urlaub_umfragen() as r');
   assert.equal(l.length, 1);
   assert.equal(l[0].id, umfrage);
   assert.equal(l[0].jahr, 2027);
@@ -62,6 +62,8 @@ test('pep_urlaub_umfragen listet die Umfrage mit teilnehmer 2, abgaben 0; fremde
   assert.equal(l[0].aktiv, false);
   assert.equal(l[0].teilnehmer, 2);
   assert.equal(l[0].abgaben, 0);
+  // Die Stellvertretung sieht erst, was für die Filiale eingeschaltet ist.
+  assert.deepEqual(await json(stellv, 'select public.pep_urlaub_umfragen() as r'), []);
 });
 
 test('Umfrage schalten: nur Leitung, fremde Umfrage UMFRAGE_NICHT_GEFUNDEN', async () => {
@@ -70,6 +72,17 @@ test('Umfrage schalten: nur Leitung, fremde Umfrage UMFRAGE_NICHT_GEFUNDEN', asy
   await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [umfrage]);
   const l = await json(leitung, 'select public.pep_urlaub_umfragen() as r');
   assert.equal(l[0].aktiv, true);
+  assert.equal((await json(stellv, 'select public.pep_urlaub_umfragen() as r')).length, 1);
+});
+
+test('Leitung ordnet fremden Organisator als Stellvertretung zu: dessen Umfrage lässt sich nicht einschalten', async () => {
+  const extern = await organisator(db, 'extern');
+  const externeUmfrage = await umfrageAnlegen(db, extern, { titel: 'Extern 2027' });
+  await aufruf(leitung, 'select public.pep_benutzer_setzen($1, $2)', ['extern', 'stellvertretung']);
+  await wirft(aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]), 'UMFRAGE_NICHT_GEFUNDEN');
+  assert.ok(!(await json(leitung, 'select public.pep_urlaub_umfragen() as r')).some((u) => u.id === externeUmfrage));
+  assert.equal((await db.query('select count(*)::int as n from pep.urlaub_umfragen where umfrage_id = $1', [externeUmfrage])).rows[0].n, 0);
+  await aufruf(leitung, 'select public.pep_benutzer_entfernen($1)', [extern]);
 });
 
 test('Zuordnungsvorschlag trifft trotz Tab und Groß/Klein; setzen und lösen', async () => {
