@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  wochenGruppen, ziehBereich, monatVorZurueck, zellenKlasse, stundenAnzeige,
+  wochenGruppen, ziehBereich, monatVorZurueck, zellenKlasse, stundenAnzeige, kurzStunden,
 } from '../docs/kalender.js';
 
 const tag = (datum, wochentag, kw, extra = {}) =>
@@ -41,4 +41,12 @@ test('stundenAnzeige({code:"U",stunden:6.25}) = "U 6,25"; mit von 08:00 bis 13:0
   assert.equal(stundenAnzeige({ code: 'BS', stunden: 5, von: '08:00:00', bis: '13:00:00' }), 'BS 08–13');
   assert.equal(stundenAnzeige({ code: 'BS', stunden: 5, von: '08:30', bis: '13:00' }), 'BS 08:30–13');
   assert.equal(stundenAnzeige({ code: 'KM', stunden: null }), 'KM');
+});
+
+test('kurzStunden: 13 → "13", 6.25 → "6,25", 14.5 → "14,50", 0 und null → ""', () => {
+  assert.equal(kurzStunden(13), '13');
+  assert.equal(kurzStunden(6.25), '6,25');
+  assert.equal(kurzStunden(14.5), '14,50');
+  assert.equal(kurzStunden(0), '');
+  assert.equal(kurzStunden(null), '');
 });

@@ -1,0 +1,110 @@
+[
+ {
+  "id": 1,
+  "name": "Test, Anna",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": null
+ },
+ {
+  "id": 2,
+  "name": "Muster, Ben",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": null
+ },
+ {
+  "id": 3,
+  "name": "Beispiel, Cem",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 30,
+  "personalnummer": null
+ },
+ {
+  "id": 4,
+  "name": "Probe, Dana",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 20,
+  "personalnummer": null
+ },
+ {
+  "id": 5,
+  "name": "Demo, Emil",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": null
+ },
+ {
+  "id": 6,
+  "name": "Fiktiv, Frieda",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "fuehrung",
+  "wochenstunden": 42,
+  "personalnummer": null
+ },
+ {
+  "id": 7,
+  "name": "Platzhalter, Gustav",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 25,
+  "personalnummer": null
+ },
+ {
+  "id": 8,
+  "name": "Vorlage, Hanna",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": null
+ },
+ {
+  "id": 9,
+  "name": "Entwurf, Ivo",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 30,
+  "personalnummer": null
+ },
+ {
+  "id": 10,
+  "name": "Skizze, Jana",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": null
+ },
+ {
+  "id": 11,
+  "name": "Modell, Kai",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 20,
+  "personalnummer": null
+ },
+ {
+  "id": 12,
+  "name": "Attrappe, Lea",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "fuehrung",
+  "wochenstunden": 42,
+  "personalnummer": null
+ }
+]

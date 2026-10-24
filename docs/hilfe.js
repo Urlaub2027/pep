@@ -3,12 +3,25 @@ export const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 export const $ = (id) => document.getElementById(id);
 
+// Fehler (und Hinweise) stehen oben in der Seite, bis die nächste Meldung kommt.
+// Erfolg (art 'ok') erscheint als Toast unten mittig und verschwindet nach 3 s.
+let toastUhr = null;
 export function meldung(text, art = 'fehler') {
   const m = $('meldung');
-  m.textContent = text || '';
-  m.hidden = !text;
+  const alsToast = Boolean(text) && art === 'ok';
+  m.textContent = alsToast ? '' : text || '';
+  m.hidden = alsToast || !text;
   m.className = `meldung ${art}`.trim();
-  if (text) m.scrollIntoView({ block: 'nearest' });
+  if (alsToast) zeigeToast(text);
+  else if (text) m.scrollIntoView({ block: 'nearest' });
+}
+
+function zeigeToast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastUhr);
+  toastUhr = setTimeout(() => { t.hidden = true; }, 3000);
 }
 
 const FEHLER = {

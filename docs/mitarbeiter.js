@@ -64,7 +64,7 @@ async function zeigen() {
 function zeichneListe() {
   const knoten = [];
   if (darfSchreiben()) {
-    knoten.push(element('button', { type: 'button', class: 'knopf', onclick: neuer }, 'Neuer Mitarbeiter'));
+    knoten.push(element('button', { type: 'button', class: 'knopf primaer', onclick: neuer }, 'Neuer Mitarbeiter'));
   }
   const eintraege = liste.map((m) => element('li', {},
     element('button', {

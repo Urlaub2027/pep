@@ -1,175 +1,458 @@
+/* PEP – Gestaltung. Tokens zuerst; Komponenten (Knöpfe, Karten, Chips, Raster) gelten für alle Reiter. */
 :root {
+  /* Netto-Farben: Rot nur für Verstöße und „unbesetzt“ */
   --netto-gelb: #FFE500;
   --netto-rot: #E30613;
   --schwarz: #111;
   --grau: #666;
   --linie: #d9d9d9;
   --hell: #f5f5f2;
+
+  --text: #1a1a1a;
+  --text-2: #5f6368;
+  --hintergrund: #f4f4f1;
+  --flaeche: #fff;
+  --linie-stark: #b9b9b0;
+  --hinweis: #fff4b3;
+  --ok: #2e7d32;
+  --hover-gelb: rgba(255, 229, 0, 0.22);
+
+  --radius: 8px;
+  --schatten-1: 0 1px 2px rgba(0, 0, 0, .06), 0 1px 3px rgba(0, 0, 0, .08);
+  --schatten-2: 0 6px 20px rgba(0, 0, 0, .16);
+  --dauer: 150ms;
+
+  --a1: 4px;
+  --a2: 8px;
+  --a3: 12px;
+  --a4: 16px;
+  --a5: 24px;
+  --a6: 32px;
+
+  --knopf-hoehe: 40px;
 }
+@media (pointer: coarse) { :root { --knopf-hoehe: 44px; } }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: var(--schwarz);
-  background: var(--hell);
+  font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--hintergrund);
   line-height: 1.4;
 }
+
+h2 { font-size: 1.25rem; line-height: 1.25; }
+h3 { font-size: 1rem; }
+
+:focus-visible { outline: 3px solid var(--schwarz); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* ---------------------------------------------------------------- Kopf und Reiter */
 
 .kopf {
   display: flex;
   align-items: baseline;
-  gap: 16px;
-  padding: 10px 16px;
+  gap: var(--a3);
+  padding: var(--a3) var(--a4);
   background: var(--netto-gelb);
   color: var(--schwarz);
 }
-.kopf h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.05em; }
-.wer { margin: 0 0 0 auto; font-size: 0.95rem; }
+.kopf h1 { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: 0.06em; }
+.kopf-filiale { margin: 0; font-size: 1rem; font-weight: 600; }
+.kopf-filiale:empty { display: none; }
+.wer { margin: 0 0 0 auto; font-size: 0.9rem; }
 
 .reiterleiste {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 0 16px;
-  background: #fff;
+  gap: var(--a1);
+  padding: 0 var(--a4);
+  background: var(--flaeche);
   border-bottom: 1px solid var(--linie);
+  box-shadow: var(--schatten-1);
 }
 .reiterleiste[hidden] { display: none; }
 .reiter-knopf {
   min-height: 44px;
-  padding: 8px 14px;
+  padding: var(--a2) 14px;
   font: inherit;
-  color: var(--schwarz);
+  color: var(--text);
   background: none;
   border: 0;
   border-bottom: 3px solid transparent;
   cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer);
 }
-.reiter-knopf:hover { background: var(--hell); }
-.reiter-knopf.aktiv { font-weight: 600; border-bottom-color: var(--netto-rot); }
-.reiter-knopf.rechts { margin-left: auto; }
+.reiter-knopf:hover { background: var(--hintergrund); }
+.reiter-knopf.aktiv { font-weight: 700; border-bottom-color: var(--netto-rot); }
+.reiter-knopf.rechts { margin-left: auto; color: var(--text-2); }
 .reiter-knopf[hidden] { display: none; }
 
-main { max-width: 1600px; margin: 0 auto; padding: 16px; }
+main { max-width: 1600px; margin: 0 auto; padding: var(--a4); }
 section[hidden] { display: none; }
 
-.box {
-  padding: 16px;
-  background: #fff;
-  border: 1px solid var(--linie);
-  border-radius: 6px;
-  margin-bottom: 16px;
-}
-.formular-box { max-width: 420px; margin-inline: auto; }
-.box h2 { margin-top: 0; }
+/* ---------------------------------------------------------------- Karten */
 
-.feld { display: block; margin-bottom: 12px; font-size: 0.95rem; }
-.feld input, .feld select {
+.karte, .box {
+  padding: var(--a4) var(--a5);
+  background: var(--flaeche);
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-1);
+  margin-bottom: var(--a4);
+}
+.karte h2, .box h2 { margin: 0 0 var(--a3); }
+.karte h3, .box h3 { margin: var(--a4) 0 var(--a1); }
+.formular-box { max-width: 420px; margin: 8vh auto 0; padding: var(--a5) var(--a6); box-shadow: var(--schatten-2); }
+.formular-box button[type="submit"] { width: 100%; margin-top: var(--a2); }
+
+/* ---------------------------------------------------------------- Formularfelder */
+
+.feld { display: block; margin-bottom: var(--a3); font-size: 0.9rem; color: var(--text-2); }
+.feld input, .feld select, .feld textarea {
   display: block;
   width: 100%;
-  min-height: 40px;
-  margin-top: 4px;
-  padding: 6px 8px;
+  margin-top: var(--a1);
+  padding: 0 10px;
   font: inherit;
-  border: 1px solid #999;
-  border-radius: 4px;
-  background: #fff;
+  font-size: 1rem;
+  color: var(--text);
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  background: var(--flaeche);
+  transition: border-color var(--dauer);
 }
-.feld input:focus, .feld select:focus { outline: 2px solid var(--schwarz); outline-offset: 1px; }
+.feld input, .feld select { height: 40px; }
+.feld textarea { padding: var(--a2) 10px; }
+.feld input:hover, .feld select:hover, .feld textarea:hover { border-color: var(--grau); }
+.feld input:disabled, .feld select:disabled, .feld textarea:disabled { color: var(--text-2); background: var(--hell); }
+.feld input[type="checkbox"] { display: inline-block; width: 20px; height: 20px; }
 
-button[type="submit"], .knopf {
-  min-height: 44px;
-  padding: 8px 18px;
+/* ---------------------------------------------------------------- Knöpfe */
+
+.knopf, button[type="submit"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--a2);
+  min-height: var(--knopf-hoehe);
+  padding: 0 var(--a4);
   font: inherit;
   font-weight: 600;
-  color: var(--schwarz);
-  background: var(--netto-gelb);
-  border: 2px solid var(--schwarz);
-  border-radius: 4px;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
   cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer), box-shadow var(--dauer);
 }
+.knopf:hover, button[type="submit"]:hover { background: var(--hintergrund); border-color: var(--grau); }
+.knopf:active, button[type="submit"]:active { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .2); }
+
+/* Gelbe Hauptaktion – höchstens eine je Bereich. Speichern-Knöpfe in Formularzeilen bleiben sekundär. */
+.knopf.primaer, button[type="submit"] {
+  background: var(--netto-gelb);
+  border-color: var(--schwarz);
+}
+.knopf.primaer:hover, button[type="submit"]:hover { background: #f5dc00; border-color: var(--schwarz); }
+.zeile button[type="submit"] { background: var(--flaeche); border-color: var(--linie-stark); }
+.zeile button[type="submit"]:hover { background: var(--hintergrund); border-color: var(--grau); }
+
+.knopf.gefahr { color: var(--netto-rot); border-color: var(--netto-rot); }
+.knopf.gefahr:hover { color: #fff; background: var(--netto-rot); }
+
 button:disabled { opacity: 0.5; cursor: default; }
 
-.meldung { padding: 10px 12px; margin: 0 0 16px; border-radius: 4px; border: 1px solid var(--linie); background: #fff; }
+/* ---------------------------------------------------------------- Chips (Palette, Auswahl) */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--knopf-hoehe);
+  padding: 0 var(--a3);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer), box-shadow var(--dauer);
+}
+.chip:hover { background: var(--hintergrund); border-color: var(--grau); }
+.chip[aria-pressed="true"] {
+  background: var(--netto-gelb);
+  border-color: var(--schwarz);
+  box-shadow: inset 0 0 0 1px var(--schwarz);
+}
+.chip-gruppe { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.farbfeld {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, .25);
+  background: var(--flaeche);
+  vertical-align: middle;
+}
+.farbfeld.leer { background: linear-gradient(to top right, transparent 45%, var(--grau) 45% 55%, transparent 55%), var(--flaeche); }
+
+/* Schalter (Checkbox mit role="switch") */
+.schalter-feld { display: inline-flex; align-items: center; gap: var(--a2); min-height: var(--knopf-hoehe); font-size: 0.9rem; cursor: pointer; }
+input.schalter {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: var(--linie-stark);
+  cursor: pointer;
+  transition: background-color var(--dauer);
+}
+input.schalter::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  transition: transform var(--dauer);
+}
+input.schalter:checked { background: var(--schwarz); }
+input.schalter:checked::before { transform: translateX(16px); }
+
+/* ---------------------------------------------------------------- Meldungen und Hinweise */
+
+.meldung { padding: 10px var(--a3); margin: 0 0 var(--a4); border-radius: 6px; border: 1px solid var(--linie); background: var(--flaeche); }
 .meldung[hidden] { display: none; }
-.meldung.fehler { color: var(--netto-rot); border-color: var(--netto-rot); }
-.meldung.ok { color: var(--schwarz); border-color: var(--schwarz); }
+.meldung.fehler { color: var(--netto-rot); border-color: var(--netto-rot); background: #fff5f5; }
+.meldung.ok { color: var(--text); border-color: var(--ok); }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--a5);
+  z-index: 100;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: var(--a3) var(--a5);
+  color: #fff;
+  font-weight: 600;
+  background: var(--schwarz);
+  border-left: 6px solid var(--ok);
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-2);
+}
+.toast[hidden] { display: none; }
+
+.hinweis { color: var(--text-2); }
+.hinweis-gelb { padding: var(--a2) var(--a3); background: var(--hinweis); border-left: 4px solid var(--netto-gelb); border-radius: 4px; }
+.warnung { padding: var(--a2) var(--a3); color: var(--text); background: #fdecee; border-left: 4px solid var(--netto-rot); border-radius: 4px; }
+.unbesetzt {
+  background: repeating-linear-gradient(-45deg, rgba(227, 6, 19, .22) 0 4px, rgba(227, 6, 19, .05) 4px 8px);
+  outline: 1px solid var(--netto-rot);
+  outline-offset: -1px;
+}
+.zahl { text-align: right; font-variant-numeric: tabular-nums; }
+.zahl.minus { color: var(--netto-rot); font-weight: 700; }
+
+/* ---------------------------------------------------------------- Tabellen */
 
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--linie); }
+th, td { padding: 6px var(--a2); text-align: left; border-bottom: 1px solid var(--linie); }
 th { background: var(--hell); font-weight: 600; }
+.tabelle-scroll { overflow-x: auto; }
 
-/* Reiter Mitarbeiter */
-.zweispaltig { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
-@media (max-width: 900px) { .zweispaltig { grid-template-columns: 1fr; } }
-.ma-liste { list-style: none; margin: 12px 0 0; padding: 0; }
-.ma-eintrag { display: block; width: 100%; min-height: 44px; margin-bottom: 4px; padding: 6px 10px; font: inherit; text-align: left; color: var(--schwarz); background: #fff; border: 1px solid var(--linie); border-radius: 4px; cursor: pointer; }
-.ma-eintrag:hover { background: var(--hell); }
-.ma-eintrag.gewaehlt { border: 2px solid var(--schwarz); background: var(--netto-gelb); }
-.ma-eintrag.inaktiv { color: var(--grau); background: var(--hell); }
-.ma-eintrag small { display: block; color: var(--grau); }
-.ma-eintrag.gewaehlt small { color: var(--schwarz); }
-.badge { display: inline-block; margin-left: 4px; padding: 0 6px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--schwarz); border-radius: 8px; background: #fff; }
-.hinweis { color: var(--grau); }
-.zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--linie); }
-.zeile .feld { width: 170px; margin-bottom: 0; }
-.zeile .feld.breit { width: 100%; }
-.zeile .feld textarea { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font: inherit; border: 1px solid #999; border-radius: 4px; }
-.zeile .zeilentitel { width: 100%; }
-.zeile .zeiten { display: flex; gap: 12px; }
-.zeile .zeiten[hidden] { display: none; }
-.zeile .zeiten .feld { width: 120px; }
-.feld.haken, .haken { display: flex; align-items: center; gap: 6px; min-height: 40px; }
-.feld.haken input, .haken input { width: 20px; min-height: 20px; margin: 0; }
-.haken-liste { display: flex; flex-wrap: wrap; gap: 4px 24px; }
-.zeile .knopf { background: #fff; }
+/* ---------------------------------------------------------------- Werkzeugleiste */
 
-/* Einstellungen */
-.zeile.grau { background: var(--hell); color: var(--grau); }
-.zeile .erklaerung { flex: 1 1 260px; }
-.zeile .feld input[type="color"] { width: 60px; padding: 2px; }
-.box h3 { margin: 16px 0 4px; font-size: 1rem; }
+.werkzeugleiste { display: flex; flex-direction: column; gap: var(--a2); padding: var(--a3) var(--a4); }
+.werkzeug-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a2) var(--a4); }
+.werkzeugleiste .hinweis { margin: 0; }
+.werkzeugleiste .knopf { font-size: 0.9rem; }
+.monatsnavi { display: flex; align-items: center; gap: var(--a1); }
+.knopf.pfeil { width: var(--knopf-hoehe); padding: 0; font-size: 0.8rem; }
+.legende { display: flex; flex-wrap: wrap; gap: var(--a1) var(--a3); margin-left: auto; font-size: 0.85rem; color: var(--text-2); }
+.legende span { display: inline-flex; align-items: center; gap: 6px; }
 
-/* Abwesenheiten */
-:root { --schulferien: #dff3df; --feiertag: #fff3a8; --geschlossen: #e4e4e4; }
-.abw-kopfzeile { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.abw-monat { min-width: 9em; text-align: center; }
-.abw-legende { margin-left: auto; }
-.abw-farbe { display: inline-block; width: 14px; height: 14px; vertical-align: middle; border: 1px solid var(--linie); background: #fff; }
-.abw-farbe.schulferien { background: var(--schulferien); }
-.abw-farbe.feiertag { background: var(--feiertag); }
-.abw-farbe.geschlossen { background: var(--geschlossen); }
-.abw-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-@media (max-width: 1300px) { .abw-layout { grid-template-columns: 200px minmax(0, 1fr); } .abw-seite { grid-column: 1 / -1; } }
-@media (max-width: 800px) { .abw-layout { grid-template-columns: 1fr; } }
-.abw-pal-eintrag { display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
-.abw-pal-eintrag input { width: 18px; height: 18px; margin: 0; }
-.abw-palette .knopf { margin-top: 8px; }
-.abw-scroll { overflow-x: auto; background: #fff; border: 1px solid var(--linie); }
-.abw-tabelle { width: auto; border-collapse: collapse; touch-action: none; user-select: none; }
-.abw-tabelle th, .abw-tabelle td { padding: 0; border: 1px solid var(--linie); text-align: center; font-size: 0.75rem; }
-.abw-tabelle th.abw-name { position: sticky; left: 0; z-index: 1; min-width: 130px; padding: 2px 6px; text-align: left; white-space: nowrap; background: var(--hell); }
-.abw-tag span, .abw-tag small { display: block; line-height: 1.15; }
-.abw-zelle { position: relative; width: 26px; min-width: 26px; max-width: 26px; height: 34px; line-height: 1.1; cursor: pointer; }
-.abw-zelle .kz { display: block; font-weight: 600; }
-.abw-zelle small { display: block; font-size: 0.6rem; }
-.abw-zelle .warn { position: absolute; top: 0; right: 1px; font-weight: 700; color: var(--netto-rot); }
+/* ---------------------------------------------------------------- Raster (Abwesenheiten, später Einsatzplan) */
+
+/* Scroll-Container: nur er scrollt quer, Kopfzeilen kleben oben, die erste Spalte links. */
+.raster-scroll {
+  max-height: calc(100vh - 230px);
+  overflow: auto;
+  margin-bottom: var(--a4);
+  background: var(--flaeche);
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-1);
+}
+.raster { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; user-select: none; }
+.malt .raster { touch-action: none; } /* Malen per Ziehen: keine Wischgesten des Browsers */
+.raster th, .raster td { padding: 0; border: 0; border-right: 1px solid var(--linie); border-bottom: 1px solid var(--linie); text-align: center; }
+.raster thead th { position: sticky; top: 0; z-index: 3; background: var(--hell); }
+.raster thead tr.kw-zeile th { height: 26px; }
+.raster thead tr:nth-child(2) th { top: 26px; height: 40px; border-bottom-color: var(--linie-stark); }
+.raster tr > :first-child { position: sticky; left: 0; z-index: 2; border-right-color: var(--linie-stark); }
+.raster thead tr > :first-child { z-index: 4; }
+.raster col.name-spalte { width: 200px; }
+
+/* ---------------------------------------------------------------- Abwesenheiten */
+
+:root { --schulferien: #dff3df; --feiertag: #fff3a8; --geschlossen: #e9e9e6; }
+.farbfeld.schulferien { background: var(--schulferien); }
+.farbfeld.feiertag { background: var(--feiertag); }
+.farbfeld.geschlossen { background: var(--geschlossen); }
+.abw-monat { min-width: 9.5em; font-size: 1.1rem; text-align: center; }
+
+.abw-tabelle th, .abw-tabelle td { font-size: 12px; }
+.abw-tabelle .abw-kw { font-weight: 600; color: var(--text-2); border-right-color: var(--linie-stark); }
+.abw-tabelle th.abw-name {
+  padding: 0 var(--a3);
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--flaeche);
+}
+.abw-tabelle thead th.abw-name { font-size: 12px; color: var(--text-2); background: var(--hell); }
+.abw-tag span { display: block; font-weight: 400; color: var(--text-2); line-height: 1.1; }
+.abw-tag small { display: block; font-size: 13px; font-weight: 700; line-height: 1.2; }
+.abw-tabelle tbody tr { height: 40px; }
+.abw-zelle { position: relative; cursor: pointer; }
+
 .abw-tabelle .schulferien { background: var(--schulferien); }
 .abw-tabelle .feiertag { background: var(--feiertag); }
 .abw-tabelle .wochenende, .abw-tabelle .geschlossen { background: var(--geschlossen); }
+
+/* Heute: Kopf gelb, Spalte mit schwarzen Seitenlinien */
+.abw-tabelle th.abw-tag.heute { background: var(--netto-gelb); }
+.abw-tabelle th.abw-tag.heute span { color: var(--schwarz); }
+.abw-tabelle .heute { box-shadow: inset 2px 0 0 var(--schwarz), inset -2px 0 0 var(--schwarz); }
+
+/* Hover: Zeile und Spalte hellgelb (als Überlagerung, die Tagesfarbe bleibt sichtbar) */
+.abw-tabelle tbody tr:hover > *, .abw-tabelle .spalte-hover { background-image: linear-gradient(var(--hover-gelb), var(--hover-gelb)); }
+
+/* Belegte Zelle als Chip in Codefarbe */
+.abw-zelle .belegt {
+  position: absolute;
+  inset: 3px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--linie);
+  line-height: 1.05;
+}
+.abw-zelle .kz { display: block; font-size: 12px; font-weight: 700; }
+.abw-zelle .belegt small { display: block; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.abw-zelle .warn { position: absolute; top: 0; right: 2px; z-index: 1; font-weight: 800; color: var(--netto-rot); }
 .abw-zelle.wunsch { outline: 2px dashed var(--schwarz); outline-offset: -3px; }
 .abw-zelle.wunsch-abgelehnt { outline: 1px dashed var(--grau); outline-offset: -3px; }
 .abw-zelle.wunsch-abgelehnt .kz { color: var(--grau); font-weight: 400; text-decoration: line-through; opacity: 0.6; }
 .abw-zelle.markiert { outline: 2px solid var(--schwarz); outline-offset: -2px; background: var(--netto-gelb); }
 .abw-tabelle tr.inaktiv th.abw-name { color: var(--grau); font-style: italic; }
-.abw-summe td, .abw-summe th { font-weight: 600; background: var(--hell); }
-.abw-urlaub th, .abw-urlaub td { font-size: 0.85rem; padding: 4px 6px; }
-.abw-urlaub td { text-align: right; }
-.abw-dialog { max-width: 420px; width: calc(100% - 32px); padding: 16px; border: 2px solid var(--schwarz); border-radius: 6px; }
-.abw-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
-.abw-dialog .dialog-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.abw-info { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
-.abw-info dt { color: var(--grau); }
+
+.abw-summe td, .abw-summe th { height: 40px; font-weight: 700; background: var(--hell); border-top: 1px solid var(--linie-stark); }
+.abw-summe td.zahl { padding: 0 2px; text-align: center; font-size: 12px; white-space: nowrap; overflow: hidden; }
+
+/* Urlaubsübersicht unter dem Raster */
+.abw-urlaub-box summary { cursor: pointer; }
+.abw-urlaub-box summary h2 { display: inline; margin: 0; }
+.abw-urlaub-box[open] summary { margin-bottom: var(--a3); }
+.abw-urlaub { width: auto; min-width: min(100%, 760px); }
+.abw-urlaub th, .abw-urlaub td { padding: 6px var(--a3); font-size: 0.9rem; }
+.abw-urlaub thead th { white-space: nowrap; }
+.abw-urlaub tbody th { font-weight: 400; background: none; }
+.abw-urlaub tbody tr:hover > * { background: var(--hover-gelb); }
+
+/* ---------------------------------------------------------------- Dialog */
+
+.dialog {
+  max-width: 460px;
+  width: calc(100% - 32px);
+  padding: var(--a5);
+  color: var(--text);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-2);
+}
+.dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+.dialog h2 { margin-top: 0; }
+/* Knöpfe kleben unten, auch wenn ein langer Dialog in sich scrollt */
+.dialog .dialog-knoepfe {
+  position: sticky;
+  bottom: calc(-1 * var(--a5));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--a2);
+  margin: var(--a2) 0 calc(-1 * var(--a5));
+  padding: var(--a3) 0 var(--a5);
+  background: var(--flaeche);
+}
+.abw-info { display: grid; grid-template-columns: auto 1fr; gap: var(--a1) var(--a3); margin: 0; }
+.abw-info dt { color: var(--text-2); }
 .abw-info dd { margin: 0; }
+
+/* ---------------------------------------------------------------- Reiter Mitarbeiter */
+
+.zweispaltig { display: grid; grid-template-columns: 320px 1fr; gap: var(--a4); align-items: start; }
+@media (max-width: 900px) { .zweispaltig { grid-template-columns: 1fr; } }
+.ma-liste { list-style: none; margin: var(--a3) 0 0; padding: 0; }
+.ma-eintrag {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: var(--a1);
+  padding: 6px var(--a3);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-1);
+  cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer);
+}
+.ma-eintrag:hover { border-color: var(--linie-stark); }
+.ma-eintrag.gewaehlt { border: 1px solid var(--schwarz); background: var(--netto-gelb); }
+.ma-eintrag.inaktiv { color: var(--text-2); background: var(--hell); }
+.ma-eintrag small { display: block; color: var(--text-2); }
+.ma-eintrag.gewaehlt small { color: var(--schwarz); }
+.badge { display: inline-block; margin-left: var(--a1); padding: 0 6px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--schwarz); border-radius: 8px; background: #fff; }
+.zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--a1) var(--a3); padding: var(--a3) 0; border-bottom: 1px solid var(--linie); }
+.zeile:last-child { border-bottom: 0; }
+.zeile .feld { width: 170px; margin-bottom: 0; }
+.zeile .feld.breit { width: 100%; }
+.zeile .zeilentitel { width: 100%; }
+.zeile .zeiten { display: flex; gap: var(--a3); }
+.zeile .zeiten[hidden] { display: none; }
+.zeile .zeiten .feld { width: 120px; }
+.feld.haken, .haken { display: flex; align-items: center; gap: 6px; min-height: 40px; color: var(--text); }
+.feld.haken input, .haken input { width: 20px; height: 20px; min-height: 20px; margin: 0; }
+.haken-liste { display: flex; flex-wrap: wrap; gap: var(--a1) var(--a5); }
+
+/* ---------------------------------------------------------------- Einstellungen */
+
+.zeile.grau { background: var(--hell); color: var(--text-2); padding-inline: var(--a2); border-radius: 6px; }
+.zeile .erklaerung { flex: 1 1 260px; }
+.zeile .feld input[type="color"] { width: 60px; padding: 2px; }

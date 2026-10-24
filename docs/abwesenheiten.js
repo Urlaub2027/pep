@@ -1,25 +1,41 @@
 // Reiter „Abwesenheiten“: Monatsraster mit Palette, Ziehen per Pointer-Events, Wiederholungen,
-// Urlaubswünsche (Genehmigen/Ablehnen/Zurücknehmen) und Seitenleiste „Urlaub <Jahr>“.
+// Urlaubswünsche (Genehmigen/Ablehnen/Zurücknehmen) und Übersicht „Urlaub <Jahr>“ unter dem Raster.
 import {
   $, meldung, fehlerText, element, datumDE, stundenDE, WOCHENTAGE,
   zahl, feld, eingabe, auswahlfeld,
 } from './hilfe.js';
 import { aufruf, ich, reiter } from './app.js';
-import { wochenGruppen, ziehBereich, monatVorZurueck, zellenKlasse, stundenAnzeige } from './kalender.js';
+import { dialog } from './dialog.js';
+import {
+  wochenGruppen, ziehBereich, monatVorZurueck, zellenKlasse, stundenAnzeige, kurzStunden,
+} from './kalender.js';
 
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 const HINWEIS_WUNSCH_GEAENDERT = 'Wunsch im Urlaubstool geändert oder zurückgezogen';
 const STANDARD_TEILER = 6;
 
-const heute = new Date();
-let jahr = heute.getFullYear();
-let monat = heute.getMonth() + 1;
+const MIN_SPALTE_PX = 34; // Tagesspalte; reicht die Breite nicht, scrollt nur der Raster-Container
+const NAME_SPALTE_PX = 200;
+
+// Adresse: ?jahr=2026&monat=11 wählt den Startmonat, ?heute=JJJJ-MM-TT nur die Markierung „heute“
+// (beides für die Vorschau mit festen Daten). Ohne Angabe gilt das heutige Datum.
+const adresse = new URLSearchParams(location.search);
+const ganzzahl = (name, min, max) => {
+  const n = Number(adresse.get(name));
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+};
+const jetzt = new Date();
+const heuteIso = /^\d{4}-\d{2}-\d{2}$/.test(adresse.get('heute') ?? '') ? adresse.get('heute')
+  : `${jetzt.getFullYear()}-${String(jetzt.getMonth() + 1).padStart(2, '0')}-${String(jetzt.getDate()).padStart(2, '0')}`;
+let jahr = ganzzahl('jahr', 2000, 2100) ?? Number(heuteIso.slice(0, 4));
+let monat = ganzzahl('monat', 1, 12) ?? Number(heuteIso.slice(5, 7));
 let daten = null; // Antwort von pep_abwesenheiten
 let teiler = STANDARD_TEILER;
 let wahl = 'ansehen'; // 'ansehen' | 'keine' | Code-Id als Text
 let mitUhrzeit = false;
 let zug = null; // laufendes Ziehen: { mitarbeiter, zeile, start, ende, pointerId }
-const rahmen = {}; // Container: kopf, palette, raster, seite
+const rahmen = {}; // Container: kopf (Werkzeugleiste), raster, seite (Urlaubsübersicht)
+let hoverDatum = null; // Datum der Spalte unter dem Zeiger (Klasse spalte-hover)
 
 const darfZeichnen = () => ich?.rolle === 'leitung' || ich?.rolle === 'stellvertretung';
 const istLeitung = () => ich?.rolle === 'leitung';
@@ -60,14 +76,15 @@ async function speichere(aktion) {
 async function zeigen() {
   meldung('');
   if (!rahmen.kopf) {
-    for (const name of ['kopf', 'palette', 'raster', 'seite']) rahmen[name] = element('div', { class: `abw-${name}` });
-    $('ansicht-abwesenheiten').replaceChildren(rahmen.kopf,
-      element('div', { class: 'abw-layout' }, rahmen.palette, rahmen.raster, rahmen.seite));
+    for (const name of ['kopf', 'raster', 'seite']) rahmen[name] = element('div', { class: `abw-${name}` });
+    $('ansicht-abwesenheiten').replaceChildren(rahmen.kopf, rahmen.raster, rahmen.seite);
     rahmen.raster.addEventListener('pointerdown', beiPointerAb);
     rahmen.raster.addEventListener('pointermove', beiPointerBewegung);
     rahmen.raster.addEventListener('pointerup', beiPointerAuf);
     rahmen.raster.addEventListener('pointercancel', raeumeAuf);
     rahmen.raster.addEventListener('click', beiKlick);
+    rahmen.raster.addEventListener('pointerover', (e) => spalteHover(e.target.closest?.('[data-datum]')?.dataset.datum ?? null));
+    rahmen.raster.addEventListener('pointerleave', () => spalteHover(null));
   }
   try {
     const [monatsdaten, einstellungen] = await Promise.all([
@@ -86,51 +103,72 @@ async function zeigen() {
 
 function zeichneAlles() {
   zeichneKopf();
-  zeichnePalette();
   zeichneRaster();
   zeichneSeite();
 }
 
-// ---------------------------------------------------------------- Kopf und Palette
+// ---------------------------------------------------------------- Werkzeugleiste (Monat, Palette, Legende)
 
 function wechsleMonat(schritt) {
   ({ jahr, monat } = monatVorZurueck(jahr, monat, schritt));
   neuLaden();
 }
 
-function zeichneKopf() {
-  rahmen.kopf.replaceChildren(element('div', { class: 'box abw-kopfzeile' },
-    element('button', { type: 'button', class: 'knopf', 'aria-label': 'Vorheriger Monat', onclick: () => wechsleMonat(-1) }, '◀'),
-    element('strong', { class: 'abw-monat' }, `${MONATE[monat - 1]} ${jahr}`),
-    element('button', { type: 'button', class: 'knopf', 'aria-label': 'Nächster Monat', onclick: () => wechsleMonat(1) }, '▶'),
-    element('span', { class: 'abw-legende' },
-      element('span', { class: 'abw-farbe schulferien' }), ' Schulferien ',
-      element('span', { class: 'abw-farbe feiertag' }), ' Feiertag ',
-      element('span', { class: 'abw-farbe geschlossen' }), ' geschlossen')));
+function zuHeute() {
+  jahr = Number(heuteIso.slice(0, 4));
+  monat = Number(heuteIso.slice(5, 7));
+  neuLaden();
 }
 
-function paletteEintrag(wert, beschriftung, farbe) {
-  const radio = element('input', { type: 'radio', name: 'abw-palette', value: wert });
-  radio.checked = wahl === wert;
-  radio.addEventListener('change', () => { wahl = wert; });
-  const farbfeld = element('span', { class: 'abw-farbe' });
-  if (farbe) farbfeld.style.background = farbe;
-  return element('label', { class: 'abw-pal-eintrag' }, radio, farbfeld, beschriftung);
+function farbfeld(farbe, klasse = '') {
+  const f = element('span', { class: `farbfeld ${klasse}`.trim(), 'aria-hidden': 'true' });
+  if (farbe) f.style.background = farbe;
+  return f;
 }
 
-function zeichnePalette() {
-  if (wahl !== 'ansehen' && wahl !== 'keine' && !daten.codes.some((c) => String(c.id) === wahl)) wahl = 'ansehen';
-  const uhr = eingabe('checkbox', mitUhrzeit);
+// Palette als Chips: genau einer ist gedrückt (aria-pressed). Ein Klick wechselt nur die Wahl, ohne neu zu zeichnen.
+// Beim Malen fängt das Raster Wischgesten ab (Klasse malt); beim Ansehen scrollt es per Touch.
+function waehle(wert) {
+  wahl = wert;
+  rahmen.raster.classList.toggle('malt', wahl !== 'ansehen');
+  for (const k of rahmen.kopf.querySelectorAll('.chip[data-wahl]')) k.setAttribute('aria-pressed', String(k.dataset.wahl === wert));
+}
+
+const chip = (wert, titel, ...inhalt) => element('button', {
+  type: 'button', class: 'chip', 'data-wahl': wert, 'aria-pressed': String(wahl === wert), title: titel,
+  onclick: () => waehle(wert),
+}, ...inhalt);
+
+function palette() {
+  const uhr = eingabe('checkbox', mitUhrzeit, { class: 'schalter', role: 'switch' });
   uhr.addEventListener('change', () => { mitUhrzeit = uhr.checked; });
-  rahmen.palette.replaceChildren(element('div', { class: 'box' },
-    element('h2', {}, 'Palette'),
-    darfZeichnen() ? [
-      paletteEintrag('ansehen', 'Ansehen (Klick öffnet Details)', null),
-      paletteEintrag('keine', 'keine (löschen)', null),
-      daten.codes.map((c) => paletteEintrag(String(c.id), `${c.code} ${c.name}`, c.farbe)),
-      element('label', { class: 'haken' }, uhr, ' mit Uhrzeit'),
-      element('button', { type: 'button', class: 'knopf', onclick: oeffneWiederholung }, 'Wiederholung …'),
-    ] : element('p', { class: 'hinweis' }, 'Keine Berechtigung zum Bearbeiten.')));
+  return [
+    element('div', { class: 'chip-gruppe', role: 'group', 'aria-label': 'Palette' },
+      chip('ansehen', 'Ansehen: Klick auf eine Zelle öffnet die Details', 'Ansehen'),
+      chip('keine', 'Löschen: gezogene Tage leeren', farbfeld(null, 'leer'), 'Löschen'),
+      daten.codes.map((c) => chip(String(c.id), c.name, farbfeld(c.farbe), c.code))),
+    element('label', { class: 'schalter-feld' }, uhr, 'mit Uhrzeit'),
+    element('button', { type: 'button', class: 'knopf', onclick: oeffneWiederholung }, 'Wiederholung …'),
+  ];
+}
+
+function zeichneKopf() {
+  if (wahl !== 'ansehen' && wahl !== 'keine' && !daten.codes.some((c) => String(c.id) === wahl)) wahl = 'ansehen';
+  rahmen.raster.classList.toggle('malt', wahl !== 'ansehen');
+  // Zwei Zeilen: oben Monat und Legende, darunter die Palette mit ihren Schaltern.
+  rahmen.kopf.replaceChildren(element('div', { class: 'karte werkzeugleiste' },
+    element('div', { class: 'werkzeug-zeile' },
+      element('div', { class: 'monatsnavi' },
+        element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Vorheriger Monat', onclick: () => wechsleMonat(-1) }, '◀'),
+        element('strong', { class: 'abw-monat' }, `${MONATE[monat - 1]} ${jahr}`),
+        element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Nächster Monat', onclick: () => wechsleMonat(1) }, '▶'),
+        element('button', { type: 'button', class: 'knopf', onclick: zuHeute }, 'Heute')),
+      element('div', { class: 'legende' },
+        element('span', {}, farbfeld(null, 'schulferien'), 'Schulferien'),
+        element('span', {}, farbfeld(null, 'feiertag'), 'Feiertag'),
+        element('span', {}, farbfeld(null, 'geschlossen'), 'geschlossen'))),
+    element('div', { class: 'werkzeug-zeile' },
+      darfZeichnen() ? palette() : element('p', { class: 'hinweis' }, 'Keine Berechtigung zum Bearbeiten.'))));
 }
 
 // ---------------------------------------------------------------- Raster
@@ -149,22 +187,28 @@ const wunschAm = (m, datum) => {
   return treffer.find((w) => w.status === 'offen') ?? treffer.find((w) => w.status === 'abgelehnt');
 };
 
+// Klassen, die alle Zellen eines Tages tragen (Kopf, Mitarbeiter, Summe).
+const tagKlassen = (tag) => [...zellenKlasse(tag), ...(tagIso(tag.datum) === heuteIso ? ['heute'] : [])];
+
 function zelle(m, tag, farben) {
   const datum = tagIso(tag.datum);
   const eintrag = m.tage?.[datum];
   const wunsch = wunschAm(m, datum);
   // Abgelehnte Wünsche zeigen sich nur in leeren Zellen; ein echter Eintrag geht vor.
   const abgelehnt = wunsch?.status === 'abgelehnt' && !eintrag;
-  const klassen = ['abw-zelle', ...zellenKlasse(tag)];
+  const klassen = ['abw-zelle', ...tagKlassen(tag)];
   if (wunsch && (abgelehnt || wunsch.status === 'offen')) klassen.push(abgelehnt ? 'wunsch-abgelehnt' : 'wunsch');
   const td = element('td', { class: klassen.join(' '), 'data-datum': datum, 'data-mitarbeiter': m.id });
   const titel = [tag.feiertag, tag.schulferien].filter(Boolean);
   if (eintrag) {
     const anzeige = stundenAnzeige(eintrag);
     const farbe = farben.get(eintrag.code_id);
-    if (farbe) { td.style.background = farbe; td.style.color = textfarbe(farbe); }
-    td.append(element('span', { class: 'kz' }, eintrag.code),
-      element('small', {}, anzeige.slice(eintrag.code.length + 1)));
+    // Mit Uhrzeit „08–13“, sonst die Stunden kurz („6,25“, „8“).
+    const zeit = eintrag.von && eintrag.bis ? anzeige.slice(eintrag.code.length + 1) : kurzStunden(eintrag.stunden);
+    const belegt = element('span', { class: 'belegt' }, element('span', { class: 'kz' }, eintrag.code),
+      zeit ? element('small', {}, zeit) : null);
+    if (farbe) { belegt.style.background = farbe; belegt.style.color = textfarbe(farbe); }
+    td.append(belegt);
     titel.push(`${anzeige} (${eintrag.quelle})`);
     if (eintrag.freigabe_id && eintrag.wunsch_geaendert) {
       td.append(element('span', { class: 'warn', title: HINWEIS_WUNSCH_GEAENDERT }, '!'));
@@ -181,22 +225,33 @@ function zelle(m, tag, farben) {
 function zeichneRaster() {
   const farben = new Map(daten.codes.map((c) => [c.id, c.farbe]));
   const gruppen = wochenGruppen(daten.tage);
-  const kwZeile = element('tr', {}, element('th', { class: 'abw-name' }, 'KW'),
+  const spalten = element('colgroup', {}, element('col', { class: 'name-spalte' }), daten.tage.map(() => element('col', {})));
+  const kwZeile = element('tr', { class: 'kw-zeile' }, element('th', { class: 'abw-name' }, 'KW'),
     gruppen.map((g) => element('th', { colspan: g.tage.length, class: 'abw-kw' }, `KW ${g.kw}`)));
   const tagZeile = element('tr', {}, element('th', { class: 'abw-name' }, 'Mitarbeiter'),
     daten.tage.map((t) => element('th', {
-      class: ['abw-tag', ...zellenKlasse(t)].join(' '), title: [t.feiertag, t.schulferien].filter(Boolean).join(' · ') || null,
+      class: ['abw-tag', ...tagKlassen(t)].join(' '), 'data-datum': tagIso(t.datum),
+      title: [t.feiertag, t.schulferien].filter(Boolean).join(' · ') || null,
     }, element('span', {}, WOCHENTAGE[t.wochentag - 1]), element('small', {}, String(Number(tagIso(t.datum).slice(8)))))));
   const zeilen = daten.mitarbeiter.map((m) => element('tr', { class: m.aktiv ? '' : 'inaktiv' },
-    element('th', { class: 'abw-name' }, m.name),
+    element('th', { class: 'abw-name', title: m.name }, m.name),
     daten.tage.map((t) => zelle(m, t, farben))));
-  const summe = element('tr', { class: 'abw-summe' }, element('th', { class: 'abw-name' }, 'Summe'),
-    daten.tage.map((t) => {
-      const s = daten.summen?.[tagIso(t.datum)];
-      return element('td', { class: 'abw-zelle' }, s ? stundenDE(s) : '');
-    }));
-  rahmen.raster.replaceChildren(element('div', { class: 'abw-scroll' },
-    element('table', { class: 'abw-tabelle' }, element('thead', {}, kwZeile, tagZeile), element('tbody', {}, zeilen, summe))));
+  const summe = element('tr', { class: 'abw-summe' }, element('th', { class: 'abw-name' }, 'Summe (h)'),
+    daten.tage.map((t) => element('td', { class: ['zahl', ...tagKlassen(t)].join(' '), 'data-datum': tagIso(t.datum) },
+      kurzStunden(daten.summen?.[tagIso(t.datum)]))));
+  const tabelle = element('table', { class: 'raster abw-tabelle' },
+    spalten, element('thead', {}, kwZeile, tagZeile), element('tbody', {}, zeilen, summe));
+  tabelle.style.minWidth = `${NAME_SPALTE_PX + daten.tage.length * MIN_SPALTE_PX}px`;
+  hoverDatum = null;
+  rahmen.raster.replaceChildren(element('div', { class: 'raster-scroll' }, tabelle));
+}
+
+// Spalten-Hover: alle Zellen desselben Datums (Kopf, Mitarbeiter, Summe) bekommen die Klasse spalte-hover.
+function spalteHover(datum) {
+  if (datum === hoverDatum) return;
+  for (const z of rahmen.raster.querySelectorAll('.spalte-hover')) z.classList.remove('spalte-hover');
+  hoverDatum = datum;
+  if (datum) for (const z of rahmen.raster.querySelectorAll(`[data-datum="${datum}"]`)) z.classList.add('spalte-hover');
 }
 
 // ---------------------------------------------------------------- Ziehen (Pointer-Events)
@@ -267,41 +322,6 @@ async function beiPointerAuf(e) {
 }
 
 // ---------------------------------------------------------------- Dialoge
-
-// aktionen: [{ text, aktion, danach, sekundaer }]. Fehler erscheinen im Dialog; bei Erfolg schließt er und `danach` läuft.
-function dialog(titel, koerper, aktionen, beimSchliessen = () => {}) {
-  const fehlerZeile = element('p', { class: 'meldung fehler', role: 'alert', hidden: true });
-  const knoepfe = aktionen.map((a) => element('button', {
-    type: 'button', class: a.sekundaer ? 'knopf' : '',
-    onclick: async () => {
-      fehlerZeile.hidden = true;
-      alle.forEach((k) => { k.disabled = true; });
-      let geschafft = false;
-      try {
-        await a.aktion();
-        geschafft = true;
-        d.close();
-      } catch (fehler) {
-        if (fehler.behandelt) d.close();
-        else { fehlerZeile.textContent = fehlerText(fehler.message); fehlerZeile.hidden = false; }
-      } finally {
-        alle.forEach((k) => { k.disabled = false; });
-      }
-      // Fehler beim Neuladen erscheinen auf der Seite, der Dialog ist dann schon geschlossen.
-      if (geschafft && a.danach) {
-        try { await a.danach(); } catch (fehler) { zeigeFehler(fehler); }
-      }
-    },
-  }, a.text));
-  const abbrechen = element('button', { type: 'button', class: 'knopf', onclick: () => d.close() }, 'Abbrechen');
-  const alle = [...knoepfe, abbrechen];
-  const d = element('dialog', { class: 'abw-dialog' }, element('h2', {}, titel), ...koerper, fehlerZeile,
-    element('div', { class: 'dialog-knoepfe' }, ...alle));
-  d.addEventListener('close', () => { d.remove(); beimSchliessen(); });
-  document.body.append(d);
-  d.showModal();
-  return d;
-}
 
 function pruefeZeiten(von, bis) {
   if (!von !== !bis || (von && bis <= von)) throw new Error('ZEITEN_UNGUELTIG');
@@ -457,7 +477,7 @@ async function oeffneWiederholung() {
   }]);
 }
 
-// ---------------------------------------------------------------- Seitenleiste „Urlaub <Jahr>“
+// ---------------------------------------------------------------- Übersicht „Urlaub <Jahr>“ (unter dem Raster)
 
 function tageIn(von, bis) {
   const tage = [];
@@ -478,20 +498,36 @@ function offeneStunden(m) {
   return tage * ((m.wochenstunden || 0) / teiler);
 }
 
+// Zahl als Tabellenzelle; unter 0 rot und mit echtem Minuszeichen.
+function zahlZelle(wert, format, attrs = {}) {
+  if (wert == null) return element('td', { class: 'zahl', ...attrs }, '–');
+  const minus = wert < 0;
+  return element('td', { class: minus ? 'zahl minus' : 'zahl', ...attrs }, `${minus ? '−' : ''}${format(Math.abs(wert))}`);
+}
+
+const tageDE = (n) => n.toFixed(1).replace('.', ',');
+
 function zeichneSeite() {
+  const offen = rahmen.seite.querySelector('details')?.open ?? true; // Zugeklappt bleibt zugeklappt
   const urlaub = new Map((daten.urlaub || []).map((u) => [u.mitarbeiter_id, u]));
   const zeilen = daten.mitarbeiter.filter((m) => m.aktiv).map((m) => {
     const u = urlaub.get(m.id) || { anspruch: 0, rest_vorjahr: 0, genehmigt: 0, rest: 0 };
+    const stundenProTag = (m.wochenstunden || 0) / teiler; // wie die Stundenregel „teiler“
     return element('tr', {}, element('th', {}, m.name),
-      element('td', { title: `davon Rest Vorjahr ${stundenDE(u.rest_vorjahr)} h` }, stundenDE(u.anspruch + u.rest_vorjahr)),
-      element('td', {}, stundenDE(u.genehmigt)), element('td', {}, stundenDE(offeneStunden(m))),
-      element('td', {}, stundenDE(u.rest)));
+      zahlZelle(u.anspruch + u.rest_vorjahr, stundenDE, { title: `davon Rest Vorjahr ${stundenDE(u.rest_vorjahr)} h` }),
+      zahlZelle(u.genehmigt, stundenDE), zahlZelle(offeneStunden(m), stundenDE),
+      zahlZelle(u.rest, stundenDE), zahlZelle(stundenProTag ? u.rest / stundenProTag : null, tageDE));
   });
-  rahmen.seite.replaceChildren(element('div', { class: 'box' }, element('h2', {}, `Urlaub ${jahr}`),
-    element('table', { class: 'abw-urlaub' },
-      element('thead', {}, element('tr', {}, ['Mitarbeiter', 'Anspruch', 'genehmigt', 'offen im Monat (geschätzt)', 'Rest'].map((t) => element('th', {}, t)))),
-      element('tbody', {}, zeilen)),
-    element('p', { class: 'hinweis' }, 'Angaben in Stunden. „offen im Monat“ zählt nur die offenen Wunschtage des angezeigten Monats; die übrigen Spalten gelten für das ganze Jahr.')));
+  const details = element('details', { class: 'karte abw-urlaub-box', open: offen },
+    element('summary', {}, element('h2', {}, `Urlaub ${jahr}`)),
+    element('div', { class: 'tabelle-scroll' }, element('table', { class: 'abw-urlaub' },
+      element('thead', {}, element('tr', {},
+        element('th', {}, 'Mitarbeiter'),
+        ['Anspruch', 'genehmigt', 'offen im Monat', 'Rest (h)', 'Rest (Tage)'].map((t) => element('th', { class: 'zahl' }, t)))),
+      element('tbody', {}, zeilen))),
+    element('p', { class: 'hinweis' }, 'Angaben in Stunden; „Rest (Tage)“ = Rest ÷ (Wochenstunden ÷ Teiler). '
+      + '„offen im Monat“ schätzt die offenen Wunschtage des angezeigten Monats, die übrigen Spalten gelten für das ganze Jahr.'));
+  rahmen.seite.replaceChildren(details);
 }
 
 reiter.abwesenheiten = { zeigen };
