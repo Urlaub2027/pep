@@ -39,6 +39,7 @@ let zug = null; // laufendes Ziehen: { mitarbeiter, zellen, start, ende, pointer
 let hervor = null; // in der Regelprüfung angeklickter Eintrag
 let wunschTag = null; // Wochentag-Index (0 = Mo), der nach dem Blättern gewählt bleibt
 const stapel = rueckgaengigStapel(20);
+const laufend = new Set(); // „mitarbeiter|datum“ mit offener Anfrage: dort startet kein neuer Strich
 const rahmen = {}; // Container: kopf, raster, seite
 
 const darfZeichnen = () => ich?.rolle === 'leitung' || ich?.rolle === 'stellvertretung';
@@ -51,6 +52,7 @@ const pauseIds = () => new Set(woche.bereiche.filter((b) => b.art === 'pause').m
 const segmenteVon = (mid, d = datum) => woche.bloecke.filter((b) => b.mitarbeiter_id === mid && b.datum === d);
 const abwesenheitVon = (mid) => woche.abwesenheiten.find((a) => a.mitarbeiter_id === mid && a.datum === datum);
 const kommentarVon = (mid) => woche.kommentare.find((k) => k.mitarbeiter_id === mid && k.datum === datum)?.text ?? '';
+const inWoche = (d) => Boolean(woche?.tage.some((t) => t.datum === d));
 const nameVon = (mid) => woche.mitarbeiter.find((m) => m.id === mid)?.name ?? '';
 
 // Stunden kurz und mit Komma: 7,5 · 8 · 6,25; negative mit echtem Minuszeichen.
@@ -197,7 +199,7 @@ function zeichneKopf() {
         element('strong', { class: 'ep-kw', title: `${datumDE(woche.montag)} – ${datumDE(plusTage(woche.montag, 6))}` }, `KW ${woche.kw}`),
         element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Nächste Woche', onclick: () => wechsleWoche(1) }, '▶'),
         auswahl,
-        element('button', { type: 'button', class: 'knopf', onclick: () => springeZu(heuteLokal) }, 'Heute')),
+        element('button', { type: 'button', class: 'knopf', onclick: () => springeZu(woche?.heute ?? heuteLokal) }, 'Heute')),
       element('div', { class: 'ep-tage', role: 'group', 'aria-label': 'Tag' }, woche.tage.map(tagesReiter))),
     element('div', { class: 'werkzeug-zeile' },
       pinselLeiste(),
@@ -250,11 +252,15 @@ function bearbeiteKommentar(td, m) {
     if (!abbrechen && neu !== alt) {
       try {
         await aufruf('pep_kommentar_setzen', { p_mitarbeiter_id: m.id, p_datum: tagDesKommentars, p_text: neu });
-        woche.kommentare = woche.kommentare.filter((k) => !(k.mitarbeiter_id === m.id && k.datum === tagDesKommentars));
-        if (neu) woche.kommentare.push({ mitarbeiter_id: m.id, datum: tagDesKommentars, text: neu });
+        if (inWoche(tagDesKommentars)) {
+          woche.kommentare = woche.kommentare.filter((k) => !(k.mitarbeiter_id === m.id && k.datum === tagDesKommentars));
+          if (neu) woche.kommentare.push({ mitarbeiter_id: m.id, datum: tagDesKommentars, text: neu });
+        }
       } catch (fehler) { zeigeFehler(fehler); }
     }
-    td.replaceWith(kommentarZelle(m));
+    // Wurde die Zeile inzwischen neu gezeichnet, gilt die neue Zelle; nach einem Tageswechsel bleibt alles, wie es ist.
+    const ziel = td.isConnected ? td : rahmen.raster.querySelector(`td[data-kommentar="${m.id}"]`);
+    if (ziel && tagDesKommentars === datum) ziel.replaceWith(kommentarZelle(m));
   });
   td.replaceChildren(feld);
   feld.focus();
@@ -288,7 +294,7 @@ function zeile(m, sp, oeffnung) {
       const beginn = !vorher || vorher.block_id !== z.block_id || vorher.unbesetzt !== z.unbesetzt;
       td.classList.add('belegt');
       if (z.unbesetzt) td.classList.add('unbesetzt');
-      else if (b?.farbe) { td.style.background = b.farbe; td.style.color = textfarbe(b.farbe); }
+      else if (b?.farbe) { td.style.backgroundColor = b.farbe; td.style.color = textfarbe(b.farbe); }
       if (beginn) {
         td.classList.add('ep-start');
         td.append(element('span', { class: 'ep-kz' }, b?.kuerzel ?? '?'));
@@ -380,6 +386,7 @@ function zeichneZeilen(ids) {
     if (m && alt) alt.replaceWith(zeile(m, sp, oeffnung));
   }
   tabelle.querySelector('tfoot').replaceWith(abdeckungsZeilen(sp, oeffnung));
+  for (const x of tabelle.querySelectorAll('.hervor, .hervor-zelle')) x.classList.remove('hervor', 'hervor-zelle');
   hervor = null;
   zeichneSeite();
 }
@@ -414,6 +421,7 @@ function beiPointerAb(e) {
   const td = e.target.closest?.('td.ep-z');
   if (!td) return;
   const tr = td.parentElement;
+  if (laufend.has(`${tr.dataset.mitarbeiter}|${datum}`)) return; // erst die Antwort des vorigen Strichs abwarten
   zug = {
     mitarbeiter: Number(tr.dataset.mitarbeiter), zellen: [...tr.querySelectorAll('td.ep-z')],
     start: Number(td.dataset.i), ende: Number(td.dataset.i), pointerId: e.pointerId,
@@ -439,22 +447,32 @@ async function beiPointerAuf(e) {
   const { von, bis } = strich(spalten(), start, ende);
   const tagDesStrichs = datum;
   const vorher = gespeicherteZeile(mitarbeiter, tagDesStrichs);
+  const schluessel = `${mitarbeiter}|${tagDesStrichs}`;
+  laufend.add(schluessel);
   try {
     const antwort = await aufruf('pep_plan_malen', {
       p_mitarbeiter_id: mitarbeiter, p_datum: tagDesStrichs, p_von: von, p_bis: bis,
       p_bereich_id: pinsel === 'radieren' ? null : Number(pinsel),
     });
     if (!antwort) return; // Vorschau ohne Datenbank
-    uebernehme(antwort, [mitarbeiter]);
-    if (JSON.stringify(gespeicherteZeile(mitarbeiter, tagDesStrichs)) !== JSON.stringify(vorher)) {
+    if (inWoche(tagDesStrichs)) {
+      uebernehme(antwort, [mitarbeiter]);
+      if (JSON.stringify(gespeicherteZeile(mitarbeiter, tagDesStrichs)) !== JSON.stringify(vorher)) {
+        stapel.merken({ mitarbeiterId: mitarbeiter, datum: tagDesStrichs, bloecke: vorher });
+      }
+      if (tagDesStrichs === datum) zeichneZeilen([mitarbeiter]);
+      else zeichneSeite(); // Tag inzwischen gewechselt: Wochenstunden trotzdem aktuell halten
+    } else {
+      // Woche inzwischen gewechselt: die Antwort gehört nicht zu den geladenen Daten, Rückgängig gilt trotzdem.
       stapel.merken({ mitarbeiterId: mitarbeiter, datum: tagDesStrichs, bloecke: vorher });
     }
-    if (tagDesStrichs === datum) zeichneZeilen([mitarbeiter]);
     rahmen.rueckgaengig.disabled = stapel.leer();
   } catch (fehler) {
     if (fehler.behandelt) return;
     sperreAmZeiger(fehlerText(fehler.message), e.clientX, e.clientY);
     meldung(fehlerText(fehler.message));
+  } finally {
+    laufend.delete(schluessel);
   }
 }
 
@@ -496,12 +514,14 @@ async function rueckgaengig() {
   const eintrag = stapel.holen();
   rahmen.rueckgaengig.disabled = stapel.leer();
   if (!eintrag) return;
+  const schluessel = `${eintrag.mitarbeiterId}|${eintrag.datum}`;
+  laufend.add(schluessel);
   try {
     const antwort = await aufruf('pep_plan_zeile_setzen', {
       p_mitarbeiter_id: eintrag.mitarbeiterId, p_datum: eintrag.datum, p_bloecke: eintrag.bloecke,
     });
     if (!antwort) return;
-    if (woche.tage.some((t) => t.datum === eintrag.datum)) {
+    if (inWoche(eintrag.datum)) {
       uebernehme(antwort, [eintrag.mitarbeiterId]);
       if (eintrag.datum === datum) zeichneZeilen([eintrag.mitarbeiterId]);
       else waehleTag(eintrag.datum);
@@ -511,6 +531,8 @@ async function rueckgaengig() {
     meldung(`Rückgängig: ${nameVon(eintrag.mitarbeiterId) || 'Zeile'}, ${datumDE(eintrag.datum)}`, 'ok');
   } catch (fehler) {
     zeigeFehler(fehler);
+  } finally {
+    laufend.delete(schluessel);
   }
 }
 
@@ -535,8 +557,13 @@ function markiereEintrag(e, knopf) {
   (zellenDerZeit[0] ?? reihe.firstElementChild).scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
+const anzahl = (n, eins, mehr) => `${n} ${n === 1 ? eins : mehr}`;
+
 function regelBox() {
-  const liste = woche.pruefung[datum] ?? [];
+  // Je Schwere zuerst Einträge mit Uhrzeit, dann die Wochenregeln (die sich an jedem Tag wiederholen);
+  // sonst gilt die Reihenfolge des Servers (sort ist stabil, Warnungen liefert er vor Hinweisen).
+  const rang = (e) => (e.schwere === 'warnung' ? 0 : 2) + (e.von ? 0 : 1);
+  const liste = [...(woche.pruefung[datum] ?? [])].sort((a, b) => rang(a) - rang(b));
   const eintraege = liste.map((e) => {
     const knopf = element('button', {
       type: 'button', class: `ep-eintrag ${e.schwere === 'warnung' ? 'warnung' : 'hinweis-gelb'}`, 'aria-pressed': 'false',
@@ -547,7 +574,7 @@ function regelBox() {
   const warnungen = liste.filter((e) => e.schwere === 'warnung').length;
   return element('section', { class: 'karte ep-box' },
     element('h3', {}, `Regelprüfung ${WOCHENTAGE[tag().wochentag - 1]} ${datumDE(datum).slice(0, 6)}`,
-      liste.length ? element('small', {}, ` ${warnungen} Warnungen, ${liste.length - warnungen} Hinweise`) : null),
+      liste.length ? element('small', {}, ` ${anzahl(warnungen, 'Warnung', 'Warnungen')}, ${anzahl(liste.length - warnungen, 'Hinweis', 'Hinweise')}`) : null),
     liste.length ? element('ul', { class: 'ep-regeln' }, eintraege) : element('p', { class: 'hinweis' }, 'Keine Auffälligkeiten.'));
 }
 
