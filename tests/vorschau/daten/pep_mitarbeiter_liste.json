@@ -121,5 +121,27 @@
   "vertragsart": "fuehrung",
   "wochenstunden": 42,
   "personalnummer": null
+ },
+ {
+  "id": 13,
+  "name": "Reserve, Mia",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA"
+  ],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 20,
+  "personalnummer": null
+ },
+ {
+  "id": 14,
+  "name": "Aushilfe, Nico",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA"
+  ],
+  "vertragsart": "minijob",
+  "wochenstunden": 10,
+  "personalnummer": null
  }
 ]

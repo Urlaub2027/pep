@@ -6,7 +6,7 @@ import {
 } from '../docs/zeit.js';
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
-  rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis,
+  rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
 } from '../docs/plan-raster.js';
 
 test('Zeit: Minuten, Uhrzeit, Halbstunden', () => {
@@ -193,4 +193,19 @@ test('kopierErgebnis: Meldung nach dem Kopieren, Nullen fallen weg', () => {
     uebersprungen: [{ datum: '2026-11-15', grund: 'geschlossen' }] }, 'geladen'),
   '6 Tage geladen: 12 Blöcke, 3 ausgelassen. Übersprungen: So 15.11. (geschlossen). '
     + 'Nicht mehr beschäftigt: Test, Anna · gelöschter Mitarbeiter');
+});
+
+test('tageText: ein Tag oder Spanne mit Wochentagen', () => {
+  assert.equal(tageText('2026-11-09', '2026-11-09'), 'Mo 09.11.');
+  assert.equal(tageText('2026-11-09', '2026-11-11'), 'Mo 09.11.–Mi 11.11.');
+  assert.equal(tageText('2026-12-31', '2027-01-02'), 'Do 31.12.–Sa 02.01.');
+});
+
+test('lueckeText: offene Wochenstunden des Ersatzes, voll oder über Soll', () => {
+  assert.equal(lueckeText(12.5), 'noch 12,5 h offen');
+  assert.equal(lueckeText(37.5), 'noch 37,5 h offen');
+  assert.equal(lueckeText('8'), 'noch 8 h offen');
+  assert.equal(lueckeText(0), 'Woche voll');
+  assert.equal(lueckeText(-1e-9), 'Woche voll');
+  assert.equal(lueckeText(-1.25), '1,25 h über Soll');
 });

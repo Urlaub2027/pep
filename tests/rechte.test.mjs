@@ -3,7 +3,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { neueDatenbank, als, pepBenutzer, filiale } from './helfer.mjs';
 
-let db, leitung, stellv, azubi, ohne, fil, ma, vorlage;
+let db, leitung, stellv, azubi, ohne, fil, ma, jo, vorlage;
 
 const aufruf = (nutzer, sql) => als(db, 'authenticated', nutzer, sql);
 
@@ -19,6 +19,17 @@ before(async () => {
   vorlage = (await db.query(`insert into pep.vorlagen (filiale_id, name, art, daten)
     values ($1, 'Rechte', 'tag', $2::jsonb) returning id`,
     [fil, JSON.stringify([{ wochentag: null, mitarbeiter_id: ma, von: '08:00', bis: '12:00', bereich_id: 2 }])])).rows[0].id;
+  // Krank/ZA und Ersatz: Ida mit Vertrag, KA-Block und Krankmeldung am 03.05.2027, Jo als möglicher Ersatz.
+  // Ohne Rechtecheck würde pep_schnell_abwesend einen Tag schreiben und pep_ersatz_uebernehmen den Block verschieben.
+  jo = (await aufruf(leitung, `select public.pep_mitarbeiter_speichern(null, '{"name":"Test, Jo"}') as r`))[0].r;
+  await db.query(`insert into pep.vertraege (mitarbeiter_id, gueltig_ab, vertragsart, wochenstunden)
+    values ($1, '2026-01-01', 'vollzeit', 37.5), ($2, '2026-01-01', 'vollzeit', 37.5)`, [ma, jo]);
+  await db.query(`insert into pep.kompetenzen (mitarbeiter_id, bereich_id)
+    select $1, id from pep.bereiche where filiale_id = $2 and kuerzel = 'KA'`, [jo, fil]);
+  await db.query(`insert into pep.plan_bloecke (filiale_id, mitarbeiter_id, datum, von, bis, bereich_id)
+    select $1, $2, '2027-05-03', '08:00', '12:00', id from pep.bereiche where filiale_id = $1 and kuerzel = 'KA'`, [fil, ma]);
+  await db.query(`insert into pep.abwesenheiten (filiale_id, mitarbeiter_id, code_id, datum, stunden, quelle)
+    select $1, $2, id, '2027-05-03', 6.25, 'manuell' from pep.abwesenheitscodes where filiale_id = $1 and code = 'KM'`, [fil, ma]);
 });
 
 const pepFunktionen = async () => (await db.query(`
@@ -42,12 +53,13 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 // Nur lesende Funktionen; alles andere gilt als schreibend und muss unten abgedeckt sein.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
-  'pep_pruefung_zeitraum', 'pep_vorlagen'];
+  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
   'pep_plan_malen', 'pep_plan_zeile_setzen', 'pep_kommentar_setzen',
-  'pep_tag_kopieren', 'pep_woche_kopieren', 'pep_vorlage_speichern', 'pep_vorlage_laden', 'pep_vorlage_loeschen'];
+  'pep_tag_kopieren', 'pep_woche_kopieren', 'pep_vorlage_speichern', 'pep_vorlage_laden', 'pep_vorlage_loeschen',
+  'pep_schnell_abwesend', 'pep_ersatz_uebernehmen'];
 // Legt für die Leitung ohne Filiale die Filiale an – das ist gewollt und in basis.test.mjs geprüft.
 const OHNE_FILIALE_ERLAUBT = ['pep_filiale_anlegen'];
 
@@ -83,14 +95,16 @@ const aufrufe = () => ({
   pep_plan_malen: `select public.pep_plan_malen(${ma}, '2027-05-03', '08:00', '12:00', 2)`,
   pep_plan_zeile_setzen: `select public.pep_plan_zeile_setzen(${ma}, '2027-05-03', '[{"von":"08:00","bis":"12:00","bereich_id":2}]')`,
   pep_kommentar_setzen: `select public.pep_kommentar_setzen(${ma}, '2027-05-03', 'Test')`,
-  // Ida ist die einzige aktive Mitarbeiterin: ohne Rechtecheck würde die Position geschrieben.
-  pep_mitarbeiter_reihenfolge: `select public.pep_mitarbeiter_reihenfolge(array[${ma}]::bigint[])`,
+  // Ida und Jo sind die einzigen aktiven Mitarbeiter: ohne Rechtecheck würde die Position geschrieben.
+  pep_mitarbeiter_reihenfolge: `select public.pep_mitarbeiter_reihenfolge(array[${ma}, ${jo}]::bigint[])`,
   // Kopieren und Laden schreiben je geöffnetem Zieltag einen Protokolleintrag, auch ohne passende Blöcke.
   pep_tag_kopieren: `select public.pep_tag_kopieren('2027-05-03', array['2027-05-10']::date[], 'ersetzen')`,
   pep_woche_kopieren: `select public.pep_woche_kopieren(2027, 18, '[{"jahr":2027,"kw":19}]', 'ersetzen')`,
   pep_vorlage_speichern: `select public.pep_vorlage_speichern('Test', 'tag', '2027-05-03')`,
   pep_vorlage_laden: `select public.pep_vorlage_laden(${vorlage}, '2027-05-10', 'ersetzen')`,
   pep_vorlage_loeschen: `select public.pep_vorlage_loeschen(${vorlage})`,
+  pep_schnell_abwesend: `select public.pep_schnell_abwesend(${ma}, 'ZA', '2027-05-04', '2027-05-04')`,
+  pep_ersatz_uebernehmen: `select public.pep_ersatz_uebernehmen(${ma}, '2027-05-03', ${jo})`,
 });
 
 const zaehlen = async () => {

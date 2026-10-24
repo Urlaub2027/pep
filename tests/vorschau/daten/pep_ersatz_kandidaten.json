@@ -1,0 +1,37 @@
+{
+ "unbesetzt": [
+  {
+   "bis": "20:00",
+   "von": "16:00",
+   "bereich_id": 1
+  }
+ ],
+ "kandidaten": [
+  {
+   "name": "Reserve, Mia",
+   "luecke": 12,
+   "hinweise": [
+    "Kinderbetreuung: nur bis 18:00"
+   ],
+   "spaet_woche": 0,
+   "mitarbeiter_id": 13,
+   "samstage_monat": 0
+  },
+  {
+   "name": "Aushilfe, Nico",
+   "luecke": 10,
+   "hinweise": [],
+   "spaet_woche": 0,
+   "mitarbeiter_id": 14,
+   "samstage_monat": 0
+  },
+  {
+   "name": "Platzhalter, Gustav",
+   "luecke": 5,
+   "hinweise": [],
+   "spaet_woche": 0,
+   "mitarbeiter_id": 7,
+   "samstage_monat": 1
+  }
+ ]
+}

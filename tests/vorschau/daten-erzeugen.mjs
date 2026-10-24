@@ -63,8 +63,19 @@ for (const [i, p] of Object.entries(plan)) {
 // Montag: Kassenkraft macht 11:00 Pause, niemand löst ab (Kasse unbesetzt + Pausenablöse fehlt).
 await malen(ids[1], TAGE[0], '07:00', '15:30', 'KA');
 await malen(ids[1], TAGE[0], '11:00', '11:30', 'PA');
-// Montag: Krankmeldung über geplanten Blöcken (werden unbesetzt), Berufsschule 08–13 mitten in der Frühschicht.
-await setzen(ids[3], 'KM', TAGE[0], TAGE[0]);
+// Zwei Kassenkräfte mit wenig Stunden als mögliche Ersatzleute; eine mag bevorzugt nur bis 18:00.
+const reserve = [];
+for (const [name, art, std] of [['Reserve, Mia', 'teilzeit', 20], ['Aushilfe, Nico', 'minijob', 10]]) {
+  const id = await q('select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r', [JSON.stringify({ name })]);
+  await q('select public.pep_vertrag_speichern($1, $2::jsonb) as r', [id, JSON.stringify({ vertragsart: art, wochenstunden: std, gueltig_ab: '2026-01-01' })]);
+  await q('select public.pep_kompetenz_setzen($1, $2, true) as r', [id, bereich.KA]);
+  reserve.push(id);
+}
+for (const t of [1, 3]) await malen(reserve[0], TAGE[t], '08:00', '12:00', 'KA');
+await q('select public.pep_wochenvorgabe_speichern($1, $2::jsonb) as r', [reserve[0], JSON.stringify(
+  { art: 'nur_zwischen', von: '06:00', bis: '18:00', pflicht: false, gueltig_von: '2026-01-01', notiz: 'Kinderbetreuung: nur bis 18:00' })]);
+// Montag: Krankmeldung (Schnellerfassung) über geplanten Blöcken (werden unbesetzt), Berufsschule 08–13 mitten in der Frühschicht.
+await q(`select public.pep_schnell_abwesend($1, 'KM', $2::date, $2::date) as r`, [ids[3], TAGE[0]]);
 await q(`select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, 5, '08:00', '13:00', null) as r`, [ids[8], code.BS, TAGE[0]]);
 await malen(ids[8], TAGE[0], '13:30', '17:30', 'TS');
 await q('select public.pep_kommentar_setzen($1, $2::date, $3) as r', [ids[5], TAGE[0], 'Lieferung TroSo annehmen']);
@@ -83,6 +94,8 @@ await db.exec('rollback');
 const aus = new URL('./daten/', import.meta.url);
 const schreib = (name, wert) => writeFileSync(new URL(`${name}.json`, aus), JSON.stringify(wert, null, 1));
 schreib('pep_ich', await q('select public.pep_ich() as r'));
+// Die Attrappe kennt keine Parameter: Kandidaten für den ersten roten Block der Woche (Krankmeldung Montag).
+schreib('pep_ersatz_kandidaten', await q('select public.pep_ersatz_kandidaten($1, $2::date) as r', [ids[3], TAGE[0]]));
 schreib('pep_einstellungen', e);
 schreib('pep_abwesenheiten', await q('select public.pep_abwesenheiten(2026, 11) as r'));
 schreib('pep_mitarbeiter_liste', await q('select public.pep_mitarbeiter_liste() as r'));

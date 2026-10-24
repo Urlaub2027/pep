@@ -141,3 +141,19 @@ export function kopierErgebnis(r, verb = 'kopiert') {
   if (r.ausgeschieden?.length) text += `. Nicht mehr beschäftigt: ${r.ausgeschieden.join(' · ')}`;
   return text;
 }
+
+// ---------------------------------------------------------------- Krank/ZA und Ersatz
+
+// „Mo 09.11.“ oder „Mo 09.11.–Mi 11.11.“
+export function tageText(von, bis) {
+  return von === bis ? tagKurz(von) : `${tagKurz(von)}–${tagKurz(bis)}`;
+}
+
+// Offene Wochenstunden eines Ersatzes (luecke = Soll − geplant, F6): „noch 12,5 h offen“, „Woche voll“, „1,25 h über Soll“.
+export function lueckeText(luecke) {
+  const n = Math.round(Number(luecke) * 100) / 100 || 0;
+  const zahl = (x) => String(x).replace('.', ',');
+  if (n > 0) return `noch ${zahl(n)} h offen`;
+  if (n < 0) return `${zahl(-n)} h über Soll`;
+  return 'Woche voll';
+}

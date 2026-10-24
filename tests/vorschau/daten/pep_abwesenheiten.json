@@ -421,6 +421,20 @@
    "genehmigt": 0,
    "rest_vorjahr": 0,
    "mitarbeiter_id": 12
+  },
+  {
+   "rest": 0,
+   "anspruch": 0,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 13
+  },
+  {
+   "rest": 0,
+   "anspruch": 0,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 14
   }
  ],
  "wuensche": [],
@@ -575,7 +589,7 @@
      "von": null,
      "code": "KM",
      "notiz": null,
-     "quelle": "manuell",
+     "quelle": "schnell",
      "code_id": 2,
      "stunden": 3.33,
      "freigabe_id": null,
@@ -867,6 +881,20 @@
    "tage": {},
    "aktiv": true,
    "wochenstunden": 42
+  },
+  {
+   "id": 13,
+   "name": "Reserve, Mia",
+   "tage": {},
+   "aktiv": true,
+   "wochenstunden": 20
+  },
+  {
+   "id": 14,
+   "name": "Aushilfe, Nico",
+   "tage": {},
+   "aktiv": true,
+   "wochenstunden": 10
   }
  ]
 }

@@ -255,7 +255,7 @@
    "mitarbeiter_id": 8
   },
   {
-   "id": 269,
+   "id": 271,
    "bis": "08:00",
    "von": "06:00",
    "datum": "2026-11-09",
@@ -264,7 +264,7 @@
    "mitarbeiter_id": 9
   },
   {
-   "id": 269,
+   "id": 271,
    "bis": "10:00",
    "von": "08:00",
    "datum": "2026-11-09",
@@ -273,7 +273,7 @@
    "mitarbeiter_id": 9
   },
   {
-   "id": 270,
+   "id": 272,
    "bis": "12:00",
    "von": "10:00",
    "datum": "2026-11-09",
@@ -282,7 +282,7 @@
    "mitarbeiter_id": 9
   },
   {
-   "id": 271,
+   "id": 273,
    "bis": "17:30",
    "von": "13:30",
    "datum": "2026-11-09",
@@ -550,6 +550,15 @@
    "unbesetzt": false,
    "bereich_id": 7,
    "mitarbeiter_id": 12
+  },
+  {
+   "id": 269,
+   "bis": "12:00",
+   "von": "08:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 13
   },
   {
    "id": 46,
@@ -919,6 +928,15 @@
    "unbesetzt": false,
    "bereich_id": 8,
    "mitarbeiter_id": 11
+  },
+  {
+   "id": 270,
+   "bis": "12:00",
+   "von": "08:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 13
   },
   {
    "id": 22,
@@ -1595,6 +1613,14 @@
     "art": "wochenstunden_unter",
     "bis": null,
     "von": null,
+    "text": "Woche: 8,00 h von 20,00 h verplant",
+    "schwere": "hinweis",
+    "mitarbeiter_id": 13
+   },
+   {
+    "art": "wochenstunden_unter",
+    "bis": null,
+    "von": null,
     "text": "Woche: 36,25 h von 37,50 h verplant",
     "schwere": "hinweis",
     "mitarbeiter_id": 8
@@ -1738,6 +1764,14 @@
     "text": "Woche: 19,33 h von 20,00 h verplant",
     "schwere": "hinweis",
     "mitarbeiter_id": 4
+   },
+   {
+    "art": "wochenstunden_unter",
+    "bis": null,
+    "von": null,
+    "text": "Woche: 8,00 h von 20,00 h verplant",
+    "schwere": "hinweis",
+    "mitarbeiter_id": 13
    }
   ],
   "2026-11-13": [
@@ -1871,16 +1905,16 @@
   "jahr": 2026,
   "soll": null,
   "montag": "2026-11-09",
-  "geplant": 331,
+  "geplant": 339,
   "abwesend": 60.08,
   "ueberhang": null,
   "planumsatz": null,
-  "verfuegbar": 336.42,
+  "verfuegbar": 366.42,
   "davon_urlaub": 37.5,
-  "stundenvorgabe": 336.42,
+  "stundenvorgabe": 366.42,
   "vorgabe_quelle": "verfuegbar",
   "stundenleistung": 200,
-  "vertragsstunden": 396.5,
+  "vertragsstunden": 426.5,
   "stundenvorgabe_manuell": null
  },
  "kommentare": [
@@ -2130,6 +2164,46 @@
    ],
    "vertragsart": "fuehrung",
    "wochenstunden": 42,
+   "personalnummer": null
+  },
+  {
+   "id": 13,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Reserve, Mia",
+   "kompetenzen": [
+    1
+   ],
+   "vertragsart": "teilzeit",
+   "wochenstunden": 20,
+   "personalnummer": null
+  },
+  {
+   "id": 14,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Aushilfe, Nico",
+   "kompetenzen": [
+    1
+   ],
+   "vertragsart": "minijob",
+   "wochenstunden": 10,
    "personalnummer": null
   }
  ],

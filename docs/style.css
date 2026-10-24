@@ -435,6 +435,28 @@ th { background: var(--hell); font-weight: 600; }
 .pd-vorlage-text strong, .pd-vorlage-text small { display: block; overflow-wrap: anywhere; }
 .pd-vorlage-text small { color: var(--text-2); }
 
+/* Dialoge Krank/ZA und Ersatz (plan-dialoge.js) */
+.pd-zeitraum { display: grid; grid-template-columns: 1fr 1fr; gap: var(--a3); }
+.pd-unbesetzt { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a1) var(--a3); }
+.pd-block { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; color: var(--netto-rot); font-weight: 600;
+  border: 1px solid var(--netto-rot); border-radius: 4px; background: #fff5f5; }
+.pd-kandidaten { display: grid; gap: var(--a2); margin-bottom: var(--a3); }
+.pd-kandidat {
+  display: grid; gap: 2px; width: 100%; min-height: var(--knopf-hoehe); padding: var(--a2) var(--a3);
+  font: inherit; color: var(--text); text-align: left;
+  background: var(--flaeche); border: 1px solid var(--linie-stark); border-radius: 6px; cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer);
+}
+.pd-kandidat:hover, .pd-kandidat:focus-visible { background: var(--hover-gelb); border-color: var(--schwarz); }
+.pd-kandidat:disabled { cursor: default; opacity: 0.6; }
+.pd-kandidat.laeuft { opacity: 1; background: var(--hinweis); border-color: var(--schwarz); }
+.pd-kandidat-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--a1) var(--a3); }
+.pd-kandidat-kopf strong { overflow-wrap: anywhere; }
+.pd-luecke { font-weight: 600; color: var(--ok); white-space: nowrap; }
+.pd-luecke.ueber { color: var(--text-2); }
+.pd-kandidat small { color: var(--text-2); }
+.pd-hinweis { justify-self: start; padding: 1px 6px; font-size: 0.85rem; background: var(--hinweis); border-left: 3px solid var(--netto-gelb); border-radius: 3px; }
+
 /* ---------------------------------------------------------------- Reiter Mitarbeiter */
 
 .zweispaltig { display: grid; grid-template-columns: 320px 1fr; gap: var(--a4); align-items: start; }
