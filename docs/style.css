@@ -131,3 +131,43 @@ th { background: var(--hell); font-weight: 600; }
 .zeile .erklaerung { flex: 1 1 260px; }
 .zeile .feld input[type="color"] { width: 60px; padding: 2px; }
 .box h3 { margin: 16px 0 4px; font-size: 1rem; }
+
+/* Abwesenheiten */
+:root { --schulferien: #dff3df; --feiertag: #fff3a8; --geschlossen: #e4e4e4; }
+.abw-kopfzeile { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.abw-monat { min-width: 9em; text-align: center; }
+.abw-legende { margin-left: auto; }
+.abw-farbe { display: inline-block; width: 14px; height: 14px; vertical-align: middle; border: 1px solid var(--linie); background: #fff; }
+.abw-farbe.schulferien { background: var(--schulferien); }
+.abw-farbe.feiertag { background: var(--feiertag); }
+.abw-farbe.geschlossen { background: var(--geschlossen); }
+.abw-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+@media (max-width: 1300px) { .abw-layout { grid-template-columns: 200px minmax(0, 1fr); } .abw-seite { grid-column: 1 / -1; } }
+@media (max-width: 800px) { .abw-layout { grid-template-columns: 1fr; } }
+.abw-pal-eintrag { display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
+.abw-pal-eintrag input { width: 18px; height: 18px; margin: 0; }
+.abw-palette .knopf { margin-top: 8px; }
+.abw-scroll { overflow-x: auto; background: #fff; border: 1px solid var(--linie); }
+.abw-tabelle { width: auto; border-collapse: collapse; touch-action: none; user-select: none; }
+.abw-tabelle th, .abw-tabelle td { padding: 0; border: 1px solid var(--linie); text-align: center; font-size: 0.75rem; }
+.abw-tabelle th.abw-name { position: sticky; left: 0; z-index: 1; min-width: 130px; padding: 2px 6px; text-align: left; white-space: nowrap; background: var(--hell); }
+.abw-tag span, .abw-tag small { display: block; line-height: 1.15; }
+.abw-zelle { position: relative; width: 26px; min-width: 26px; max-width: 26px; height: 34px; line-height: 1.1; cursor: pointer; }
+.abw-zelle .kz { display: block; font-weight: 600; }
+.abw-zelle small { display: block; font-size: 0.6rem; }
+.abw-zelle .warn { position: absolute; top: 0; right: 1px; font-weight: 700; color: var(--netto-rot); }
+.abw-tabelle .schulferien { background: var(--schulferien); }
+.abw-tabelle .feiertag { background: var(--feiertag); }
+.abw-tabelle .wochenende, .abw-tabelle .geschlossen { background: var(--geschlossen); }
+.abw-zelle.wunsch { outline: 2px dashed var(--schwarz); outline-offset: -3px; }
+.abw-zelle.markiert { outline: 2px solid var(--schwarz); outline-offset: -2px; background: var(--netto-gelb); }
+.abw-tabelle tr.inaktiv th.abw-name { color: var(--grau); font-style: italic; }
+.abw-summe td, .abw-summe th { font-weight: 600; background: var(--hell); }
+.abw-urlaub th, .abw-urlaub td { font-size: 0.85rem; padding: 4px 6px; }
+.abw-urlaub td { text-align: right; }
+.abw-dialog { max-width: 420px; width: calc(100% - 32px); padding: 16px; border: 2px solid var(--schwarz); border-radius: 6px; }
+.abw-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+.abw-dialog .dialog-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.abw-info { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
+.abw-info dt { color: var(--grau); }
+.abw-info dd { margin: 0; }
