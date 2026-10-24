@@ -207,8 +207,13 @@ function kompetenzen() {
     const kasten = eingabe('checkbox', karte.kompetenzen.includes(b.id));
     kasten.addEventListener('change', async () => {
       kasten.disabled = true;
-      await speichere(() => aufruf('pep_kompetenz_setzen',
-        { p_mitarbeiter_id: karte.id, p_bereich_id: b.id, p_aktiv: kasten.checked }));
+      let gespeichert = false;
+      await speichere(async () => {
+        await aufruf('pep_kompetenz_setzen',
+          { p_mitarbeiter_id: karte.id, p_bereich_id: b.id, p_aktiv: kasten.checked });
+        gespeichert = true;
+      });
+      if (!gespeichert) kasten.checked = !kasten.checked; // Fehler: Haken zeigt wieder den Stand der Datenbank
       kasten.disabled = !darfSchreiben();
     });
     return element('label', { class: 'haken' }, kasten, ` ${b.name} (${b.kuerzel})`);
