@@ -12,7 +12,7 @@ const namen = ['Test, Anna', 'Muster, Ben', 'Beispiel, Cem', 'Probe, Dana', 'Dem
 const stunden = [37.5, 37.5, 30, 20, 37.5, 42, 25, 37.5, 30, 37.5, 20, 42];
 const ids = [];
 for (const [i, name] of namen.entries()) {
-  const id = await q('select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r', [JSON.stringify({ name })]);
+  const id = await q('select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r', [JSON.stringify({ name, personalnummer: String(90001 + i) })]); // erfundene Personalnummern
   await q('select public.pep_vertrag_speichern($1, $2::jsonb) as r', [id, JSON.stringify({
     vertragsart: stunden[i] === 42 ? 'fuehrung' : stunden[i] === 37.5 ? 'vollzeit' : 'teilzeit', wochenstunden: stunden[i], gueltig_ab: '2026-01-01' })]);
   await q('select public.pep_urlaubsjahr_speichern($1, 2026, $2, 0) as r', [id, stunden[i] * 6]);
@@ -128,4 +128,5 @@ schreib('pep_vorlagen', await q('select public.pep_vorlagen() as r'));
 // Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
 schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
 schreib('pep_vorausplanung', await q('select public.pep_vorausplanung(2026, 46) as r'));
+schreib('pep_resturlaub', await q('select public.pep_resturlaub(2026) as r'));
 console.log('Vorschau-Daten geschrieben');

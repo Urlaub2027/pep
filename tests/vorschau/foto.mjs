@@ -1,7 +1,8 @@
-// Screenshot einer Vorschau-Ansicht mit Edge/Chrome headless.
-// node tests/vorschau/foto.mjs <ansicht> <ausgabe.png> [breite] [hoehe] [zusatz]
+// Screenshot einer Vorschau-Ansicht mit Edge/Chrome headless; Ausgabe *.pdf druckt die Seite stattdessen als PDF
+// (Druckmedien-CSS, z. B. node tests/vorschau/foto.mjs druck tests/vorschau/wochenplan.pdf 1440 900 art=woche).
+// node tests/vorschau/foto.mjs <ansicht> <ausgabe.png|.pdf> [breite] [hoehe] [zusatz]
 // zusatz: weitere Abfrage-Parameter, z. B. 'toast=Gespeichert.' oder 'tag=2026-11-10'. Monat, KW und „heute“ passen zu den Vorschau-Daten.
-// Die Ausgabe gehört nicht ins Repo (*.png in tests/vorschau ist gitignored).
+// Die Ausgabe gehört nicht ins Repo (*.png und *.pdf in tests/vorschau sind gitignored).
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,7 +25,8 @@ try {
   const profil = mkdtempSync(join(tmpdir(), 'pep-vorschau-'));
   execFileSync(BROWSER, ['--headless=new', '--disable-gpu', '--no-first-run', `--user-data-dir=${profil}`,
     '--hide-scrollbars', `--window-size=${breite},${hoehe}`,
-    '--virtual-time-budget=4000', `--screenshot=${resolve(ausgabe)}`,
+    '--virtual-time-budget=4000',
+    ...(ausgabe.endsWith('.pdf') ? ['--no-pdf-header-footer', `--print-to-pdf=${resolve(ausgabe)}`] : [`--screenshot=${resolve(ausgabe)}`]),
     `http://localhost:${port}/vorschau?${abfrage}`], { stdio: 'ignore', timeout: 60000 });
   console.log(`Gespeichert: ${resolve(ausgabe)}`);
 } finally {

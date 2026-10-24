@@ -728,3 +728,77 @@ table.vorausplanung td { padding: 6px var(--a2); }
 table.vorausplanung td.plus { color: var(--ok); font-weight: 700; }
 table.vorausplanung td.vorgabe strong { display: block; font-size: 1.1rem; }
 table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); font-weight: 400; }
+
+/* ---------------------------------------------------------------- Ausdrucke (druck.js)
+   Die Druckansicht #ansicht-druck ist am Bildschirm immer verborgen. Mit body.druckt ist sie beim Drucken das Einzige;
+   ohne (Strg+P ohne Knopf) druckt der Browser die Seite, wie sie ist. Farben drucken mit (print-color-adjust),
+   die Kürzel stehen trotzdem in jeder Zelle, damit Schwarz-Weiß lesbar bleibt. */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body.druckt { background: #fff; color: #000; font-size: 8pt; line-height: 1.2; }
+  body.druckt > :not(main), body.druckt main > :not(#ansicht-druck) { display: none !important; }
+  body.druckt main { max-width: none; margin: 0; padding: 0; }
+  body.druckt #ansicht-druck { display: block !important; }
+  .druckansicht * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+  .dr-seite { break-after: page; }
+  .dr-seite:last-child { break-after: auto; }
+  .dr-tabelle { width: 100%; table-layout: fixed; border-collapse: collapse; }
+  .dr-tabelle th, .dr-tabelle td { padding: 1pt 2pt; font-size: 7.5pt; color: #000; text-align: left; vertical-align: middle;
+    background: none; border: 0.5pt solid #777; overflow: hidden; }
+  .dr-tabelle thead th { background: #e3e3e3; font-weight: 700; }
+  .dr-tabelle tbody th { font-weight: 600; }
+  .dr-tabelle tfoot th, .dr-tabelle tfoot td { font-weight: 700; background: #efefef; }
+  .dr-tabelle tr { break-inside: avoid; }
+  .dr-tabelle .zahl { text-align: right; }
+  .dr-tabelle .zahl.minus { color: #b00010; }
+  .dr-tabelle small { display: block; font-weight: 400; }
+
+  /* Seitenkopf: erste thead-Zeile, wiederholt sich auf jeder Seite */
+  .dr-tabelle thead .dr-kopfzeile th { padding: 0 0 3mm; background: none; border: 0; font-weight: 400; }
+  .dr-kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 6mm; font-size: 9pt; }
+  .dr-titel { font-size: 13pt; }
+  .dr-kopf-rechts { display: flex; gap: 6mm; }
+  .dr-fuss { margin: 2mm 0 0; font-size: 8pt; }
+  .dr-legende { color: #333; font-size: 7pt; }
+  .dr-name { white-space: nowrap; text-overflow: ellipsis; }
+  .dr-c-name { width: 36mm; }
+  .dr-c-zahl { width: 13mm; }
+
+  /* Tagesplan: je halbe Stunde eine Zelle mit Kürzel */
+  .dr-c-zeiten { width: 25mm; }
+  .dr-c-std { width: 9mm; }
+  .dr-c-kommentar { width: 30mm; }
+  .dr-tagesplan .dr-zeiten { white-space: pre-line; }
+  .dr-tagesplan .dr-kommentar { font-size: 7pt; }
+  .dr-stunde { padding-left: 1pt; font-size: 7pt; }
+  .dr-stunde:not(.offen) { color: #555; font-weight: 400; }
+  .dr-tagesplan tbody tr { height: 6mm; }
+  .dr-tagesplan td.dr-z { padding: 0; font-size: 6.5pt; font-weight: 700; text-align: center; border-left-color: #bbb; }
+  .dr-tagesplan td.dr-z.voll { border-left-color: #555; }
+  .dr-tagesplan td.dr-unbesetzt {
+    background: repeating-linear-gradient(-45deg, #999 0 0.4pt, #fff 0.4pt 3pt);
+    outline: 1pt dashed var(--netto-rot);
+    outline-offset: -1pt;
+  }
+
+  /* Wochenplan: je Tag Zeiten, darunter Stunden und Pause */
+  .dr-wochenplan thead th { text-align: center; }
+  .dr-wochenplan thead th.dr-name { text-align: left; }
+  .dr-wochenplan td.dr-tag { white-space: pre-line; text-align: center; line-height: 1.25; }
+  .dr-wochenplan tbody tr { height: 9mm; }
+
+  /* Abwesenheitsmonat: Tag = Spalte, Code fett, darunter Stunden */
+  .dr-monat th, .dr-monat td { padding: 1pt 1pt; }
+  .dr-monat thead th { text-align: center; white-space: pre-line; font-size: 6.5pt; }
+  .dr-monat thead th.dr-name { text-align: left; font-size: 7.5pt; }
+  .dr-monat td.dr-mt { text-align: center; font-size: 6.5pt; line-height: 1.15; }
+  .dr-monat td.dr-mt strong, .dr-monat td.dr-mt span { display: block; }
+  .dr-monat .frei { background: #d6d6d6; }
+  .dr-monat tbody tr { height: 7.5mm; }
+  .dr-monat tfoot td.zahl { padding: 1pt 0; text-align: center; font-size: 6pt; }
+
+  /* Resturlaub */
+  .dr-resturlaub tbody tr { height: 6mm; }
+  .dr-resturlaub thead th { font-size: 7pt; }
+}

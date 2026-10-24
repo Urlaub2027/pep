@@ -1996,7 +1996,7 @@
    "kompetenzen": [],
    "vertragsart": "vollzeit",
    "wochenstunden": 37.5,
-   "personalnummer": null
+   "personalnummer": "90001"
   },
   {
    "id": 2,
@@ -2017,7 +2017,7 @@
    ],
    "vertragsart": "vollzeit",
    "wochenstunden": 37.5,
-   "personalnummer": null
+   "personalnummer": "90002"
   },
   {
    "id": 3,
@@ -2037,7 +2037,7 @@
    ],
    "vertragsart": "teilzeit",
    "wochenstunden": 30,
-   "personalnummer": null
+   "personalnummer": "90003"
   },
   {
    "id": 4,
@@ -2057,7 +2057,7 @@
    ],
    "vertragsart": "teilzeit",
    "wochenstunden": 20,
-   "personalnummer": null
+   "personalnummer": "90004"
   },
   {
    "id": 5,
@@ -2075,7 +2075,7 @@
    "kompetenzen": [],
    "vertragsart": "vollzeit",
    "wochenstunden": 37.5,
-   "personalnummer": null
+   "personalnummer": "90005"
   },
   {
    "id": 6,
@@ -2095,7 +2095,7 @@
    ],
    "vertragsart": "fuehrung",
    "wochenstunden": 42,
-   "personalnummer": null
+   "personalnummer": "90006"
   },
   {
    "id": 7,
@@ -2115,7 +2115,7 @@
    ],
    "vertragsart": "teilzeit",
    "wochenstunden": 25,
-   "personalnummer": null
+   "personalnummer": "90007"
   },
   {
    "id": 8,
@@ -2133,7 +2133,7 @@
    "kompetenzen": [],
    "vertragsart": "vollzeit",
    "wochenstunden": 37.5,
-   "personalnummer": null
+   "personalnummer": "90008"
   },
   {
    "id": 9,
@@ -2151,7 +2151,7 @@
    "kompetenzen": [],
    "vertragsart": "teilzeit",
    "wochenstunden": 30,
-   "personalnummer": null
+   "personalnummer": "90009"
   },
   {
    "id": 10,
@@ -2171,7 +2171,7 @@
    ],
    "vertragsart": "vollzeit",
    "wochenstunden": 37.5,
-   "personalnummer": null
+   "personalnummer": "90010"
   },
   {
    "id": 11,
@@ -2189,7 +2189,7 @@
    "kompetenzen": [],
    "vertragsart": "teilzeit",
    "wochenstunden": 20,
-   "personalnummer": null
+   "personalnummer": "90011"
   },
   {
    "id": 12,
@@ -2209,7 +2209,7 @@
    ],
    "vertragsart": "fuehrung",
    "wochenstunden": 42,
-   "personalnummer": null
+   "personalnummer": "90012"
   },
   {
    "id": 13,

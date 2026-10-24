@@ -53,7 +53,7 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 // Nur lesende Funktionen; alles andere gilt als schreibend und muss unten abgedeckt sein.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
-  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung'];
+  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
@@ -152,4 +152,12 @@ test('lesend mit Mitarbeiter: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Fi
   }
   // Gegenprobe: Leitung und Stellvertretung dürfen
   for (const nutzer of [leitung, stellv]) await aufruf(nutzer, `select public.pep_eckdaten(${ma}, '2027-05-03')`);
+});
+
+// Der Resturlaub zeigt Anspruch und Urlaub aller Mitarbeiter: nur Leitung und Stellvertretung mit Filiale.
+test('pep_resturlaub: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
+  const sql = 'select public.pep_resturlaub(2027)';
+  await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/);
+  await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/);
+  for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);
 });

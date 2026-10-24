@@ -1824,6 +1824,26 @@ begin
 end;
 $$;
 
+-- Urlaubskonto eines Mitarbeiters im Kalenderjahr (Stunden): Anspruch und Rest Vorjahr aus pep.urlaubsjahre
+-- (ohne Eintrag 0), genehmigt = Stunden des Codes U im Jahr, rest = anspruch + rest_vorjahr − genehmigt.
+-- Eine Rechnung für die Urlaubsübersicht (pep_abwesenheiten) und den Ausdruck Resturlaub (pep_resturlaub).
+create or replace function pep.urlaub_konto(p_mitarbeiter_id bigint, p_jahr int)
+returns table (anspruch numeric, rest_vorjahr numeric, genehmigt numeric, rest numeric)
+language sql stable
+set search_path = ''
+as $$
+  select k.anspruch, k.rest_vorjahr, k.genehmigt, k.anspruch + k.rest_vorjahr - k.genehmigt
+    from (select coalesce((select y.anspruch_stunden from pep.urlaubsjahre y
+                            where y.mitarbeiter_id = p_mitarbeiter_id and y.jahr = p_jahr), 0) as anspruch,
+                 coalesce((select y.rest_vorjahr_stunden from pep.urlaubsjahre y
+                            where y.mitarbeiter_id = p_mitarbeiter_id and y.jahr = p_jahr), 0) as rest_vorjahr,
+                 coalesce((select sum(a.stunden) from pep.abwesenheiten a
+                             join pep.abwesenheitscodes c on c.id = a.code_id
+                            where a.mitarbeiter_id = p_mitarbeiter_id and c.code = 'U'
+                              and a.datum >= make_date(p_jahr, 1, 1)
+                              and a.datum < make_date(p_jahr + 1, 1, 1)), 0) as genehmigt) k
+$$;
+
 -- Monatsdaten für die Abwesenheitsansicht (Leitung und Stellvertretung).
 create or replace function public.pep_abwesenheiten(p_jahr int, p_monat int)
 returns jsonb
@@ -1911,19 +1931,10 @@ begin
                'anspruch', j.anspruch,
                'rest_vorjahr', j.rest_vorjahr,
                'genehmigt', j.genehmigt,
-               'rest', j.anspruch + j.rest_vorjahr - j.genehmigt)
+               'rest', j.rest)
              order by u.ord)
         from unnest(v_ids) with ordinality u(id, ord)
-        cross join lateral (
-          select coalesce((select y.anspruch_stunden from pep.urlaubsjahre y
-                            where y.mitarbeiter_id = u.id and y.jahr = p_jahr), 0) as anspruch,
-                 coalesce((select y.rest_vorjahr_stunden from pep.urlaubsjahre y
-                            where y.mitarbeiter_id = u.id and y.jahr = p_jahr), 0) as rest_vorjahr,
-                 coalesce((select sum(a.stunden) from pep.abwesenheiten a
-                             join pep.abwesenheitscodes c on c.id = a.code_id
-                            where a.mitarbeiter_id = u.id and c.code = 'U'
-                              and a.datum >= make_date(p_jahr, 1, 1)
-                              and a.datum < make_date(p_jahr + 1, 1, 1)), 0) as genehmigt) j), '[]'::jsonb));
+        cross join lateral pep.urlaub_konto(u.id, p_jahr) j), '[]'::jsonb));
 end;
 $$;
 
@@ -4546,6 +4557,70 @@ $$;
 
 
 -- ---------------------------------------------------------------------------
+-- Berichte: Daten für die Ausdrucke (Spec 13)
+-- ---------------------------------------------------------------------------
+
+-- Resturlaub eines Jahres (Leitung und Stellvertretung): je Mitarbeiter der Filiale (aktiv oder mit Urlaub im Jahr)
+-- Anspruch, Rest Vorjahr, Urlaubsstunden (Code U) je Monat, genehmigt und Rest wie pep.urlaub_konto.
+-- tagesstunden = Wochenstunden ÷ abwesenheit_teiler mit dem Vertrag am 01.01., sonst dem ersten Vertrag im Jahr
+-- (ohne Vertrag null); rest_tage = rest ÷ ungerundete Tagesstunden, auf zwei Stellen. stand = heute.
+create or replace function public.pep_resturlaub(p_jahr int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b      pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_f      bigint := v_b.filiale_id;
+  v_von    date;
+  v_teiler numeric;
+begin
+  if p_jahr is null or p_jahr not between 2000 and 2100 then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  v_von := make_date(p_jahr, 1, 1);
+  v_teiler := (pep.einstellung(v_f, 'abwesenheit_teiler') #>> '{}')::numeric;
+
+  return jsonb_build_object(
+    'jahr', p_jahr,
+    'stand', pep.heute(),
+    'mitarbeiter', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', m.id,
+               'name', m.name,
+               'personalnummer', m.personalnummer,
+               'wochenstunden', v.wochenstunden,
+               'tagesstunden', round(v.wochenstunden / v_teiler, 2),
+               'anspruch', k.anspruch,
+               'rest_vorjahr', k.rest_vorjahr,
+               'monate', (select jsonb_agg(coalesce((
+                                   select sum(a.stunden) from pep.abwesenheiten a
+                                     join pep.abwesenheitscodes c on c.id = a.code_id
+                                    where a.mitarbeiter_id = m.id and c.code = 'U'
+                                      and a.datum >= make_date(p_jahr, i, 1)
+                                      and a.datum < (make_date(p_jahr, i, 1) + interval '1 month')::date), 0)
+                                 order by i)
+                            from generate_series(1, 12) i),
+               'genehmigt', k.genehmigt,
+               'rest', k.rest,
+               'rest_tage', round(k.rest * v_teiler / v.wochenstunden, 2))
+             order by m.aktiv desc, m.position, m.name, m.id)
+        from pep.mitarbeiter m
+        cross join lateral pep.urlaub_konto(m.id, p_jahr) k
+        -- Vertrag am 01.01. (der letzte davor), sonst der erste im Jahr; ohne beides null.
+        left join lateral (
+          select x.wochenstunden from pep.vertraege x
+           where x.mitarbeiter_id = m.id and x.gueltig_ab <= make_date(p_jahr, 12, 31)
+           order by case when x.gueltig_ab <= v_von then 0 else 1 end,
+                    case when x.gueltig_ab <= v_von then v_von - x.gueltig_ab else x.gueltig_ab - v_von end
+           limit 1) v on true
+       where m.filiale_id = v_f
+         and (m.aktiv or k.genehmigt <> 0)), '[]'::jsonb));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Rechte
 -- ---------------------------------------------------------------------------
 
@@ -4677,5 +4752,9 @@ revoke all on function public.pep_vorausplanung(int, int) from public, anon, aut
 revoke all on function public.pep_woche_speichern(int, int, jsonb) from public, anon, authenticated;
 grant execute on function public.pep_vorausplanung(int, int) to authenticated;
 grant execute on function public.pep_woche_speichern(int, int, jsonb) to authenticated;
+
+-- Berichte
+revoke all on function public.pep_resturlaub(int) from public, anon, authenticated;
+grant execute on function public.pep_resturlaub(int) to authenticated;
 
 commit;

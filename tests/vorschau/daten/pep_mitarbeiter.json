@@ -17,7 +17,7 @@
   }
  ],
  "filiale_id": 1,
- "angelegt_am": "2026-10-24T22:01:17.457+01:00",
+ "angelegt_am": "2026-10-24T22:23:17.691+01:00",
  "kompetenzen": [],
  "geburtsdatum": null,
  "urlaubsjahre": [
@@ -28,6 +28,6 @@
    "rest_vorjahr_stunden": 0
   }
  ],
- "personalnummer": null,
+ "personalnummer": "90001",
  "wochenvorgaben": []
 }

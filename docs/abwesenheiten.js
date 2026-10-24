@@ -6,6 +6,7 @@ import {
 } from './hilfe.js';
 import { aufruf, ich, reiter } from './app.js';
 import { dialog } from './dialog.js';
+import { druckAuswahlAbwesenheiten } from './druck.js';
 import {
   wochenGruppen, ziehBereich, monatVorZurueck, zellenKlasse, stundenAnzeige, kurzStunden,
 } from './kalender.js';
@@ -162,13 +163,19 @@ function zeichneKopf() {
         element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Vorheriger Monat', onclick: () => wechsleMonat(-1) }, '◀'),
         element('strong', { class: 'abw-monat' }, `${MONATE[monat - 1]} ${jahr}`),
         element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Nächster Monat', onclick: () => wechsleMonat(1) }, '▶'),
-        element('button', { type: 'button', class: 'knopf', onclick: zuHeute }, 'Heute')),
+        element('button', { type: 'button', class: 'knopf', onclick: zuHeute }, 'Heute'),
+        element('button', { type: 'button', class: 'knopf', onclick: oeffneDrucken }, 'Drucken')),
       element('div', { class: 'legende' },
         element('span', {}, farbfeld(null, 'schulferien'), 'Schulferien'),
         element('span', {}, farbfeld(null, 'feiertag'), 'Feiertag'),
         element('span', {}, farbfeld(null, 'geschlossen'), 'geschlossen'))),
     element('div', { class: 'werkzeug-zeile' },
       darfZeichnen() ? palette() : element('p', { class: 'hinweis' }, 'Keine Berechtigung zum Bearbeiten.'))));
+}
+
+// Ausdrucke: Monat wie angezeigt, Resturlaub des angezeigten Jahres.
+function oeffneDrucken() {
+  druckAuswahlAbwesenheiten({ daten, jahr, monat, laden: (j) => aufruf('pep_resturlaub', { p_jahr: j }) });
 }
 
 // ---------------------------------------------------------------- Raster
