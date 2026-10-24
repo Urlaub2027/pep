@@ -125,3 +125,9 @@ th { background: var(--hell); font-weight: 600; }
 .feld.haken input, .haken input { width: 20px; min-height: 20px; margin: 0; }
 .haken-liste { display: flex; flex-wrap: wrap; gap: 4px 24px; }
 .zeile .knopf { background: #fff; }
+
+/* Einstellungen */
+.zeile.grau { background: var(--hell); color: var(--grau); }
+.zeile .erklaerung { flex: 1 1 260px; }
+.zeile .feld input[type="color"] { width: 60px; padding: 2px; }
+.box h3 { margin: 16px 0 4px; font-size: 1rem; }

@@ -1,6 +1,10 @@
 // Reiter „Mitarbeiter“: Liste links, Karte rechts. Jede Aktion ruft die Datenbankfunktion
 // sofort auf und lädt danach Liste und Karte neu.
-import { $, meldung, fehlerText, element, stundenDE, WOCHENTAGE } from './hilfe.js';
+import {
+  $, meldung, fehlerText, element, stundenDE, WOCHENTAGE,
+  zahl, text, datum, uhrzeit, feld, eingabe as eingabeBasis, auswahlfeld as auswahlBasis,
+  zeilenformular, abschnitt, fuehreAus,
+} from './hilfe.js';
 import { aufruf, ich, reiter } from './app.js';
 
 const VERTRAGSARTEN = {
@@ -14,10 +18,6 @@ let auswahl = null; // Mitarbeiter-ID, 'neu' oder null
 let karte = null;
 
 const darfSchreiben = () => ich?.rolle === 'leitung';
-const zahl = (wert) => (wert === '' || wert == null ? null : Number(String(wert).replace(',', '.')));
-const text = (wert) => (wert == null ? '' : String(wert));
-const datum = (wert) => (wert ? String(wert).slice(0, 10) : '');
-const uhrzeit = (wert) => (wert ? String(wert).slice(0, 5) : '');
 const vertragsText = (m) => (m.vertragsart
   ? `${VERTRAGSARTEN[m.vertragsart]} · ${stundenDE(m.wochenstunden).replace(',00', ',0')} h` : 'kein Vertrag');
 
@@ -28,18 +28,10 @@ function fehlerMelden(fehler) {
 }
 
 // Führt eine schreibende Aktion aus, zeigt „Gespeichert.“ und lädt Liste und Karte neu.
-async function speichere(aktion) {
-  meldung('');
-  try {
-    const ergebnis = await aktion();
-    meldung('Gespeichert.', 'ok');
-    await ladeListe();
-    if (auswahl !== 'neu') await ladeKarte();
-    return ergebnis;
-  } catch (fehler) {
-    fehlerMelden(fehler);
-  }
-}
+const speichere = (aktion) => fuehreAus(aktion, async () => {
+  await ladeListe();
+  if (auswahl !== 'neu') await ladeKarte();
+});
 
 async function ladeListe() {
   liste = await aufruf('pep_mitarbeiter_liste');
@@ -98,41 +90,15 @@ function neuer() {
 
 // ---------------------------------------------------------------- Karte
 
-function feld(beschriftung, eingabefeld) {
-  return element('label', { class: 'feld' }, beschriftung, eingabefeld);
-}
-
-function eingabe(typ, wert, attrs = {}) {
-  const e = element('input', { type: typ, disabled: !darfSchreiben(), ...attrs });
-  if (typ === 'checkbox') e.checked = Boolean(wert);
-  else e.value = text(wert);
-  return e;
-}
-
-function auswahlfeld(optionen, wert) {
-  const s = element('select', { disabled: !darfSchreiben() },
-    optionen.map(([schluessel, beschriftung]) => element('option', { value: schluessel }, beschriftung)));
-  s.value = text(wert);
-  return s;
-}
+const eingabe = (typ, wert, attrs = {}) => eingabeBasis(typ, wert, { disabled: !darfSchreiben(), ...attrs });
+const auswahlfeld = (optionen, wert) => auswahlBasis(optionen, wert, { disabled: !darfSchreiben() });
 
 const knopfSpeichern = (beschriftung = 'Speichern') =>
   darfSchreiben() ? element('button', { type: 'submit' }, beschriftung) : null;
 
-function zeilenformular(beimSenden, ...kinder) {
-  return element('form', {
-    class: 'zeile', novalidate: true,
-    onsubmit: (ereignis) => { ereignis.preventDefault(); beimSenden(); },
-  }, ...kinder);
-}
-
 function loeschknopf(aktion) {
   return darfSchreiben()
     ? element('button', { type: 'button', class: 'knopf', onclick: aktion }, 'Löschen') : null;
-}
-
-function abschnitt(titel, ...kinder) {
-  return element('div', { class: 'box' }, element('h2', {}, titel), ...kinder);
 }
 
 function zeichneKarte() {

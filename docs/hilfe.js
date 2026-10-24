@@ -92,3 +92,53 @@ export function datumDE(iso) {
 export function stundenDE(n) {
   return Number(n).toFixed(2).replace('.', ',');
 }
+
+// ---------------------------------------------------------------- Formular-Bausteine (mehrere Reiter)
+
+export const zahl = (wert) => (wert === '' || wert == null ? null : Number(String(wert).replace(',', '.')));
+export const text = (wert) => (wert == null ? '' : String(wert));
+export const datum = (wert) => (wert ? String(wert).slice(0, 10) : '');
+export const uhrzeit = (wert) => (wert ? String(wert).slice(0, 5) : '');
+
+export function feld(beschriftung, eingabefeld) {
+  return element('label', { class: 'feld' }, beschriftung, eingabefeld);
+}
+
+export function eingabe(typ, wert, attrs = {}) {
+  const e = element('input', { type: typ, ...attrs });
+  if (typ === 'checkbox') e.checked = Boolean(wert);
+  else e.value = text(wert);
+  return e;
+}
+
+export function auswahlfeld(optionen, wert, attrs = {}) {
+  const s = element('select', attrs,
+    optionen.map(([schluessel, beschriftung]) => element('option', { value: schluessel }, beschriftung)));
+  s.value = text(wert);
+  return s;
+}
+
+export function zeilenformular(beimSenden, ...kinder) {
+  return element('form', {
+    class: 'zeile', novalidate: true,
+    onsubmit: (ereignis) => { ereignis.preventDefault(); beimSenden(); },
+  }, ...kinder);
+}
+
+export function abschnitt(titel, ...kinder) {
+  return element('div', { class: 'box' }, element('h2', {}, titel), ...kinder);
+}
+
+// Führt eine schreibende Aktion aus: „Gespeichert.“, danach `danach()` (Neuladen).
+// Rückgabe: Ergebnis der Aktion (bei leerem Ergebnis true). Bei Fehler Meldung (außer der Fehler ist schon behandelt, z. B. Abmeldung) und Rückgabe undefined.
+export async function fuehreAus(aktion, danach) {
+  meldung('');
+  try {
+    const ergebnis = await aktion();
+    meldung('Gespeichert.', 'ok');
+    await danach();
+    return ergebnis ?? true; // Funktionen ohne Rückgabe: true; undefined bleibt dem Fehlerfall
+  } catch (fehler) {
+    if (!fehler.behandelt) meldung(fehlerText(fehler.message));
+  }
+}
