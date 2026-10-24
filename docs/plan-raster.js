@@ -6,7 +6,7 @@ import { minuten, uhrzeit } from './zeit.js';
 const stunden = (b) => (minuten(b.bis) - minuten(b.von)) / 60;
 const alsMenge = (ids) => (ids instanceof Set ? ids : new Set(ids ?? []));
 
-// Eine Position je Halbstunde der Spalten: Zellbeschreibung oder null.
+// Eine Position je Halbstunde der Spalten: Zellbeschreibung oder null. Erwartet die Abschnitte EINER Zeile (ein Mitarbeiter, ein Tag).
 export function zellen(bloecke, spalten) {
   return spalten.map((beginn) => {
     const m = minuten(beginn);
@@ -35,7 +35,7 @@ export function abdeckung(woche, datum, spalten) {
     const da = tag.filter((b) => minuten(b.von) <= m && m < minuten(b.bis));
     const arbeit = da.filter((b) => bereiche.get(b.bereich_id)?.art !== 'pause');
     kasse.push(new Set(arbeit.filter((b) => bereiche.get(b.bereich_id)?.bedeutung === 'kasse').map((b) => b.mitarbeiter_id)).size);
-    vp.push(new Set(arbeit.filter((b) => vpIds.has(b.mitarbeiter_id)).map((b) => b.mitarbeiter_id)).size);
+    vp.push(new Set(da.filter((b) => vpIds.has(b.mitarbeiter_id)).map((b) => b.mitarbeiter_id)).size);
     anwesend.push(new Set(da.map((b) => b.mitarbeiter_id)).size);
   }
   return { kasse, vp, anwesend };
@@ -64,7 +64,7 @@ export function tagesStunden(bloecke, pauseIds) {
 
 const pauseIdsDerWoche = (woche) => new Set((woche.bereiche ?? []).filter((b) => b.art === 'pause').map((b) => b.id));
 
-// Je Mitarbeiter: soll = Vertrag - Abwesenheitsstunden der Woche (F6),
+// Je Mitarbeiter: soll = Vertrag - Abwesenheitsstunden der Woche (F6; abwesenheiten[].stunden sind schon die angerechneten Stunden),
 // geplant = besetzte Stunden ohne Pause, differenz = geplant - soll.
 export function wochenSummen(woche) {
   const pausen = pauseIdsDerWoche(woche);

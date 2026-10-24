@@ -99,7 +99,7 @@ test('abdeckung: Kasse, VP, anwesend je Halbstunde (F2, F3, F5)', () => {
   assert.equal(a.kasse[i('09:30')], 1); // zweiter Kassenblock ist unbesetzt
   assert.equal(a.kasse[i('10:00')], 0); // Pause ist keine Kasse
   assert.equal(a.vp[i('07:00')], 1);
-  assert.equal(a.vp[i('10:00')], 0); // VP in der Pause nicht arbeitend
+  assert.equal(a.vp[i('10:00')], 1); // VP in der Pause ist anwesend (F3/F5), wie pep.pruefung
   assert.equal(a.anwesend[i('06:30')], 0);
   assert.equal(a.anwesend[i('08:00')], 2);
   assert.equal(a.anwesend[i('10:00')], 1); // Pause zählt als anwesend
@@ -131,6 +131,7 @@ test('abdeckungsKlasse', () => {
   assert.equal(abdeckungsKlasse('vp', 0, false, 0), '');
   assert.equal(abdeckungsKlasse('vp', 0, false, 2), 'rot');
   assert.equal(abdeckungsKlasse('vp', 1, false, 2), '');
+  assert.equal(abdeckungsKlasse('vp', 1, true, 1), '');
 });
 
 test('tagesStunden: ohne Pause und ohne unbesetzt', () => {
