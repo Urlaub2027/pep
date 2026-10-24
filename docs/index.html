@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://*.supabase.co; img-src data:; base-uri 'none'; form-action 'none'">
+  <title>PEP</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="kopf">
+    <h1>PEP</h1>
+    <p id="wer" class="wer"></p>
+  </header>
+  <nav id="navigation" class="reiterleiste" hidden>
+    <button type="button" class="reiter-knopf" data-ziel="start">Start</button>
+    <button type="button" class="reiter-knopf" data-ziel="abwesenheiten">Abwesenheiten</button>
+    <button type="button" class="reiter-knopf" data-ziel="vorausplanung">Vorausplanung</button>
+    <button type="button" class="reiter-knopf" data-ziel="einsatzplan">Einsatzplan</button>
+    <button type="button" class="reiter-knopf" data-ziel="mitarbeiter">Mitarbeiter</button>
+    <button type="button" class="reiter-knopf" data-ziel="einstellungen" id="nav-einstellungen" hidden>Einstellungen</button>
+    <button type="button" class="reiter-knopf rechts" id="abmelden">Abmelden</button>
+  </nav>
+
+  <main>
+    <p id="meldung" class="meldung" role="alert" hidden></p>
+
+    <section id="ansicht-login" hidden>
+      <form id="login-form" class="box formular-box" novalidate>
+        <h2>Anmelden</h2>
+        <label class="feld">Benutzername
+          <input id="login-name" type="text" autocomplete="username" autocapitalize="none" required>
+        </label>
+        <label class="feld">Passwort
+          <input id="login-passwort" type="password" autocomplete="current-password" required>
+        </label>
+        <button type="submit" id="login-knopf">Anmelden</button>
+      </form>
+    </section>
+
+    <section id="ansicht-filiale" hidden>
+      <form id="filiale-form" class="box formular-box" novalidate>
+        <h2>Filiale anlegen</h2>
+        <p>Es ist noch keine Filiale angelegt. Bitte lege sie jetzt an.</p>
+        <label class="feld">Name
+          <input id="filiale-name" type="text" required>
+        </label>
+        <label class="feld">Nummer
+          <input id="filiale-nummer" type="text" inputmode="numeric">
+        </label>
+        <label class="feld">Bundesland
+          <select id="filiale-land" required>
+            <option value="">Bitte wählen</option>
+            <option value="BW">Baden-Württemberg</option>
+            <option value="BY">Bayern</option>
+            <option value="BE">Berlin</option>
+            <option value="BB">Brandenburg</option>
+            <option value="HB">Bremen</option>
+            <option value="HH">Hamburg</option>
+            <option value="HE">Hessen</option>
+            <option value="MV">Mecklenburg-Vorpommern</option>
+            <option value="NI">Niedersachsen</option>
+            <option value="NW">Nordrhein-Westfalen</option>
+            <option value="RP">Rheinland-Pfalz</option>
+            <option value="SL">Saarland</option>
+            <option value="SN">Sachsen</option>
+            <option value="ST">Sachsen-Anhalt</option>
+            <option value="SH">Schleswig-Holstein</option>
+            <option value="TH">Thüringen</option>
+          </select>
+        </label>
+        <button type="submit" id="filiale-knopf">Filiale anlegen</button>
+      </form>
+    </section>
+
+    <section id="ansicht-start" hidden>
+      <div class="box"><p>Startseite folgt.</p></div>
+    </section>
+    <section id="ansicht-vorausplanung" hidden>
+      <div class="box"><p>Folgt in Stufe 1.</p></div>
+    </section>
+    <section id="ansicht-einsatzplan" hidden>
+      <div class="box"><p>Folgt in Stufe 1.</p></div>
+    </section>
+    <section id="ansicht-mitarbeiter" hidden></section>
+    <section id="ansicht-einstellungen" hidden></section>
+    <section id="ansicht-abwesenheiten" hidden></section>
+  </main>
+</body>
+</html>
