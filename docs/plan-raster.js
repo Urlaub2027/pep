@@ -157,3 +157,21 @@ export function lueckeText(luecke) {
   if (n < 0) return `${zahl(-n)} h über Soll`;
   return 'Woche voll';
 }
+
+// ---------------------------------------------------------------- Eckdaten
+
+const kurzZahl = (n) => String(Math.round(Number(n) * 100) / 100).replace('.', ',');
+
+// Wochenvorgabe als Zeile im Eckdaten-Fenster, z. B. „Sa: nur 06:00–14:00“ oder „alle Tage: höchstens 6 h am Tag“.
+// Gleiche Lesart wie pep.vorgabe_text in supabase/schema.sql (Anzeige-Duplikat): nicht_verfuegbar ohne Zeiten, aber
+// mit Stundengrenze ist nur eine Stundengrenze; ohne beides gilt der ganze Tag. Die Notiz zeigt der Dialog daneben.
+export function vorgabeText(v) {
+  const tag = v.wochentag ? WOCHENTAGE[v.wochentag - 1] : 'alle Tage';
+  const teile = [];
+  if (v.art === 'nur_zwischen') teile.push(`nur ${v.von}–${v.bis}`);
+  else if (v.von || v.bis) teile.push(`nicht ${v.von ?? '00:00'}–${v.bis ?? '24:00'}`);
+  if (v.max_stunden_tag != null) teile.push(`höchstens ${kurzZahl(v.max_stunden_tag)} h am Tag`);
+  if (v.max_stunden_woche != null) teile.push(`höchstens ${kurzZahl(v.max_stunden_woche)} h in der Woche`);
+  if (!teile.length) teile.push('nicht verfügbar');
+  return `${tag}: ${teile.join(', ')}`;
+}

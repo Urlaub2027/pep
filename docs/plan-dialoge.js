@@ -1,14 +1,15 @@
-// Dialoge des Einsatzplans: „Kopieren“ und „Vorlagen“ (F11), „Krank/ZA“ und „Ersatz“. Bewusst ohne Import von
+// Dialoge des Einsatzplans: „Kopieren“ und „Vorlagen“ (F11), „Krank/ZA“, „Ersatz“ und „Eckdaten“. Bewusst ohne Import von
 // einsatzplan.js (Zyklus): einsatzplan.js trägt die Funktionen in `aktionen` ein und übergibt
 // kontext = { woche, datum, neuLaden }. Nach jedem Schreiben wird die Woche neu geladen (kontext.neuLaden).
 // Kopieren/Vorlagen: zuerst Modus „pruefen“; sind Ziele schon belegt, Rückfrage „Ersetzen“ /
 // „Nur leere Zeilen füllen“ / „Abbrechen“; das Ergebnis erscheint als Meldung.
-import { element, feld, eingabe, meldung, datumDE, fehlerText } from './hilfe.js';
-import { aufruf } from './app.js';
+import { element, feld, eingabe, meldung, datumDE, fehlerText, stundenDE } from './hilfe.js';
+import { aufruf, zeigeAnsicht } from './app.js';
 import { dialog } from './dialog.js';
-import { plusTage, montagDerKw, zeitspanne } from './zeit.js';
+import { waehleMitarbeiter, VERTRAGSARTEN } from './mitarbeiter.js';
+import { plusTage, montagDerKw, zeitspanne, isoWoche } from './zeit.js';
 import {
-  gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
+  gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText, vorgabeText,
 } from './plan-raster.js';
 
 const WOCHENTAG_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -226,8 +227,8 @@ function loeschenDialog(v, kontext) {
 // ---------------------------------------------------------------- Krank/ZA
 
 // Krankmeldung oder Zeitausgleich für ganze Tage (pep_schnell_abwesend). Geplante Blöcke bleiben stehen und
-// erscheinen danach rot als unbesetzt; „Ersatz“ am Block öffnet ersatzDialog.
-export function krankDialog(kontext, mitarbeiterId = null, tag = null) {
+// erscheinen danach rot als unbesetzt; „Ersatz“ am Block öffnet ersatzDialog. vorwahl ('KM' | 'ZA') ist vorgewählt.
+export function krankDialog(kontext, mitarbeiterId = null, tag = null, vorwahl = 'KM') {
   const { woche } = kontext;
   const datum = tag ?? kontext.datum;
   if (!woche || !datum) return;
@@ -236,8 +237,8 @@ export function krankDialog(kontext, mitarbeiterId = null, tag = null) {
     element('option', { value: '' }, '– bitte wählen –'),
     woche.mitarbeiter.map((m) => element('option', { value: String(m.id) }, m.name)));
   person.value = mitarbeiterId == null ? '' : String(mitarbeiterId);
-  const km = wahl('pd-krank-code', 'KM', 'Krank (KM)', true);
-  const za = wahl('pd-krank-code', 'ZA', 'Zeitausgleich (ZA)');
+  const km = wahl('pd-krank-code', 'KM', 'Krank (KM)', vorwahl !== 'ZA');
+  const za = wahl('pd-krank-code', 'ZA', 'Zeitausgleich (ZA)', vorwahl === 'ZA');
   const von = eingabe('date', datum);
   const bis = eingabe('date', datum);
   // „bis“ läuft mit, sobald es vor „von“ läge
@@ -349,4 +350,98 @@ function farbfeld(farbe) {
   const f = element('span', { class: 'farbfeld', 'aria-hidden': 'true' });
   if (farbe) f.style.backgroundColor = farbe;
   return f;
+}
+
+// ---------------------------------------------------------------- Eckdaten
+
+const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober',
+  'November', 'Dezember'];
+const LAGE = { frueh: 'früh', spaet: 'spät', lang: 'lang', mitte: 'mitte' };
+const h = (n) => `${stundenDE(n)} h`;
+
+// Abschnitt des Eckdaten-Fensters: Überschrift und Inhalt; leere Listen zeigen „keine“.
+function eckTeil(titel, ...inhalt) {
+  const leer = inhalt.flat(Infinity).every((x) => x == null || x === false);
+  return element('section', { class: 'pd-eck-teil' }, element('h3', { class: 'pd-eck-titel' }, titel),
+    leer ? element('p', { class: 'hinweis' }, 'keine') : inhalt);
+}
+
+// Klick auf einen Namen im Raster (pep_eckdaten): alles für eine faire Planung auf einen Blick, nur Hinweise.
+// Von hier: „Krank melden“ / „Zeitausgleich“ (krankDialog vorbelegt) und „Zur Mitarbeiterkarte“.
+export async function eckdatenDialog(kontext, mitarbeiterId, datum) {
+  if (!datum) return;
+  const e = await aufruf('pep_eckdaten', { p_mitarbeiter_id: mitarbeiterId, p_datum: datum });
+  if (!e) return; // Vorschau ohne Daten
+  const m = e.mitarbeiter;
+  const kw = isoWoche(datum).kw;
+  const monat = MONATE[Number(datum.slice(5, 7)) - 1];
+
+  const kopf = element('p', { class: 'pd-eck-kopf' },
+    [`Stand ${tagKurz(datum)}${datum.slice(0, 4)}`, m.alter != null ? `${m.alter} Jahre` : null,
+      m.personalnummer ? `Pers.-Nr. ${m.personalnummer}` : null].filter(Boolean).join(' · '));
+  const hinweise = e.hinweise.length
+    ? element('div', { class: 'pd-eck-hinweise' }, e.hinweise.map((x) => element('span', { class: 'pd-hinweis' }, x)))
+    : null;
+
+  const vertrag = eckTeil('Vertrag und Kompetenzen',
+    element('p', {}, e.vertrag
+      ? `${VERTRAGSARTEN[e.vertrag.vertragsart] ?? e.vertrag.vertragsart} · ${h(e.vertrag.wochenstunden)} pro Woche`
+      : 'Kein Vertrag an diesem Tag'),
+    element('p', {}, e.kompetenzen.length ? e.kompetenzen.map((k) => element('span', { class: 'badge' }, k))
+      : element('span', { class: 'hinweis' }, 'keine Kompetenzen')),
+    element('p', { class: 'hinweis' }, 'Zeitkonto: ab Zeitkonto-Stufe'));
+
+  const soll = e.woche.soll;
+  const woche = eckTeil(`Woche KW ${kw}`,
+    element('dl', { class: 'pd-eck-werte' },
+      element('dt', {}, 'Soll'), element('dd', {}, soll == null ? '–' : h(soll)),
+      element('dt', {}, 'geplant'), element('dd', {}, h(e.woche.geplant))),
+    soll == null ? null : element('p', { class: `pd-luecke${soll - e.woche.geplant < 0 ? ' ueber' : ''}` },
+      lueckeText(soll - e.woche.geplant)),
+    element('p', { class: 'hinweis' }, 'Soll = Vertrag − Abwesenheiten der Woche'));
+
+  const vorgaben = eckTeil('Wochenvorgaben', e.vorgaben.length ? element('ul', { class: 'pd-eck-liste' },
+    e.vorgaben.map((v) => element('li', { class: v.pflicht ? 'pflicht' : '' },
+      element(v.pflicht ? 'strong' : 'span', {}, `${v.pflicht ? 'Pflicht' : 'bevorzugt'} – ${vorgabeText(v)}`),
+      v.notiz ? element('small', {}, v.notiz) : null))) : null);
+
+  const abwesenheiten = eckTeil('Abwesenheiten diese und nächste Woche', e.abwesenheiten.length
+    ? element('ul', { class: 'pd-eck-liste' }, e.abwesenheiten.map((a) => element('li', {},
+      `${tagKurz(a.datum)} ${a.code}${a.von ? ` ${zeitspanne(a.von, a.bis)}` : ''} (${h(a.stunden)})`)))
+    : null);
+
+  const s = e.samstage;
+  const freiMonat = s.monat.filter((x) => x.status !== 'gearbeitet').length;
+  const samstage = eckTeil(`Samstage im ${monat}`,
+    element('ul', { class: 'pd-samstage' }, s.monat.map((x) => element('li', { class: `pd-sa ${x.status}` },
+      element('strong', {}, `${x.datum.slice(8, 10)}.${x.datum.slice(5, 7)}.`),
+      ` ${x.status === 'abwesend' ? `frei (${x.code})` : x.status}`))),
+    element('p', {}, `Frei im ${monat}: ${freiMonat} von ${s.monat.length} (Ziel ${s.ziel_monat})`),
+    element('p', {}, `Frei im Jahr vor dem ${datumDE(datum).slice(0, 6)}: ${s.frei_jahr} (Ziel ${s.ziel_jahr})`),
+    element('p', { class: 'hinweis' }, 'Urlaub, Krankheit, geschlossene und noch nicht geplante Samstage zählen als frei.'));
+
+  const tage = e.vorwoche.filter((v, i) => i < 6 || v.lage); // Mo–Sa, Sonntag nur mit Arbeit
+  const vorwoche = eckTeil(`Vorwoche KW ${isoWoche(plusTage(datum, -7)).kw}`,
+    element('ul', { class: 'pd-lagen' }, tage.map((v) => element('li', { class: `pd-lage${v.lage ? ` ${v.lage}` : ''}` },
+      element('small', {}, tagKurz(v.datum).slice(0, 2)), v.lage ? LAGE[v.lage] : '–'))),
+    element('p', {}, e.vorwoche_lage ? `Überwiegend ${LAGE[e.vorwoche_lage]}` : 'Früh und spät ausgeglichen oder nicht geplant'),
+    element('p', {}, `Letzter gearbeiteter Samstag: ${e.letzter_samstag_spaet ? 'spät' : 'nicht spät'}`),
+    element('p', { class: 'hinweis' }, 'Früh = Beginn zur Rahmenöffnung, spät = Ende nach der Spät-Grenze.'));
+
+  const kommentar = eckTeil(`Kommentar ${tagKurz(datum)}`, e.kommentar ? element('p', {}, e.kommentar) : null);
+
+  const d = dialog(m.name, [
+    kopf, hinweise,
+    element('div', { class: 'pd-eck' }, vertrag, woche, vorgaben, abwesenheiten, samstage, vorwoche, kommentar),
+  ], [
+    { text: 'Krank melden', sekundaer: true, aktion: () => {}, danach: () => krankDialog(kontext, m.id, datum, 'KM') },
+    { text: 'Zeitausgleich', sekundaer: true, aktion: () => {}, danach: () => krankDialog(kontext, m.id, datum, 'ZA') },
+    {
+      text: 'Zur Mitarbeiterkarte', sekundaer: true, aktion: () => {},
+      danach: () => { waehleMitarbeiter(m.id); zeigeAnsicht('mitarbeiter'); },
+    },
+  ], undefined, 'Schließen');
+  d.classList.add('pd-eck-dialog');
+  // showModal fokussiert sonst „Krank melden“; Enter soll nichts auslösen.
+  d.querySelector('.dialog-knoepfe .knopf:last-child')?.focus();
 }

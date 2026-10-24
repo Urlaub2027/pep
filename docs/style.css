@@ -457,6 +457,34 @@ th { background: var(--hell); font-weight: 600; }
 .pd-kandidat small { color: var(--text-2); }
 .pd-hinweis { justify-self: start; padding: 1px 6px; font-size: 0.85rem; background: var(--hinweis); border-left: 3px solid var(--netto-gelb); border-radius: 3px; }
 
+/* Eckdaten-Fenster (plan-dialoge.js): Abschnitte in zwei Spalten, schmal in einer; der Dialog scrollt in sich */
+.dialog.pd-eck-dialog { max-width: 780px; }
+.pd-eck-kopf { margin: calc(-1 * var(--a2)) 0 var(--a3); color: var(--text-2); }
+.pd-eck-hinweise { display: flex; flex-wrap: wrap; gap: var(--a1) var(--a2); margin-bottom: var(--a3); }
+.pd-eck-hinweise .pd-hinweis { font-size: 0.95rem; padding: 2px 8px; }
+.pd-eck { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--a3) var(--a5); }
+@media (max-width: 680px) { .pd-eck { grid-template-columns: minmax(0, 1fr); } }
+.pd-eck-teil { min-width: 0; padding-top: var(--a2); border-top: 1px solid var(--linie); }
+.pd-eck-teil p { margin: 0 0 var(--a1); }
+.dialog .pd-eck-titel { margin: 0 0 var(--a2); font-size: 0.95rem; }
+.pd-eck-teil .badge:first-child { margin-left: 0; }
+.pd-eck-werte { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--a3); margin: 0 0 var(--a1); }
+.pd-eck-werte dt { color: var(--text-2); }
+.pd-eck-werte dd { margin: 0; font-variant-numeric: tabular-nums; }
+.pd-eck-liste { margin: 0; padding-left: 1.1em; }
+.pd-eck-liste li { margin-bottom: 2px; overflow-wrap: anywhere; }
+.pd-eck-liste small { display: block; color: var(--text-2); }
+.pd-samstage, .pd-lagen { display: flex; flex-wrap: wrap; gap: var(--a1); margin: 0 0 var(--a2); padding: 0; list-style: none; }
+.pd-sa { padding: 2px 8px; font-size: 0.9rem; border: 1px solid var(--linie-stark); border-radius: 4px; background: var(--flaeche); }
+.pd-sa.gearbeitet { background: var(--hell); }
+.pd-sa.frei, .pd-sa.abwesend { color: var(--ok); border-color: var(--ok); }
+.pd-sa.geschlossen { color: var(--text-2); border-style: dashed; }
+.pd-lage { display: grid; justify-items: center; min-width: 3.4em; padding: 2px 6px; font-size: 0.9rem; border: 1px solid var(--linie); border-radius: 4px; }
+.pd-lage small { color: var(--text-2); font-size: 0.75rem; }
+.pd-lage.frueh { background: var(--hinweis); }
+.pd-lage.spaet { background: #dfe5f7; }
+.pd-lage.lang { background: #ece0f5; }
+
 /* ---------------------------------------------------------------- Reiter Mitarbeiter */
 
 .zweispaltig { display: grid; grid-template-columns: 320px 1fr; gap: var(--a4); align-items: start; }

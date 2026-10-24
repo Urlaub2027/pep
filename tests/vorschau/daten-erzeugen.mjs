@@ -82,6 +82,17 @@ await q('select public.pep_kommentar_setzen($1, $2::date, $3) as r', [ids[5], TA
 await q('select public.pep_kommentar_setzen($1, $2::date, $3) as r', [ids[11], TAGE[0], 'Abschluss, Schlüssel']);
 await q('select public.pep_kommentar_setzen($1, $2::date, $3) as r', [ids[7], TAGE[1], 'Inventur TK vorbereiten']);
 console.log(`Einsatzplan: ${gesperrt} Striche wegen Abwesenheit übersprungen`);
+// Eckdaten-Fenster für „Demo, Emil“ (ids[4]): Vorwoche KW 45 überwiegend früh, Samstag 07.11. spät, Vorgaben
+// (eine Pflicht), Kommentar, ZA am 20.11.; im November außerdem Urlaub 23.–28.11. (Samstag 28.11. frei mit U).
+for (const d of ['2026-11-02', '2026-11-03', '2026-11-04']) await malen(ids[4], d, '06:00', '12:00', 'OG');
+await malen(ids[4], '2026-11-05', '12:00', '20:00', 'OG');
+await malen(ids[4], '2026-11-07', '13:00', '21:30', 'TK');
+await q('select public.pep_wochenvorgabe_speichern($1, $2::jsonb) as r', [ids[4], JSON.stringify(
+  { art: 'nicht_verfuegbar', max_stunden_tag: 9, pflicht: true, gueltig_von: '2026-01-01', notiz: 'ärztliche Vorgabe' })]);
+await q('select public.pep_wochenvorgabe_speichern($1, $2::jsonb) as r', [ids[4], JSON.stringify(
+  { art: 'nur_zwischen', wochentag: 2, von: '06:00', bis: '14:00', pflicht: false, gueltig_von: '2026-01-01', notiz: 'Sportverein dienstags' })]);
+await q('select public.pep_kommentar_setzen($1, $2::date, $3) as r', [ids[4], TAGE[0], 'Obstlieferung prüfen']);
+await setzen(ids[4], 'ZA', '2026-11-20', '2026-11-20');
 // Vorlagen für den Dialog „Vorlagen“; die Probe-Kopie KW 46 → KW 47 zeigt den Bericht mit echten Daten
 // (Urlaub, Krankmeldung, Berufsschule) und wird danach zurückgerollt, damit KW 47 leer bleibt.
 await q(`select public.pep_vorlage_speichern('Standardwoche November', 'woche', $1::date) as r`, [TAGE[0]]);
@@ -107,4 +118,6 @@ schreib('pep_urlaub_umfragen', await q('select public.pep_urlaub_umfragen() as r
 schreib('pep_urlaub_zuordnung', await q('select public.pep_urlaub_zuordnung() as r'));
 schreib('pep_einsatzplan_woche', await q('select public.pep_einsatzplan_woche(2026, 46) as r'));
 schreib('pep_vorlagen', await q('select public.pep_vorlagen() as r'));
+// Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
+schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
 console.log('Vorschau-Daten geschrieben');

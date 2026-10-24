@@ -329,7 +329,7 @@
   "2026-11-17": 14.25,
   "2026-11-18": 6.25,
   "2026-11-19": 6.25,
-  "2026-11-20": 6.25,
+  "2026-11-20": 12.5,
   "2026-11-23": 6.25,
   "2026-11-24": 14.25,
   "2026-11-25": 6.25,
@@ -604,6 +604,19 @@
    "id": 5,
    "name": "Demo, Emil",
    "tage": {
+    "2026-11-20": {
+     "id": 33,
+     "bis": null,
+     "von": null,
+     "code": "ZA",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 4,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
     "2026-11-23": {
      "id": 10,
      "bis": null,

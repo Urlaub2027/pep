@@ -7,7 +7,7 @@ import {
 } from './hilfe.js';
 import { aufruf, ich, reiter } from './app.js';
 
-const VERTRAGSARTEN = {
+export const VERTRAGSARTEN = {
   vollzeit: 'Vollzeit', teilzeit: 'Teilzeit', minijob: 'Minijob', azubi: 'Azubi', fuehrung: 'F (Führungskraft)',
 };
 const ARTEN = { nicht_verfuegbar: 'Nicht verfügbar', nur_zwischen: 'Nur zwischen …' };
@@ -16,6 +16,7 @@ let liste = [];
 let bereiche = [];
 let auswahl = null; // Mitarbeiter-ID, 'neu' oder null
 let karte = null;
+let zurKarte = false; // nach dem Sprung aus dem Einsatzplan die Karte ins Bild holen (schmal: Karte unter der Liste)
 
 const darfSchreiben = () => ich?.rolle === 'leitung';
 const vertragsText = (m) => (m.vertragsart
@@ -51,12 +52,25 @@ async function waehle(id) {
   try { await ladeKarte(); } catch (fehler) { fehlerMelden(fehler); }
 }
 
+// Sprung aus dem Einsatzplan (Eckdaten „Zur Mitarbeiterkarte“): wählt den Mitarbeiter vor. Danach
+// zeigeAnsicht('mitarbeiter') aufrufen; zeigen() lädt Liste und Karte und behält die Auswahl, solange er in der
+// Liste steht. Nur eine Vorwahl ohne eigenes Laden, damit sich zwei Ladevorgänge nicht überholen.
+export function waehleMitarbeiter(id) {
+  auswahl = id;
+  karte = null;
+  zurKarte = true;
+}
+
 async function zeigen() {
   bereiche = await aufruf('pep_bereiche');
   await ladeListe();
   if (!auswahl && liste.length) auswahl = liste[0].id;
   zeichneListe();
   await ladeKarte();
+  if (zurKarte) {
+    zurKarte = false;
+    $('ma-karte').scrollIntoView({ block: 'start' });
+  }
 }
 
 // ---------------------------------------------------------------- Liste

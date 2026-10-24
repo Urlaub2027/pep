@@ -7,7 +7,7 @@ import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne } fr
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel,
 } from './plan-raster.js';
-import { kopierenDialog, vorlagenDialog, krankDialog, ersatzDialog } from './plan-dialoge.js';
+import { kopierenDialog, vorlagenDialog, krankDialog, ersatzDialog, eckdatenDialog } from './plan-dialoge.js';
 
 // Dialoge späterer Tasks tragen sich hier ein; ein Knopf erscheint erst, wenn sein Eintrag gesetzt ist.
 // ersatz(mitarbeiterId, datum), eckdaten(mitarbeiterId, datum), die übrigen ohne Argumente.
@@ -16,6 +16,7 @@ aktionen.kopieren = () => kopierenDialog(planKontext());
 aktionen.vorlagen = () => vorlagenDialog(planKontext());
 aktionen.krank = (mitarbeiterId, tag) => krankDialog(planKontext(), mitarbeiterId, tag);
 aktionen.ersatz = (mitarbeiterId, tag) => ersatzDialog(planKontext(), mitarbeiterId, tag);
+aktionen.eckdaten = (mitarbeiterId, tag) => eckdatenDialog(planKontext(), mitarbeiterId, tag);
 
 const VERTRAG_KURZ = { vollzeit: 'VZ', teilzeit: 'TZ', minijob: 'MJ', azubi: 'AZ', fuehrung: 'F' };
 const VERGANGEN_TEXT = 'Vergangene Tage sind schreibgeschützt. Die IST-Erfassung folgt in der nächsten Stufe.';

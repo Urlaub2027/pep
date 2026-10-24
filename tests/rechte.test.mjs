@@ -53,7 +53,7 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 // Nur lesende Funktionen; alles andere gilt als schreibend und muss unten abgedeckt sein.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
-  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten'];
+  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
@@ -138,4 +138,16 @@ test('schreibende Funktionen: Stellvertretung, Rolle mitarbeiter, Leitung ohne F
   }
   // Die Filiale-anlegen-Prüfung gilt für Stellvertretung und Mitarbeiter (oben), nicht für die Leitung ohne Filiale.
   assert.deepEqual(await zaehlen(), vorher);
+});
+
+// Lesende Funktionen mit Mitarbeiterbezug werden oben nicht aufgerufen: Rolle mitarbeiter und Leitung ohne Filiale
+// dürfen auch die Eckdaten und die Ersatzliste eines Mitarbeiters nicht sehen.
+test('lesend mit Mitarbeiter: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
+  for (const sql of [`select public.pep_eckdaten(${ma}, '2027-05-03')`,
+    `select public.pep_ersatz_kandidaten(${ma}, '2027-05-03')`]) {
+    await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/, `mitarbeiter: ${sql}`);
+    await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/, `Leitung ohne Filiale: ${sql}`);
+  }
+  // Gegenprobe: Leitung und Stellvertretung dürfen
+  for (const nutzer of [leitung, stellv]) await aufruf(nutzer, `select public.pep_eckdaten(${ma}, '2027-05-03')`);
 });

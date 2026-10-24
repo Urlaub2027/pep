@@ -2843,6 +2843,22 @@ as $$
    limit 1
 $$;
 
+-- F6/F4 je Mitarbeiter und ISO-Woche: Vertrag der Woche (pep.wochenvertrag, NULL ohne Vertrag), angerechnete
+-- Abwesenheitsstunden und geplante Arbeitsstunden (pep.arbeitsstunden: nur besetzt, ohne Pause). Soll = vertrag − abwesend
+-- (wie wochenSummen in docs/plan-raster.js). Genutzt von Ersatzsuche und Eckdaten.
+create or replace function pep.woche_stunden(p_mitarbeiter_id bigint, p_montag date)
+returns table (vertrag numeric, abwesend numeric, geplant numeric)
+language sql stable
+set search_path = ''
+as $$
+  select (pep.wochenvertrag(p_mitarbeiter_id, p_montag)).wochenstunden,
+         coalesce((select sum(a.stunden) from pep.abwesenheiten a
+                    where a.mitarbeiter_id = p_mitarbeiter_id and a.datum between p_montag and p_montag + 6), 0),
+         coalesce((select sum(pep.arbeitsstunden(p_mitarbeiter_id, p_montag + i,
+                                                 pep.zeile_lesen(p_mitarbeiter_id, p_montag + i)))
+                     from generate_series(0, 6) i), 0)
+$$;
+
 -- Kennzahlen einer Woche (Spec 10; getestet in tests/vorausplanung.test.mjs).
 create or replace function pep.woche_kennzahlen(p_filiale_id bigint, p_jahr int, p_kw int)
 returns jsonb
@@ -3270,6 +3286,22 @@ begin
 end;
 $$;
 
+-- F9: Samstage in [p_von, p_bis], an denen der Mitarbeiter besetzte Arbeit (ohne Pause) hat. Alle anderen
+-- Samstage (Urlaub, Krankheit, geschlossen, ungeplant, nur Pause) sind frei. Einzige Stelle dieser Definition
+-- (Regelprüfung, Ersatzsuche, Eckdaten).
+create or replace function pep.gearbeitete_samstage(p_mitarbeiter_id bigint, p_von date, p_bis date)
+returns table (datum date)
+language sql stable
+set search_path = ''
+as $$
+  select distinct b.datum
+    from pep.plan_bloecke b
+    join pep.bereiche r on r.id = b.bereich_id
+    cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
+   where b.mitarbeiter_id = p_mitarbeiter_id and b.datum between p_von and p_bis
+     and extract(isodow from b.datum) = 6 and r.art <> 'pause' and not x.unbesetzt
+$$;
+
 -- Text einer verletzten Wochenvorgabe ohne Notiz, z. B. „Bevorzugt: nur 08:00–14:00“.
 create or replace function pep.vorgabe_text(p_w pep.wochenvorgaben)
 returns text
@@ -3441,15 +3473,12 @@ begin
          and exists (select 1 from ma where ma.mitarbeiter_id = m.id)  -- nur an Tagen mit besetzten Blöcken
     ), lagen as (
       select ma.mitarbeiter_id, ma.arbeit_h, pep.lage(p_filiale_id, ma.mitarbeiter_id, p_datum) as lage from ma
-    ), samstage as (  -- nur samstags: gearbeitete Samstage (F9) vom Jahresbeginn bis Monatsende
-      select b.mitarbeiter_id, b.datum
-        from pep.plan_bloecke b
-        join pep.bereiche r on r.id = b.bereich_id
-        cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
-       where v_samstag and b.filiale_id = p_filiale_id
-         and b.datum >= v_jahr_von and b.datum < (v_monat_von + interval '1 month')::date
-         and extract(isodow from b.datum) = 6 and r.art <> 'pause' and not x.unbesetzt
-       group by b.mitarbeiter_id, b.datum
+    ), samstage as (  -- nur samstags: gearbeitete Samstage (F9) der Samstagsarbeiter vom Jahresbeginn bis Monatsende
+      select l.mitarbeiter_id, s.datum
+        from lagen l
+        cross join lateral pep.gearbeitete_samstage(l.mitarbeiter_id, v_jahr_von,
+                                                    (v_monat_von + interval '1 month')::date - 1) s
+       where v_samstag and l.arbeit_h > 0
     ), frei as (  -- je Samstagsarbeiter: freie andere Samstage im Monat, höchstens erreichbare im Jahr
       select l.mitarbeiter_id,
              v_sa_im_monat - 1 - (select count(*) from samstage s where s.mitarbeiter_id = l.mitarbeiter_id
@@ -4179,18 +4208,10 @@ begin
            order by k.luecke desc, k.samstage + k.spaet, k.name, k.id)
       from (
         select m.id, m.name,
-               round(coalesce((pep.wochenvertrag(m.id, v_mo)).wochenstunden, 0)
-                     - coalesce((select sum(a.stunden) from pep.abwesenheiten a
-                                  where a.mitarbeiter_id = m.id and a.datum between v_mo and v_mo + 6), 0)
-                     - coalesce((select sum(pep.arbeitsstunden(m.id, v_mo + i, pep.zeile_lesen(m.id, v_mo + i)))
-                                   from generate_series(0, 6) i), 0), 2) as luecke,
-               (select count(distinct b.datum)::int
-                  from pep.plan_bloecke b
-                  join pep.bereiche r on r.id = b.bereich_id
-                  cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
-                 where b.mitarbeiter_id = m.id and b.datum >= v_monat
-                   and b.datum < (v_monat + interval '1 month')::date
-                   and extract(isodow from b.datum) = 6 and r.art <> 'pause' and not x.unbesetzt) as samstage,
+               (select round(coalesce(w.vertrag, 0) - w.abwesend - w.geplant, 2)
+                  from pep.woche_stunden(m.id, v_mo) w) as luecke,
+               (select count(*)::int
+                  from pep.gearbeitete_samstage(m.id, v_monat, (v_monat + interval '1 month')::date - 1)) as samstage,
                (select count(*)::int from generate_series(0, 6) i
                  where pep.lage(p_filiale_id, m.id, v_mo + i) in ('spaet', 'lang')) as spaet,
                coalesce((select jsonb_agg(n.e ->> 'text' order by n.ord)
@@ -4306,6 +4327,111 @@ begin
   perform pep.protokolliere(v_b.filiale_id, 'ersatz', 'plan_bloecke',
     v_m.id || ':' || to_char(p_datum, 'YYYY-MM-DD'), null, jsonb_build_object('ersatz_id', v_e.id, 'bloecke', v_unb));
   return pep.tag_antwort(v_b.filiale_id, p_datum, array[v_m.id, v_e.id]);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Eckdaten: Funktion für den Browser (Leitung und Stellvertretung)
+-- ---------------------------------------------------------------------------
+
+-- Alles, was die Leitung beim Klick auf einen Namen im Einsatzplan für eine faire Planung braucht. Nur lesend.
+-- vertrag: der am Datum gültige (wie pep.vertrag_am, aber NULL statt KEIN_VERTRAG).
+-- vorgaben: alle am Datum gültigen Wochenvorgaben, Pflicht zuerst.
+-- abwesenheiten: Montag dieser bis Sonntag nächster ISO-Woche.
+-- woche: Soll = Vertrag der Woche − angerechnete Abwesenheit (F6, NULL ohne Vertrag), geplant (F4), wie die Seitenleiste.
+-- samstage: jeder Samstag des Monats als gearbeitet (F9) / abwesend (mit Code) / geschlossen / frei – nur gearbeitet
+--   zählt nicht als frei; frei_jahr = freie Samstage des Jahres vor dem Datum; Ziele aus den Einstellungen.
+-- vorwoche: Lage (F8) je Tag der ISO-Woche davor; vorwoche_lage und letzter_samstag_spaet wie in pep.pruefung
+--   (pep.lage_vorwoche, pep.lage_letzter_samstag). hinweise: Texte dazu, nie Sperren.
+create or replace function public.pep_eckdaten(p_mitarbeiter_id bigint, p_datum date)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b         pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_m         pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_f         bigint := v_b.filiale_id;
+  v_mo        date;
+  v_monat     date;
+  v_monat_bis date;
+  v_jahr      date;
+  v_vertrag   pep.vertraege;
+  v_vorwoche  text;
+  v_sa_spaet  boolean;
+begin
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  v_mo        := p_datum - (extract(isodow from p_datum)::int - 1);
+  v_monat     := date_trunc('month', p_datum)::date;
+  v_monat_bis := (v_monat + interval '1 month')::date - 1;
+  v_jahr      := date_trunc('year', p_datum)::date;
+  select * into v_vertrag from pep.vertraege v
+   where v.mitarbeiter_id = v_m.id and v.gueltig_ab <= p_datum
+   order by v.gueltig_ab desc limit 1;
+  v_vorwoche := pep.lage_vorwoche(v_f, v_m.id, p_datum);
+  v_sa_spaet := coalesce(pep.lage_letzter_samstag(v_f, v_m.id, p_datum) in ('spaet', 'lang'), false);
+
+  return jsonb_build_object(
+    'mitarbeiter', jsonb_build_object('id', v_m.id, 'name', v_m.name, 'personalnummer', v_m.personalnummer,
+                                      'alter', pep.alter_am(v_m.id, p_datum)),
+    'vertrag', case when v_vertrag.id is not null then
+                 jsonb_build_object('vertragsart', v_vertrag.vertragsart, 'wochenstunden', v_vertrag.wochenstunden) end,
+    'kompetenzen', coalesce((
+      select jsonb_agg(r.kuerzel order by r.position, r.id)
+        from pep.kompetenzen k join pep.bereiche r on r.id = k.bereich_id
+       where k.mitarbeiter_id = v_m.id and r.aktiv), '[]'::jsonb),
+    'vorgaben', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'pflicht', w.pflicht, 'wochentag', w.wochentag, 'art', w.art,
+               'von', to_char(w.von, 'HH24:MI'), 'bis', to_char(w.bis, 'HH24:MI'),
+               'max_stunden_tag', w.max_stunden_tag, 'max_stunden_woche', w.max_stunden_woche,
+               'notiz', nullif(btrim(w.notiz), ''))
+             order by w.pflicht desc, w.wochentag nulls first, w.von nulls first, w.id)
+        from pep.wochenvorgaben w
+       where w.mitarbeiter_id = v_m.id and w.gueltig_von <= p_datum
+         and (w.gueltig_bis is null or w.gueltig_bis >= p_datum)), '[]'::jsonb),
+    'abwesenheiten', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'datum', to_char(a.datum, 'YYYY-MM-DD'), 'code', c.code, 'stunden', a.stunden,
+               'von', to_char(a.von, 'HH24:MI'), 'bis', to_char(a.bis, 'HH24:MI'))
+             order by a.datum)
+        from pep.abwesenheiten a join pep.abwesenheitscodes c on c.id = a.code_id
+       where a.mitarbeiter_id = v_m.id and a.datum between v_mo and v_mo + 13), '[]'::jsonb),
+    'woche', (select jsonb_build_object('soll', w.vertrag - w.abwesend, 'geplant', w.geplant)
+                from pep.woche_stunden(v_m.id, v_mo) w),
+    'samstage', jsonb_build_object(
+      'monat', (
+        select jsonb_agg(jsonb_build_object(
+                 'datum', to_char(s.d, 'YYYY-MM-DD'),
+                 'status', case when g.datum is not null then 'gearbeitet' when a.code is not null then 'abwesend'
+                                when not t.geoeffnet then 'geschlossen' else 'frei' end,
+                 'code', case when g.datum is null then a.code end)
+               order by s.d)
+          from (select x::date as d from generate_series(v_monat, v_monat_bis, interval '1 day') x) s
+          left join pep.gearbeitete_samstage(v_m.id, v_monat, v_monat_bis) g on g.datum = s.d
+          left join lateral (select c.code from pep.abwesenheiten a2 join pep.abwesenheitscodes c on c.id = a2.code_id
+                              where a2.mitarbeiter_id = v_m.id and a2.datum = s.d) a on true
+          cross join lateral pep.tag_status(v_f, s.d) t
+         where extract(isodow from s.d) = 6),
+      'frei_jahr', (select count(*) from generate_series(v_jahr, p_datum - 1, interval '1 day') x
+                     where extract(isodow from x) = 6)
+                   - (select count(*) from pep.gearbeitete_samstage(v_m.id, v_jahr, p_datum - 1)),
+      'ziel_jahr', pep.einstellung(v_f, 'freie_samstage_jahr'),
+      'ziel_monat', pep.einstellung(v_f, 'freie_samstage_monat')),
+    'vorwoche', (select jsonb_agg(jsonb_build_object('datum', to_char(v_mo - 7 + i, 'YYYY-MM-DD'),
+                                                     'lage', pep.lage(v_f, v_m.id, v_mo - 7 + i)) order by i)
+                   from generate_series(0, 6) i),
+    'vorwoche_lage', v_vorwoche,
+    'letzter_samstag_spaet', v_sa_spaet,
+    'hinweise', to_jsonb(array_remove(array[
+      case v_vorwoche when 'frueh' then 'Hatte letzte Woche überwiegend früh – eher spät planen'
+                      when 'spaet' then 'Hatte letzte Woche überwiegend spät – eher früh planen' end,
+      case when v_sa_spaet then 'Letzter gearbeiteter Samstag war spät – nicht wieder spät planen' end], null)),
+    'kommentar', (select k.text from pep.plan_kommentare k where k.mitarbeiter_id = v_m.id and k.datum = p_datum),
+    'zeitkonto', null);  -- Platzhalter: Anzeige „ab Zeitkonto-Stufe“
 end;
 $$;
 
@@ -4434,5 +4560,9 @@ revoke all on function public.pep_ersatz_uebernehmen(bigint, date, bigint) from 
 grant execute on function public.pep_schnell_abwesend(bigint, text, date, date) to authenticated;
 grant execute on function public.pep_ersatz_kandidaten(bigint, date) to authenticated;
 grant execute on function public.pep_ersatz_uebernehmen(bigint, date, bigint) to authenticated;
+
+-- Eckdaten
+revoke all on function public.pep_eckdaten(bigint, date) from public, anon, authenticated;
+grant execute on function public.pep_eckdaten(bigint, date) to authenticated;
 
 commit;

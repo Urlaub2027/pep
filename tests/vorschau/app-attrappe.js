@@ -47,6 +47,15 @@ export async function start() {
   if (parameter.get('toast')) setTimeout(() => meldung(parameter.get('toast'), 'ok'), 1500);
   // ?klick=<CSS-Selektor> klickt nach dem Laden darauf (z. B. eine Zelle, um einen Dialog zu zeigen).
   if (parameter.get('klick')) setTimeout(() => document.querySelector(parameter.get('klick'))?.click(), 1000);
+  // ?dialogende=1 scrollt den offenen Dialog ans Ende (zeigt, dass ein langer Dialog in sich scrollt, nicht die Seite).
+  if (parameter.get('dialogende')) {
+    setTimeout(() => {
+      const d = document.querySelector('dialog[open]');
+      if (!d) return;
+      d.scrollTop = d.scrollHeight;
+      document.documentElement.dataset.dialogScroll = `${d.scrollTop}/${d.scrollHeight - d.clientHeight}`;
+    }, 2500);
+  }
   // Für Prüfungen per --dump-dom: wie viele Pixel die Seite breiter ist als das Fenster (0 = kein Querscrollen).
   setTimeout(() => {
     const html = document.documentElement;

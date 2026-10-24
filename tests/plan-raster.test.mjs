@@ -7,6 +7,7 @@ import {
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
   rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
+  vorgabeText,
 } from '../docs/plan-raster.js';
 
 test('Zeit: Minuten, Uhrzeit, Halbstunden', () => {
@@ -208,4 +209,14 @@ test('lueckeText: offene Wochenstunden des Ersatzes, voll oder über Soll', () =
   assert.equal(lueckeText(0), 'Woche voll');
   assert.equal(lueckeText(-1e-9), 'Woche voll');
   assert.equal(lueckeText(-1.25), '1,25 h über Soll');
+});
+
+test('vorgabeText: Wochenvorgabe als Zeile im Eckdaten-Fenster', () => {
+  const v = { wochentag: null, art: 'nicht_verfuegbar', von: null, bis: null, max_stunden_tag: null, max_stunden_woche: null };
+  assert.equal(vorgabeText({ ...v, wochentag: 6, art: 'nur_zwischen', von: '06:00', bis: '14:00' }), 'Sa: nur 06:00–14:00');
+  assert.equal(vorgabeText({ ...v, wochentag: 3 }), 'Mi: nicht verfügbar');
+  assert.equal(vorgabeText({ ...v, max_stunden_tag: 6 }), 'alle Tage: höchstens 6 h am Tag');
+  assert.equal(vorgabeText({ ...v, wochentag: 7, von: '18:00' }), 'So: nicht 18:00–24:00');
+  assert.equal(vorgabeText({ ...v, wochentag: 1, art: 'nur_zwischen', von: '08:00', bis: '13:30', max_stunden_tag: 5.5,
+    max_stunden_woche: '20.00' }), 'Mo: nur 08:00–13:30, höchstens 5,5 h am Tag, höchstens 20 h in der Woche');
 });

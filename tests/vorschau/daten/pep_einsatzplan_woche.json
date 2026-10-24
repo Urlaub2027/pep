@@ -1520,6 +1520,14 @@
     "mitarbeiter_id": 3
    },
    {
+    "art": "schichtlage",
+    "bis": null,
+    "von": null,
+    "text": "Letzte Woche überwiegend früh",
+    "schwere": "hinweis",
+    "mitarbeiter_id": 5
+   },
+   {
     "art": "wochenstunden_unter",
     "bis": null,
     "von": null,
@@ -1592,6 +1600,14 @@
     "text": "Woche: 25,00 h von 30,00 h verplant",
     "schwere": "hinweis",
     "mitarbeiter_id": 3
+   },
+   {
+    "art": "schichtlage",
+    "bis": null,
+    "von": null,
+    "text": "Letzte Woche überwiegend früh",
+    "schwere": "hinweis",
+    "mitarbeiter_id": 5
    },
    {
     "art": "wochenstunden_unter",
@@ -1676,6 +1692,14 @@
     "mitarbeiter_id": 3
    },
    {
+    "art": "schichtlage",
+    "bis": null,
+    "von": null,
+    "text": "Letzte Woche überwiegend früh",
+    "schwere": "hinweis",
+    "mitarbeiter_id": 5
+   },
+   {
     "art": "wochenstunden_unter",
     "bis": null,
     "von": null,
@@ -1742,6 +1766,14 @@
     "mitarbeiter_id": null
    },
    {
+    "art": "schichtlage",
+    "bis": null,
+    "von": null,
+    "text": "Letzte Woche überwiegend früh",
+    "schwere": "hinweis",
+    "mitarbeiter_id": 5
+   },
+   {
     "art": "wochenstunden_unter",
     "bis": null,
     "von": null,
@@ -1806,6 +1838,14 @@
     "text": "Woche: 25,00 h von 30,00 h verplant",
     "schwere": "hinweis",
     "mitarbeiter_id": 3
+   },
+   {
+    "art": "schichtlage",
+    "bis": null,
+    "von": null,
+    "text": "Letzte Woche überwiegend früh",
+    "schwere": "hinweis",
+    "mitarbeiter_id": 5
    },
    {
     "art": "wochenstunden_unter",
@@ -1918,6 +1958,11 @@
   "stundenvorgabe_manuell": null
  },
  "kommentare": [
+  {
+   "text": "Obstlieferung prüfen",
+   "datum": "2026-11-09",
+   "mitarbeiter_id": 5
+  },
   {
    "text": "Lieferung TroSo annehmen",
    "datum": "2026-11-09",
