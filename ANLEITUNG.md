@@ -67,7 +67,11 @@ sich nicht löschen), **Kompetenzen** (Haken je Bereich/Funktion), **Wochenvorga
 - **Parameter:** Rechenwerte mit Erklärung (z. B. Teiler 6 für Urlaubsstunden je Tag).
 - **Schulferien:** anlegen und löschen.
 - **Urlaubstool:** welche Umfragen als Urlaubswünsche einfließen; Zuordnung der
-  Teilnehmer zu Mitarbeitern (Vorschläge übernehmen).
+  Teilnehmer zu Mitarbeitern (Vorschläge übernehmen). Die Umfrage muss der
+  PEP-Leitung der Filiale selbst gehören (Anmeldung der Leitung im Urlaubstool
+  als Organisator) und wird von dieser Leitung eingeschaltet; Umfragen anderer
+  Organisatoren, auch wenn sie als Stellvertretung eingetragen sind, lassen sich
+  nicht einschalten. Ausschalten kann jede Leitung der Filiale.
 - **Benutzer:** Stellvertretung hinzufügen, Rolle ändern, entfernen.
 
 ### Abwesenheiten
@@ -78,12 +82,14 @@ gelb, Schulferien hellgrün.
   nennt sie. „keine“ löscht. Bei Codes mit Stundenregel „tatsächlich“ fragt ein
   Dialog nach den Stunden, bei „mit Uhrzeit“ zusätzlich nach von/bis.
 - **Wiederholung …:** Code, Wochentag und Ende wählen (z. B. BS jeden Dienstag bis
-  30.06.). Löschen einer Wiederholung entfernt alle künftigen Tage.
+  30.06.). „In Schulferien aussetzen“ (Standard an) lässt die Tage in den
+  eingetragenen Schulferien aus. Löschen einer Wiederholung entfernt alle künftigen Tage.
 - **Ansehen** (Standard-Modus): Klick auf eine Zelle öffnet den Info- oder
   Wunsch-Dialog.
 - **Urlaubswünsche freigeben (nur Leitung):** Offene Wünsche aus dem Urlaubstool
   erscheinen gestrichelt („U?“). Im Dialog genehmigen oder ablehnen; genehmigte
-  werden zu Urlaubstagen. Ändert ein Mitarbeiter seine Antwort im Urlaubstool,
+  werden zu Urlaubstagen. Abgelehnte Wünsche bleiben abgeblendet („U?“ grau) sichtbar;
+  ein Klick erlaubt erneutes Genehmigen. Ändert ein Mitarbeiter seine Antwort im Urlaubstool,
   zeigt die Zelle „!“; die Leitung kann die Freigabe zurücknehmen.
 - Seitenleiste „Urlaub <Jahr>“: Anspruch, genehmigt, offen (geschätzt), Rest.
 
