@@ -4493,19 +4493,27 @@ begin
     raise exception 'WERT_UNGUELTIG';
   end if;
   -- Jedes vorhandene Feld: JSON-Zahl oder null; Grenzen passen zu numeric(12,2), (8,2), (7,2)
-  if p_daten ? 'planumsatz' and (jsonb_typeof(p_daten -> 'planumsatz') not in ('number', 'null')
-       or (p_daten ->> 'planumsatz')::numeric not between 0.01 and 9999999999.99) then
+  if p_daten ? 'planumsatz' and (case jsonb_typeof(p_daten -> 'planumsatz')
+       when 'null' then false
+       when 'number' then (p_daten ->> 'planumsatz')::numeric not between 0.01 and 9999999999.99
+       else true end) then
     raise exception 'WERT_UNGUELTIG';
   end if;
-  if p_daten ? 'stundenleistung_eur_pro_h' and (jsonb_typeof(p_daten -> 'stundenleistung_eur_pro_h') not in ('number', 'null')
-       or (p_daten ->> 'stundenleistung_eur_pro_h')::numeric not between 0.01 and 999999.99) then
+  if p_daten ? 'stundenleistung_eur_pro_h' and (case jsonb_typeof(p_daten -> 'stundenleistung_eur_pro_h')
+       when 'null' then false
+       when 'number' then (p_daten ->> 'stundenleistung_eur_pro_h')::numeric not between 0.01 and 999999.99
+       else true end) then
     raise exception 'WERT_UNGUELTIG';
   end if;
-  if p_daten ? 'stundenvorgabe_manuell' and (jsonb_typeof(p_daten -> 'stundenvorgabe_manuell') not in ('number', 'null')
-       or (p_daten ->> 'stundenvorgabe_manuell')::numeric not between 0 and 99999.99) then
+  if p_daten ? 'stundenvorgabe_manuell' and (case jsonb_typeof(p_daten -> 'stundenvorgabe_manuell')
+       when 'null' then false
+       when 'number' then (p_daten ->> 'stundenvorgabe_manuell')::numeric not between 0 and 99999.99
+       else true end) then
     raise exception 'WERT_UNGUELTIG';
   end if;
 
+  -- Zwei schnelle Speicherungen derselben Woche (verschiedene Felder) laufen nacheinander, sonst überschreiben sie sich.
+  perform pg_advisory_xact_lock((v_f % 2147483647)::int, p_jahr * 100 + p_kw);
   select * into v_alt from pep.wochen where filiale_id = v_f and jahr = p_jahr and kw = p_kw;
   v_da := found;
   v_umsatz := case when p_daten ? 'planumsatz' then (p_daten ->> 'planumsatz')::numeric else v_alt.planumsatz end;

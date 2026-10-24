@@ -20,6 +20,7 @@ let jahr = ganzzahl('jahr', 2000, 2100) ?? start.jahr;
 let kw = ganzzahl('kw', 1, 53) ?? start.kw;
 let wochen = []; // Antwort von pep_vorausplanung: sechs Kennzahlen-Objekte
 const rahmen = {}; // Container: kopf, tabelle
+let offeneSpeicherung = Promise.resolve(); // läuft das letzte Speichern noch?
 let zellen = []; // zellen[zeile][woche] = <td>
 
 const darfSchreiben = () => ich?.rolle === 'leitung' || ich?.rolle === 'stellvertretung';
@@ -52,16 +53,22 @@ async function speichere(index, feld, roh, eingabefeld, anzeige) {
   }
   if (wert === (anzeige(w) ?? null)) { eingabefeld.value = zahlDE(wert); return; }
   meldung('');
-  try {
-    const neu = await aufruf('pep_woche_speichern', { p_jahr: w.jahr, p_kw: w.kw, p_daten: { [feld]: wert } });
-    if (neu) wochen[index] = neu;
-    meldung('Gespeichert.', 'ok');
-  } catch (fehler) {
-    zeigeFehler(fehler);
-    eingabefeld.value = zahlDE(anzeige(w));
-    return;
-  }
-  fuelleWoche(index);
+  // Speichern läuft hintereinander und wird beim Blättern/Laden abgewartet (offeneSpeicherung).
+  const lauf = offeneSpeicherung.then(async () => {
+    try {
+      const neu = await aufruf('pep_woche_speichern', { p_jahr: w.jahr, p_kw: w.kw, p_daten: { [feld]: wert } });
+      meldung('Gespeichert.', 'ok');
+      // Antwort nur in die Spalte derselben Woche übernehmen; zeigt die Tabelle inzwischen andere Wochen, entfällt das.
+      const i = wochen.findIndex((x) => x.jahr === w.jahr && x.kw === w.kw);
+      if (neu && i >= 0) { wochen[i] = neu; fuelleWoche(i); }
+    } catch (fehler) {
+      zeigeFehler(fehler);
+      const i = wochen.findIndex((x) => x.jahr === w.jahr && x.kw === w.kw);
+      if (i >= 0) fuelleWoche(i); // Feld auf den gespeicherten Wert zurücksetzen
+    }
+  });
+  offeneSpeicherung = lauf;
+  await lauf;
 }
 
 // ---------------------------------------------------------------- Zeilen
@@ -155,23 +162,34 @@ function zeichneKopf() {
 // ---------------------------------------------------------------- Laden
 
 let ladeNummer = 0; // verwirft veraltete Antworten, wenn schnell geblättert wird
-async function lade() {
+// Lädt die sechs Wochen ab (j, k). jahr/kw gelten erst nach Erfolg, damit Zustand und Anzeige übereinstimmen.
+async function lade(j = jahr, k = kw) {
   const nummer = ++ladeNummer;
-  const antwort = await aufruf('pep_vorausplanung', { p_jahr: jahr, p_kw: kw });
+  await offeneSpeicherung; // erst alles Getippte speichern, sonst fehlt es in der Antwort
+  if (nummer !== ladeNummer) return;
+  let antwort;
+  try {
+    antwort = await aufruf('pep_vorausplanung', { p_jahr: j, p_kw: k });
+  } catch (fehler) {
+    if (nummer !== ladeNummer) return; // veraltete Anfrage: Fehler egal
+    throw fehler;
+  }
   if (nummer !== ladeNummer || !antwort) return;
+  jahr = j;
+  kw = k;
   wochen = antwort.wochen;
   zeichneKopf();
   zeichneTabelle();
 }
 
 function verschiebe(schritt) {
-  ({ jahr, kw } = kwVorZurueck(jahr, kw, schritt));
-  lade().catch(zeigeFehler);
+  const ziel = kwVorZurueck(jahr, kw, schritt);
+  lade(ziel.jahr, ziel.kw).catch(zeigeFehler);
 }
 
 function heute() {
-  ({ jahr, kw } = isoWoche(heuteIso));
-  lade().catch(zeigeFehler);
+  const ziel = isoWoche(heuteIso);
+  lade(ziel.jahr, ziel.kw).catch(zeigeFehler);
 }
 
 async function zeigen() {
