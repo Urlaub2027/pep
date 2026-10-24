@@ -168,6 +168,50 @@ test('zuruecknehmen löscht die Tage, Freigabe abgelehnt', async () => {
   assert.equal((await freigabe(freigabeKw12)).status, 'abgelehnt');
 });
 
+const anzahlFreigaben = async () => (await db.query('select count(*)::int as n from pep.urlaub_freigaben')).rows[0].n;
+
+test('Wunsch muss zum Mitarbeiter passen und in der Antwort stehen: sonst WUNSCH_UNGUELTIG, nichts geschrieben', async () => {
+  const ben = await json(leitung, 'select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r',
+    [JSON.stringify({ name: 'Muster, Ben' })]);
+  await aufruf(leitung, 'select public.pep_vertrag_speichern($1, $2::jsonb)',
+    [ben, JSON.stringify({ vertragsart: 'teilzeit', wochenstunden: 30, gueltig_ab: '2026-01-01' })]);
+  const vorher = await anzahlFreigaben();
+  const fremderMa = (sql, wunsch) => aufruf(leitung, sql, [ben, JSON.stringify(wunsch)]);
+  // Annas Wunsch (Teilnehmer Anna) mit Bens mitarbeiter_id; Ben ist nicht zugeordnet
+  await wirft(aufruf(leitung, 'select public.pep_urlaub_freigeben($1, null, null, $2::jsonb, null)',
+    [ben, JSON.stringify(wunschKw(13))]), 'WUNSCH_UNGUELTIG');
+  await wirft(fremderMa('select public.pep_urlaub_ablehnen($1, $2::jsonb, null)', wunschKw(13)), 'WUNSCH_UNGUELTIG');
+  // KW 40 hat sich Anna nie gewünscht
+  await wirft(freigeben(leitung, '2027-10-04', '2027-10-09', wunschKw(40)), 'WUNSCH_UNGUELTIG');
+  await wirft(aufruf(leitung, 'select public.pep_urlaub_ablehnen($1, $2::jsonb, null)',
+    [anna, JSON.stringify(wunschKw(40))]), 'WUNSCH_UNGUELTIG');
+  await wirft(freigeben(leitung, '2027-03-06', '2027-03-06', wunschTag('2027-03-06')), 'WUNSCH_UNGUELTIG');
+  assert.equal(await anzahlFreigaben(), vorher);
+  assert.deepEqual(await uTage('2027-01-01', '2027-12-31'), []);
+});
+
+test('Zeitraum der Freigabe: ohne Angabe die ganze Woche, kürzen erlaubt, länger/außerhalb ZEITRAUM_UNGUELTIG', async () => {
+  const frei = (von, bis) => json(leitung,
+    'select public.pep_urlaub_freigeben($1, $2::date, $3::date, $4::jsonb, null) as r',
+    [anna, von, bis, JSON.stringify(wunschKw(13))]);
+  const zurueck = (id) => json(leitung, 'select public.pep_freigabe_zuruecknehmen($1) as r', [id]);
+  // KW 13 = Mo 29.03. (Ostermontag, zu) bis Sa 03.04.2027
+  await wirft(frei('2027-03-29', '2027-04-04'), 'ZEITRAUM_UNGUELTIG'); // länger als die Woche
+  await wirft(frei('2027-03-28', '2027-04-03'), 'ZEITRAUM_UNGUELTIG'); // beginnt vor der Woche
+  await wirft(frei('2027-01-01', '2027-12-31'), 'ZEITRAUM_UNGUELTIG'); // ganzes Jahr
+  assert.deepEqual(await uTage('2027-01-01', '2027-12-31'), []);
+  const id = await frei(null, null);
+  const voll = await uTage('2027-03-01', '2027-04-30');
+  assert.deepEqual(voll.map((x) => x.datum), ['2027-03-30', '2027-03-31', '2027-04-01', '2027-04-02', '2027-04-03']);
+  assert.equal(await zurueck(id), 5);
+  assert.equal(await frei('2027-03-30', '2027-04-01'), id); // Di–Do
+  assert.deepEqual((await uTage('2027-03-01', '2027-04-30')).map((x) => x.datum), ['2027-03-30', '2027-03-31', '2027-04-01']);
+  const f = await freigabe(id);
+  assert.deepEqual([f.von, f.bis, f.status], ['2027-03-30', '2027-04-01', 'genehmigt']);
+  await zurueck(id);
+  assert.deepEqual(await uTage('2027-01-01', '2027-12-31'), []);
+});
+
 test('pep_abwesenheit_loeschen setzt die Freigabe erst auf abgelehnt, wenn kein Tag übrig ist', async () => {
   const id = await freigeben(leitung, '2027-03-29', '2027-04-03', wunschKw(13));
   assert.equal((await freigabe(id)).status, 'genehmigt');
@@ -186,7 +230,7 @@ test('Umfrage im Urlaubstool löschen bricht nicht: Zuordnung und urlaub_umfrage
   const n = async (t) => (await db.query(`select count(*)::int as n from ${t}`)).rows[0].n;
   assert.equal(await n('pep.urlaub_umfragen'), 0);
   assert.equal(await n('pep.urlaub_zuordnung'), 0);
-  assert.ok(await n('pep.urlaub_freigaben') >= 3);
+  assert.equal(await n('pep.urlaub_freigaben'), 3); // KW 12, Tag 05.03., KW 13
   assert.equal((await freigabe(id)).status, 'genehmigt');
   assert.equal((await uTage('2027-04-01', '2027-04-01')).length, 1);
 });

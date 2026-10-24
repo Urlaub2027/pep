@@ -1964,8 +1964,9 @@ as $$
 $$;
 
 -- Prüft einen vom Browser gelieferten Wunsch und liefert ihn kanonisch (WUNSCH_UNGUELTIG).
--- Die Umfrage muss für die Filiale eingeschaltet und der Teilnehmer ihr Teilnehmer sein.
-create or replace function pep.wunsch_normalisieren(p_filiale_id bigint, p_wunsch jsonb)
+-- Die Umfrage muss für die Filiale eingeschaltet sein, der Teilnehmer ihr Teilnehmer und dem
+-- Mitarbeiter zugeordnet, und der Wunsch muss in seiner aktuellen Antwort stehen.
+create or replace function pep.wunsch_normalisieren(p_filiale_id bigint, p_mitarbeiter_id bigint, p_wunsch jsonb)
 returns jsonb
 language plpgsql stable
 set search_path = ''
@@ -1976,6 +1977,7 @@ declare
   v_tn    bigint;
   v_kw    int;
   v_datum date;
+  v_json  jsonb;
 begin
   if p_wunsch is null or jsonb_typeof(p_wunsch) <> 'object' then
     raise exception 'WUNSCH_UNGUELTIG';
@@ -2003,8 +2005,30 @@ begin
                   where s.filiale_id = p_filiale_id and s.umfrage_id = v_umf and t.id = v_tn) then
     raise exception 'WUNSCH_UNGUELTIG';
   end if;
-  return pep.wunsch_json(v_umf, v_tn, v_art, v_kw, v_datum);
+  if not exists (select 1 from pep.urlaub_zuordnung z
+                  where z.urlaub_mitarbeiter_id = v_tn and z.mitarbeiter_id = p_mitarbeiter_id
+                    and z.filiale_id = p_filiale_id) then
+    raise exception 'WUNSCH_UNGUELTIG';
+  end if;
+  v_json := pep.wunsch_json(v_umf, v_tn, v_art, v_kw, v_datum);
+  if not pep.wunsch_vorhanden(v_json) then
+    raise exception 'WUNSCH_UNGUELTIG';
+  end if;
+  return v_json;
 end;
+$$;
+
+-- Zeitraum eines kanonischen Wunsches: KW = Montag bis Samstag, Tag = der Tag (null, wenn die KW fehlt).
+create or replace function pep.wunsch_zeitraum(p_wunsch jsonb)
+returns table (von date, bis date)
+language sql stable
+set search_path = ''
+as $$
+  select (p_wunsch ->> 'datum')::date, (p_wunsch ->> 'datum')::date where p_wunsch ->> 'art' = 'tag'
+  union all
+  select k.montag, k.montag + 5
+    from urlaub.kalender((p_wunsch ->> 'umfrage_id')::bigint) k
+   where p_wunsch ->> 'art' = 'kw' and k.kw = (p_wunsch ->> 'kw')::int
 $$;
 
 -- Steht der Wunsch noch in der aktuellen Antwort des Teilnehmers (Abgabe vorhanden)?
@@ -2195,11 +2219,21 @@ declare
   v_alt    pep.urlaub_freigaben;
   v_code   bigint;
   v_id     bigint;
+  v_von    date;
+  v_bis    date;
+  v_w      record;
 begin
-  if p_von is null or p_bis is null or p_bis < p_von then
+  v_wunsch := pep.wunsch_normalisieren(v_b.filiale_id, v_m.id, p_wunsch);
+  select * into v_w from pep.wunsch_zeitraum(v_wunsch);
+  if v_w.von is null then
+    raise exception 'WUNSCH_UNGUELTIG';
+  end if;
+  -- Ohne Angabe der ganze Wunsch; Kürzen erlaubt, Verlängern nicht.
+  v_von := coalesce(p_von, v_w.von);
+  v_bis := coalesce(p_bis, v_w.bis);
+  if v_bis < v_von or v_von < v_w.von or v_bis > v_w.bis then
     raise exception 'ZEITRAUM_UNGUELTIG';
   end if;
-  v_wunsch := pep.wunsch_normalisieren(v_b.filiale_id, p_wunsch);
   v_alt := pep.freigabe_zum_wunsch(v_b.filiale_id, v_wunsch);
   if v_alt.status = 'genehmigt' then
     raise exception 'FREIGABE_VORHANDEN';
@@ -2212,19 +2246,19 @@ begin
   if v_alt.id is null then
     insert into pep.urlaub_freigaben (filiale_id, mitarbeiter_id, von, bis, status, wunsch,
                                       entschieden_von, entschieden_am, notiz)
-    values (v_b.filiale_id, v_m.id, p_von, p_bis, 'genehmigt', v_wunsch, v_b.user_id, now(), p_notiz)
+    values (v_b.filiale_id, v_m.id, v_von, v_bis, 'genehmigt', v_wunsch, v_b.user_id, now(), p_notiz)
     returning id into v_id;
   else
     update pep.urlaub_freigaben
-       set mitarbeiter_id = v_m.id, von = p_von, bis = p_bis, status = 'genehmigt',
+       set mitarbeiter_id = v_m.id, von = v_von, bis = v_bis, status = 'genehmigt',
            entschieden_von = v_b.user_id, entschieden_am = now(), notiz = p_notiz
      where id = v_alt.id;
     v_id := v_alt.id;
   end if;
-  perform pep.abwesenheit_schreiben(v_b.filiale_id, v_m.id, v_code, p_von, p_bis, null, null, null,
+  perform pep.abwesenheit_schreiben(v_b.filiale_id, v_m.id, v_code, v_von, v_bis, null, null, null,
     'urlaubstool', null, v_id, p_notiz, v_b.user_id);
   perform pep.protokolliere(v_b.filiale_id, 'freigeben', 'urlaub_freigaben', v_id::text, to_jsonb(v_alt),
-    jsonb_build_object('mitarbeiter_id', v_m.id, 'von', p_von, 'bis', p_bis, 'wunsch', v_wunsch));
+    jsonb_build_object('mitarbeiter_id', v_m.id, 'von', v_von, 'bis', v_bis, 'wunsch', v_wunsch));
   return v_id;
 end;
 $$;
@@ -2245,21 +2279,14 @@ declare
   v_von    date;
   v_bis    date;
 begin
-  v_wunsch := pep.wunsch_normalisieren(v_b.filiale_id, p_wunsch);
+  v_wunsch := pep.wunsch_normalisieren(v_b.filiale_id, v_m.id, p_wunsch);
   v_alt := pep.freigabe_zum_wunsch(v_b.filiale_id, v_wunsch);
   if v_alt.status = 'genehmigt' then
     raise exception 'FREIGABE_VORHANDEN';
   end if;
-  if v_wunsch ->> 'art' = 'tag' then
-    v_von := (v_wunsch ->> 'datum')::date;
-    v_bis := v_von;
-  else
-    select k.montag, k.montag + 5 into v_von, v_bis
-      from urlaub.kalender((v_wunsch ->> 'umfrage_id')::bigint) k
-     where k.kw = (v_wunsch ->> 'kw')::int;
-    if v_von is null then
-      raise exception 'WUNSCH_UNGUELTIG';
-    end if;
+  select z.von, z.bis into v_von, v_bis from pep.wunsch_zeitraum(v_wunsch) z;
+  if v_von is null then
+    raise exception 'WUNSCH_UNGUELTIG';
   end if;
   if v_alt.id is null then
     insert into pep.urlaub_freigaben (filiale_id, mitarbeiter_id, von, bis, status, wunsch,
