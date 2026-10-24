@@ -80,3 +80,30 @@ export async function filiale(db, userId, { name = 'Netto Aschaffenburg', nummer
 export async function heuteSetzen(db, datum) {
   await db.query("select set_config('pep.heute', $1, false)", [datum ?? '']);
 }
+
+// Legt eine Urlaubstool-Umfrage mit der Standard-Urlaubsfrage an (aus dem Urlaubstool übernommen).
+export async function umfrageAnlegen(db, organisatorId,
+  { titel = 'Urlaubswünsche 2027', jahr = 2027, bundesland = 'BY', frist = "now() + interval '1 day'" } = {}) {
+  const r = await db.query(
+    `insert into urlaub.umfragen (organisator_id, titel, frist) values ($1, $2, ${frist}) returning id`,
+    [organisatorId, titel]);
+  const id = r.rows[0].id;
+  await db.query('select urlaub.standard_urlaubsfrage($1, $2, $3)', [id, jahr, bundesland]);
+  return id;
+}
+
+export async function urlaubsfrageId(db, umfrageId) {
+  const r = await db.query("select id from urlaub.fragen where umfrage_id = $1 and typ = 'urlaubswochen'", [umfrageId]);
+  return r.rows[0].id;
+}
+
+// Teilnehmer einer Umfrage per Insert; liefert { id, code }.
+export async function umfrageMitarbeiter(db, umfrageId, name) {
+  const r = await db.query(
+    'insert into urlaub.mitarbeiter (umfrage_id, name) values ($1, $2) returning id, code', [umfrageId, name]);
+  return r.rows[0];
+}
+
+// Abgabe wie im Browser: antworten = { "<frage_id>": wert }.
+export const abgeben = (db, code, antworten) =>
+  browser(db, 'select public.umfrage_absenden($1, $2)', [code, JSON.stringify(antworten)]);

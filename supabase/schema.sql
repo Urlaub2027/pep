@@ -1683,13 +1683,22 @@ declare
   v_b      pep.benutzer := pep.leitung_oder_stellvertretung();
   v_m      pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
   v_anzahl int;
+  v_freigaben bigint[];
 begin
   if p_von is null or p_bis is null or p_bis < p_von then
     raise exception 'ZEITRAUM_UNGUELTIG';
   end if;
-  delete from pep.abwesenheiten
-   where mitarbeiter_id = v_m.id and filiale_id = v_b.filiale_id and datum between p_von and p_bis;
-  get diagnostics v_anzahl = row_count;
+  with d as (
+    delete from pep.abwesenheiten
+     where mitarbeiter_id = v_m.id and filiale_id = v_b.filiale_id and datum between p_von and p_bis
+    returning freigabe_id)
+  select count(*), array_agg(distinct freigabe_id) filter (where freigabe_id is not null)
+    into v_anzahl, v_freigaben from d;
+  -- Freigaben ohne verbleibende Tage gelten als abgelehnt.
+  update pep.urlaub_freigaben f
+     set status = 'abgelehnt', entschieden_von = v_b.user_id, entschieden_am = now()
+   where f.id = any (v_freigaben) and f.status = 'genehmigt'
+     and not exists (select 1 from pep.abwesenheiten a where a.freigabe_id = f.id);
   perform pep.protokolliere(v_b.filiale_id, 'loeschen', 'abwesenheiten', v_m.id::text, null,
     jsonb_build_object('von', p_von, 'bis', p_bis, 'tage', v_anzahl));
   return v_anzahl;
@@ -1842,8 +1851,10 @@ begin
                   select jsonb_object_agg(a.datum::text, jsonb_build_object(
                            'id', a.id, 'code', c.code, 'code_id', a.code_id, 'stunden', a.stunden,
                            'von', a.von, 'bis', a.bis, 'quelle', a.quelle,
-                           'freigabe_id', a.freigabe_id, 'wiederholung_id', a.wiederholung_id))
+                           'freigabe_id', a.freigabe_id, 'wiederholung_id', a.wiederholung_id,
+                           'wunsch_geaendert', coalesce(fg.status = 'genehmigt' and not pep.wunsch_vorhanden(fg.wunsch), false)))
                     from pep.abwesenheiten a join pep.abwesenheitscodes c on c.id = a.code_id
+                    left join pep.urlaub_freigaben fg on fg.id = a.freigabe_id
                    where a.mitarbeiter_id = m.id and a.datum between v_von and v_bis), '{}'::jsonb))
              order by u.ord)
         from unnest(v_ids) with ordinality u(id, ord)
@@ -1858,7 +1869,15 @@ begin
                                           'stundenregel', c.stundenregel, 'sperrt', c.sperrt)
                        order by c.position, c.id)
         from pep.abwesenheitscodes c where c.filiale_id = v_f and c.aktiv), '[]'::jsonb),
-    'wuensche', '[]'::jsonb,
+    'wuensche', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'mitarbeiter_id', w.mitarbeiter_id, 'art', w.art, 'kw', w.kw, 'von', w.von, 'bis', w.bis,
+               'status', coalesce(fg.status, 'offen'), 'freigabe_id', fg.id)
+             order by w.von, w.mitarbeiter_id, w.art)
+        from pep.urlaubswuensche(v_f, v_von, v_bis) w
+        left join lateral pep.freigabe_zum_wunsch(v_f,
+          pep.wunsch_json(w.umfrage_id, w.urlaub_mitarbeiter_id, w.art, w.kw,
+                          case when w.art = 'tag' then w.von end)) fg on true), '[]'::jsonb),
     'urlaub', coalesce((
       select jsonb_agg(jsonb_build_object(
                'mitarbeiter_id', u.id,
@@ -1878,6 +1897,412 @@ begin
                             where a.mitarbeiter_id = u.id and c.code = 'U'
                               and a.datum >= make_date(p_jahr, 1, 1)
                               and a.datum < make_date(p_jahr + 1, 1, 1)), 0) as genehmigt) j), '[]'::jsonb));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Urlaubstool-Anbindung: Tabellen
+-- ---------------------------------------------------------------------------
+
+-- Umfragen des Urlaubstools, die diese Filiale als Urlaubswünsche liest.
+create table if not exists pep.urlaub_umfragen (
+  filiale_id bigint not null references pep.filialen (id) on delete cascade,
+  umfrage_id bigint primary key references urlaub.umfragen (id) on delete cascade
+);
+
+-- Teilnehmer der Umfrage -> Mitarbeiter der Filiale (null/fehlt = nicht zugeordnet).
+create table if not exists pep.urlaub_zuordnung (
+  urlaub_mitarbeiter_id bigint primary key references urlaub.mitarbeiter (id) on delete cascade,
+  mitarbeiter_id        bigint references pep.mitarbeiter (id) on delete cascade,
+  filiale_id            bigint not null references pep.filialen (id) on delete cascade
+);
+
+-- Entscheidung über einen Wunsch. wunsch = {umfrage_id, urlaub_mitarbeiter_id, art, kw, datum}
+-- (Schnappschuss, ohne Fremdschlüssel: Freigaben überleben das Löschen der Umfrage).
+create table if not exists pep.urlaub_freigaben (
+  id             bigint generated always as identity primary key,
+  filiale_id     bigint not null references pep.filialen (id) on delete cascade,
+  mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
+  von            date not null,
+  bis            date not null check (bis >= von),
+  status         text not null check (status in ('offen', 'genehmigt', 'abgelehnt')),
+  wunsch         jsonb not null,
+  entschieden_von uuid,
+  entschieden_am timestamptz,
+  notiz          text
+);
+create index if not exists urlaub_freigaben_filiale_idx on pep.urlaub_freigaben (filiale_id, mitarbeiter_id);
+
+alter table pep.urlaub_umfragen  enable row level security;
+alter table pep.urlaub_zuordnung enable row level security;
+alter table pep.urlaub_freigaben enable row level security;
+
+-- abwesenheiten.freigabe_id wurde vor der Freigaben-Tabelle angelegt: Fremdschlüssel nachträglich.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'abwesenheiten_freigabe_fk') then
+    alter table pep.abwesenheiten add constraint abwesenheiten_freigabe_fk
+      foreign key (freigabe_id) references pep.urlaub_freigaben (id) on delete set null;
+  end if;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Urlaubstool-Anbindung: interne Funktionen
+-- ---------------------------------------------------------------------------
+
+-- Kanonischer Schnappschuss eines Wunsches (Vergleich per jsonb-Gleichheit).
+create or replace function pep.wunsch_json(
+  p_umfrage_id bigint, p_urlaub_mitarbeiter_id bigint, p_art text, p_kw int, p_datum date)
+returns jsonb
+language sql immutable
+set search_path = ''
+as $$
+  select jsonb_build_object('umfrage_id', p_umfrage_id, 'urlaub_mitarbeiter_id', p_urlaub_mitarbeiter_id,
+                            'art', p_art, 'kw', p_kw,
+                            'datum', case when p_art = 'tag' then to_char(p_datum, 'YYYY-MM-DD') end)
+$$;
+
+-- Prüft einen vom Browser gelieferten Wunsch und liefert ihn kanonisch (WUNSCH_UNGUELTIG).
+-- Die Umfrage muss für die Filiale eingeschaltet und der Teilnehmer ihr Teilnehmer sein.
+create or replace function pep.wunsch_normalisieren(p_filiale_id bigint, p_wunsch jsonb)
+returns jsonb
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_art   text;
+  v_umf   bigint;
+  v_tn    bigint;
+  v_kw    int;
+  v_datum date;
+begin
+  if p_wunsch is null or jsonb_typeof(p_wunsch) <> 'object' then
+    raise exception 'WUNSCH_UNGUELTIG';
+  end if;
+  begin
+    v_art := p_wunsch ->> 'art';
+    v_umf := (p_wunsch ->> 'umfrage_id')::bigint;
+    v_tn  := (p_wunsch ->> 'urlaub_mitarbeiter_id')::bigint;
+    if v_art = 'kw' then
+      v_kw := (p_wunsch ->> 'kw')::int;
+    elsif v_art = 'tag' then
+      v_datum := (p_wunsch ->> 'datum')::date;
+    end if;
+  exception when invalid_text_representation or numeric_value_out_of_range
+                 or invalid_datetime_format or datetime_field_overflow then
+    raise exception 'WUNSCH_UNGUELTIG';
+  end;
+  if v_umf is null or v_tn is null or v_art is null
+     or (v_art = 'kw' and v_kw is null) or (v_art = 'tag' and v_datum is null)
+     or v_art not in ('kw', 'tag') then
+    raise exception 'WUNSCH_UNGUELTIG';
+  end if;
+  if not exists (select 1 from pep.urlaub_umfragen s
+                   join urlaub.mitarbeiter t on t.umfrage_id = s.umfrage_id
+                  where s.filiale_id = p_filiale_id and s.umfrage_id = v_umf and t.id = v_tn) then
+    raise exception 'WUNSCH_UNGUELTIG';
+  end if;
+  return pep.wunsch_json(v_umf, v_tn, v_art, v_kw, v_datum);
+end;
+$$;
+
+-- Steht der Wunsch noch in der aktuellen Antwort des Teilnehmers (Abgabe vorhanden)?
+create or replace function pep.wunsch_vorhanden(p_wunsch jsonb)
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select exists (
+    select 1
+      from urlaub.abgaben ab
+      join urlaub.fragen f on f.umfrage_id = (p_wunsch ->> 'umfrage_id')::bigint and f.typ = 'urlaubswochen'
+      join urlaub.antworten an on an.mitarbeiter_id = ab.mitarbeiter_id and an.frage_id = f.id
+     where ab.mitarbeiter_id = (p_wunsch ->> 'urlaub_mitarbeiter_id')::bigint
+       and case p_wunsch ->> 'art'
+             when 'kw'  then (p_wunsch ->> 'kw')::int = any (urlaub.antwort_wochen(an.wert))
+             when 'tag' then (p_wunsch ->> 'datum')::date = any (urlaub.antwort_tage(an.wert))
+             else false
+           end)
+$$;
+
+-- Die Freigabe zu einem (kanonischen) Wunsch; genehmigte vor anderen, sonst die jüngste.
+create or replace function pep.freigabe_zum_wunsch(p_filiale_id bigint, p_wunsch jsonb)
+returns pep.urlaub_freigaben
+language sql stable
+set search_path = ''
+as $$
+  select f.* from pep.urlaub_freigaben f
+   where f.filiale_id = p_filiale_id and f.wunsch = p_wunsch
+   order by (f.status = 'genehmigt') desc, f.id desc
+   limit 1
+$$;
+
+-- Wünsche aus den Antworten der eingeschalteten Umfragen: nur zugeordnete Teilnehmer mit
+-- Abgabe, nur Wünsche, die [p_von, p_bis] schneiden. Eine KW gilt Montag bis Samstag.
+create or replace function pep.urlaubswuensche(p_filiale_id bigint, p_von date, p_bis date)
+returns table (mitarbeiter_id bigint, umfrage_id bigint, urlaub_mitarbeiter_id bigint,
+               art text, kw int, von date, bis date)
+language sql stable
+set search_path = ''
+as $$
+  select z.mitarbeiter_id, s.umfrage_id, t.id, w.art, w.kw, w.von, w.bis
+    from pep.urlaub_umfragen s
+    join urlaub.mitarbeiter t on t.umfrage_id = s.umfrage_id
+    join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id and z.mitarbeiter_id is not null
+    join urlaub.abgaben ab on ab.mitarbeiter_id = t.id
+    join urlaub.fragen f on f.umfrage_id = s.umfrage_id and f.typ = 'urlaubswochen'
+    join urlaub.antworten an on an.mitarbeiter_id = t.id and an.frage_id = f.id
+    cross join lateral (
+      select 'kw'::text as art, k.kw::int as kw, k.montag as von, (k.montag + 5) as bis
+        from urlaub.kalender(s.umfrage_id) k
+       where k.kw = any (urlaub.antwort_wochen(an.wert))
+      union all
+      select 'tag'::text, null::int, d, d from unnest(urlaub.antwort_tage(an.wert)) d
+    ) w
+   where s.filiale_id = p_filiale_id and w.bis >= p_von and w.von <= p_bis
+   order by w.von, z.mitarbeiter_id, w.art
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Urlaubstool-Anbindung: Funktionen für den Browser
+-- ---------------------------------------------------------------------------
+
+-- Umfragen mit Urlaubswochen-Frage, deren Organisator zur eigenen Filiale gehört.
+create or replace function public.pep_urlaub_umfragen()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_f bigint := (pep.leitung_oder_stellvertretung()).filiale_id;
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'id', u.id, 'titel', u.titel, 'jahr', f.jahr, 'bundesland', f.bundesland, 'frist', u.frist,
+             'aktiv', exists (select 1 from pep.urlaub_umfragen s where s.umfrage_id = u.id and s.filiale_id = v_f),
+             'teilnehmer', (select count(*) from urlaub.mitarbeiter t where t.umfrage_id = u.id),
+             'abgaben', (select count(*) from urlaub.mitarbeiter t
+                          join urlaub.abgaben ab on ab.mitarbeiter_id = t.id where t.umfrage_id = u.id))
+           order by u.angelegt_am desc, u.id desc)
+      from urlaub.umfragen u
+      join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
+     where exists (select 1 from pep.benutzer b where b.user_id = u.organisator_id and b.filiale_id = v_f)), '[]'::jsonb);
+end;
+$$;
+
+create or replace function public.pep_urlaub_umfrage_schalten(p_umfrage_id bigint, p_aktiv boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung();
+begin
+  if p_aktiv is null then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  if not exists (select 1 from urlaub.umfragen u
+                   join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
+                  where u.id = p_umfrage_id
+                    and exists (select 1 from pep.benutzer o
+                                 where o.user_id = u.organisator_id and o.filiale_id = v_b.filiale_id)) then
+    raise exception 'UMFRAGE_NICHT_GEFUNDEN';
+  end if;
+  if p_aktiv then
+    insert into pep.urlaub_umfragen (filiale_id, umfrage_id) values (v_b.filiale_id, p_umfrage_id)
+      on conflict (umfrage_id) do nothing;
+  else
+    delete from pep.urlaub_umfragen where umfrage_id = p_umfrage_id and filiale_id = v_b.filiale_id;
+  end if;
+  perform pep.protokolliere(v_b.filiale_id, 'schalten', 'urlaub_umfragen', p_umfrage_id::text, null,
+    jsonb_build_object('aktiv', p_aktiv));
+end;
+$$;
+
+-- Teilnehmer der eingeschalteten Umfragen mit Zuordnung und Namensvorschlag.
+create or replace function public.pep_urlaub_zuordnung()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_f bigint := (pep.leitung_oder_stellvertretung()).filiale_id;
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'urlaub_mitarbeiter_id', t.id, 'umfrage_id', u.id, 'umfrage_titel', u.titel, 'name', t.name,
+             'mitarbeiter_id', z.mitarbeiter_id,
+             'vorschlag_id', (select case when count(*) = 1 then min(m.id) end
+                                from pep.mitarbeiter m
+                               where m.filiale_id = v_f and m.aktiv
+                                 and lower(regexp_replace(urlaub.trim_alles(m.name), '\s+', ' ', 'g'))
+                                   = lower(regexp_replace(urlaub.trim_alles(t.name), '\s+', ' ', 'g'))))
+           order by u.id, t.name, t.id)
+      from pep.urlaub_umfragen s
+      join urlaub.umfragen u on u.id = s.umfrage_id
+      join urlaub.mitarbeiter t on t.umfrage_id = u.id
+      left join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id
+     where s.filiale_id = v_f), '[]'::jsonb);
+end;
+$$;
+
+-- p_mitarbeiter_id null löst die Zuordnung.
+create or replace function public.pep_urlaub_zuordnung_setzen(p_urlaub_mitarbeiter_id bigint, p_mitarbeiter_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung();
+  v_m pep.mitarbeiter;
+begin
+  if not exists (select 1 from urlaub.mitarbeiter t
+                   join pep.urlaub_umfragen s on s.umfrage_id = t.umfrage_id
+                  where t.id = p_urlaub_mitarbeiter_id and s.filiale_id = v_b.filiale_id) then
+    raise exception 'TEILNEHMER_NICHT_GEFUNDEN';
+  end if;
+  if p_mitarbeiter_id is null then
+    delete from pep.urlaub_zuordnung where urlaub_mitarbeiter_id = p_urlaub_mitarbeiter_id;
+  else
+    v_m := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+    insert into pep.urlaub_zuordnung (urlaub_mitarbeiter_id, mitarbeiter_id, filiale_id)
+    values (p_urlaub_mitarbeiter_id, v_m.id, v_b.filiale_id)
+    on conflict (urlaub_mitarbeiter_id) do update set mitarbeiter_id = excluded.mitarbeiter_id;
+  end if;
+  perform pep.protokolliere(v_b.filiale_id, 'zuordnen', 'urlaub_zuordnung', p_urlaub_mitarbeiter_id::text, null,
+    jsonb_build_object('mitarbeiter_id', p_mitarbeiter_id));
+end;
+$$;
+
+-- Genehmigt einen Wunsch und schreibt die U-Tage (nur geöffnete Tage, Stunden nach Teiler-Regel).
+-- Liefert die Freigabe-Id; eine frühere Ablehnung desselben Wunsches wird wiederverwendet.
+create or replace function public.pep_urlaub_freigeben(
+  p_mitarbeiter_id bigint, p_von date, p_bis date, p_wunsch jsonb, p_notiz text)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b      pep.benutzer := pep.leitung();
+  v_m      pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_wunsch jsonb;
+  v_alt    pep.urlaub_freigaben;
+  v_code   bigint;
+  v_id     bigint;
+begin
+  if p_von is null or p_bis is null or p_bis < p_von then
+    raise exception 'ZEITRAUM_UNGUELTIG';
+  end if;
+  v_wunsch := pep.wunsch_normalisieren(v_b.filiale_id, p_wunsch);
+  v_alt := pep.freigabe_zum_wunsch(v_b.filiale_id, v_wunsch);
+  if v_alt.status = 'genehmigt' then
+    raise exception 'FREIGABE_VORHANDEN';
+  end if;
+  select c.id into v_code from pep.abwesenheitscodes c
+   where c.filiale_id = v_b.filiale_id and c.code = 'U' and c.aktiv;
+  if v_code is null then
+    raise exception 'CODE_NICHT_GEFUNDEN';
+  end if;
+  if v_alt.id is null then
+    insert into pep.urlaub_freigaben (filiale_id, mitarbeiter_id, von, bis, status, wunsch,
+                                      entschieden_von, entschieden_am, notiz)
+    values (v_b.filiale_id, v_m.id, p_von, p_bis, 'genehmigt', v_wunsch, v_b.user_id, now(), p_notiz)
+    returning id into v_id;
+  else
+    update pep.urlaub_freigaben
+       set mitarbeiter_id = v_m.id, von = p_von, bis = p_bis, status = 'genehmigt',
+           entschieden_von = v_b.user_id, entschieden_am = now(), notiz = p_notiz
+     where id = v_alt.id;
+    v_id := v_alt.id;
+  end if;
+  perform pep.abwesenheit_schreiben(v_b.filiale_id, v_m.id, v_code, p_von, p_bis, null, null, null,
+    'urlaubstool', null, v_id, p_notiz, v_b.user_id);
+  perform pep.protokolliere(v_b.filiale_id, 'freigeben', 'urlaub_freigaben', v_id::text, to_jsonb(v_alt),
+    jsonb_build_object('mitarbeiter_id', v_m.id, 'von', p_von, 'bis', p_bis, 'wunsch', v_wunsch));
+  return v_id;
+end;
+$$;
+
+-- Lehnt einen Wunsch ab (keine Tage). Liefert die Freigabe-Id.
+create or replace function public.pep_urlaub_ablehnen(p_mitarbeiter_id bigint, p_wunsch jsonb, p_notiz text)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b      pep.benutzer := pep.leitung();
+  v_m      pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_wunsch jsonb;
+  v_alt    pep.urlaub_freigaben;
+  v_id     bigint;
+  v_von    date;
+  v_bis    date;
+begin
+  v_wunsch := pep.wunsch_normalisieren(v_b.filiale_id, p_wunsch);
+  v_alt := pep.freigabe_zum_wunsch(v_b.filiale_id, v_wunsch);
+  if v_alt.status = 'genehmigt' then
+    raise exception 'FREIGABE_VORHANDEN';
+  end if;
+  if v_wunsch ->> 'art' = 'tag' then
+    v_von := (v_wunsch ->> 'datum')::date;
+    v_bis := v_von;
+  else
+    select k.montag, k.montag + 5 into v_von, v_bis
+      from urlaub.kalender((v_wunsch ->> 'umfrage_id')::bigint) k
+     where k.kw = (v_wunsch ->> 'kw')::int;
+    if v_von is null then
+      raise exception 'WUNSCH_UNGUELTIG';
+    end if;
+  end if;
+  if v_alt.id is null then
+    insert into pep.urlaub_freigaben (filiale_id, mitarbeiter_id, von, bis, status, wunsch,
+                                      entschieden_von, entschieden_am, notiz)
+    values (v_b.filiale_id, v_m.id, v_von, v_bis, 'abgelehnt', v_wunsch, v_b.user_id, now(), p_notiz)
+    returning id into v_id;
+  else
+    update pep.urlaub_freigaben
+       set mitarbeiter_id = v_m.id, von = v_von, bis = v_bis, status = 'abgelehnt',
+           entschieden_von = v_b.user_id, entschieden_am = now(), notiz = p_notiz
+     where id = v_alt.id;
+    v_id := v_alt.id;
+  end if;
+  perform pep.protokolliere(v_b.filiale_id, 'ablehnen', 'urlaub_freigaben', v_id::text, to_jsonb(v_alt),
+    jsonb_build_object('mitarbeiter_id', v_m.id, 'wunsch', v_wunsch));
+  return v_id;
+end;
+$$;
+
+-- Löscht die U-Tage der Freigabe und setzt sie auf abgelehnt. Liefert die Zahl gelöschter Tage.
+create or replace function public.pep_freigabe_zuruecknehmen(p_freigabe_id bigint)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b      pep.benutzer := pep.leitung();
+  v_f      pep.urlaub_freigaben;
+  v_anzahl int;
+begin
+  select * into v_f from pep.urlaub_freigaben where id = p_freigabe_id and filiale_id = v_b.filiale_id;
+  if not found then
+    raise exception 'FREIGABE_NICHT_GEFUNDEN';
+  end if;
+  delete from pep.abwesenheiten where freigabe_id = v_f.id and filiale_id = v_b.filiale_id;
+  get diagnostics v_anzahl = row_count;
+  update pep.urlaub_freigaben
+     set status = 'abgelehnt', entschieden_von = v_b.user_id, entschieden_am = now()
+   where id = v_f.id;
+  perform pep.protokolliere(v_b.filiale_id, 'zuruecknehmen', 'urlaub_freigaben', v_f.id::text, to_jsonb(v_f),
+    jsonb_build_object('tage', v_anzahl));
+  return v_anzahl;
 end;
 $$;
 
@@ -1952,5 +2377,21 @@ grant execute on function public.pep_abwesenheit_loeschen(bigint, date, date) to
 grant execute on function public.pep_wiederholung_speichern(bigint, jsonb) to authenticated;
 grant execute on function public.pep_wiederholung_loeschen(bigint) to authenticated;
 grant execute on function public.pep_abwesenheiten(int, int) to authenticated;
+
+-- Urlaubstool-Anbindung
+revoke all on function public.pep_urlaub_umfragen() from public, anon, authenticated;
+revoke all on function public.pep_urlaub_umfrage_schalten(bigint, boolean) from public, anon, authenticated;
+revoke all on function public.pep_urlaub_zuordnung() from public, anon, authenticated;
+revoke all on function public.pep_urlaub_zuordnung_setzen(bigint, bigint) from public, anon, authenticated;
+revoke all on function public.pep_urlaub_freigeben(bigint, date, date, jsonb, text) from public, anon, authenticated;
+revoke all on function public.pep_urlaub_ablehnen(bigint, jsonb, text) from public, anon, authenticated;
+revoke all on function public.pep_freigabe_zuruecknehmen(bigint) from public, anon, authenticated;
+grant execute on function public.pep_urlaub_umfragen() to authenticated;
+grant execute on function public.pep_urlaub_umfrage_schalten(bigint, boolean) to authenticated;
+grant execute on function public.pep_urlaub_zuordnung() to authenticated;
+grant execute on function public.pep_urlaub_zuordnung_setzen(bigint, bigint) to authenticated;
+grant execute on function public.pep_urlaub_freigeben(bigint, date, date, jsonb, text) to authenticated;
+grant execute on function public.pep_urlaub_ablehnen(bigint, jsonb, text) to authenticated;
+grant execute on function public.pep_freigabe_zuruecknehmen(bigint) to authenticated;
 
 commit;
