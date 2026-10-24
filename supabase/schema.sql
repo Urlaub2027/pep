@@ -108,6 +108,16 @@ create table if not exists pep.bereiche (
   position        int not null default 0,
   unique (filiale_id, kuerzel)
 );
+-- Bedeutung für die Regeln (Kasse, VP): erkannt an dieser Spalte, nicht am frei änderbaren Kürzel.
+-- Je Filiale höchstens ein Bereich je Bedeutung; in den Einstellungen unsichtbar und fest.
+alter table pep.bereiche add column if not exists bedeutung text check (bedeutung in ('kasse', 'vp'));
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'bereiche_bedeutung_eindeutig') then
+    alter table pep.bereiche add constraint bereiche_bedeutung_eindeutig unique (filiale_id, bedeutung);
+  end if;
+end
+$$;
 
 create table if not exists pep.kompetenzen (
   mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
@@ -227,23 +237,23 @@ as $$
 begin
   -- Nur bei einer Filiale ohne Bereiche: umbenannte oder gelöschte Bereiche kommen nicht zurück.
   if not exists (select 1 from pep.bereiche where filiale_id = p_filiale_id) then
-    insert into pep.bereiche (filiale_id, kuerzel, name, farbe, art, kompetenz_noetig, aktiv, position)
+    insert into pep.bereiche (filiale_id, kuerzel, name, farbe, art, kompetenz_noetig, aktiv, position, bedeutung)
     values
-      (p_filiale_id, 'KA', 'Kasse',         '#7FD1FF', 'bereich',  true,  true,  1),
-      (p_filiale_id, 'OG', 'Obst',          '#9BE38A', 'bereich',  false, true,  2),
-      (p_filiale_id, 'BB', 'Backen',        '#F3C96B', 'bereich',  false, true,  3),
-      (p_filiale_id, 'TS', 'TroSo',         '#D9B38C', 'bereich',  false, true,  4),
-      (p_filiale_id, 'MO', 'MoPro',         '#F5F5F5', 'bereich',  false, true,  5),
-      (p_filiale_id, 'TK', 'TK',            '#B8C4FF', 'bereich',  false, true,  6),
-      (p_filiale_id, 'FÜ', 'Führung',       '#2E7D4F', 'bereich',  false, true,  7),
-      (p_filiale_id, 'RE', 'Reinigung',     '#C9C9C9', 'bereich',  false, true,  8),
-      (p_filiale_id, 'BO', 'Backoffice',    '#AEE0D6', 'bereich',  false, true,  9),
-      (p_filiale_id, 'PA', 'Pause',         '#555555', 'pause',    false, true,  10),
-      (p_filiale_id, 'PO', 'Post',          '#E6E600', 'bereich',  false, false, 11),
-      (p_filiale_id, 'KI', 'Kiosk',         '#FF8C42', 'bereich',  false, false, 12),
-      (p_filiale_id, 'GM', 'Getränkemarkt', '#333333', 'bereich',  false, false, 13),
-      (p_filiale_id, 'BE', 'Bedienbäckerei','#B5651D', 'bereich',  false, false, 14),
-      (p_filiale_id, 'VP', 'VP',            '#9A5AD0', 'funktion', false, true,  15)
+      (p_filiale_id, 'KA', 'Kasse',         '#7FD1FF', 'bereich',  true,  true,  1,  'kasse'),
+      (p_filiale_id, 'OG', 'Obst',          '#9BE38A', 'bereich',  false, true,  2,  null),
+      (p_filiale_id, 'BB', 'Backen',        '#F3C96B', 'bereich',  false, true,  3,  null),
+      (p_filiale_id, 'TS', 'TroSo',         '#D9B38C', 'bereich',  false, true,  4,  null),
+      (p_filiale_id, 'MO', 'MoPro',         '#F5F5F5', 'bereich',  false, true,  5,  null),
+      (p_filiale_id, 'TK', 'TK',            '#B8C4FF', 'bereich',  false, true,  6,  null),
+      (p_filiale_id, 'FÜ', 'Führung',       '#2E7D4F', 'bereich',  false, true,  7,  null),
+      (p_filiale_id, 'RE', 'Reinigung',     '#C9C9C9', 'bereich',  false, true,  8,  null),
+      (p_filiale_id, 'BO', 'Backoffice',    '#AEE0D6', 'bereich',  false, true,  9,  null),
+      (p_filiale_id, 'PA', 'Pause',         '#555555', 'pause',    false, true,  10, null),
+      (p_filiale_id, 'PO', 'Post',          '#E6E600', 'bereich',  false, false, 11, null),
+      (p_filiale_id, 'KI', 'Kiosk',         '#FF8C42', 'bereich',  false, false, 12, null),
+      (p_filiale_id, 'GM', 'Getränkemarkt', '#333333', 'bereich',  false, false, 13, null),
+      (p_filiale_id, 'BE', 'Bedienbäckerei','#B5651D', 'bereich',  false, false, 14, null),
+      (p_filiale_id, 'VP', 'VP',            '#9A5AD0', 'funktion', false, true,  15, 'vp')
     on conflict (filiale_id, kuerzel) do nothing;
   end if;
 
@@ -2356,6 +2366,769 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- Einsatzplan: Tabellen
+-- ---------------------------------------------------------------------------
+
+-- Bestehende Filialen: KA → kasse, VP → vp, solange die Filiale diese Bedeutung noch nicht vergeben hat.
+update pep.bereiche b
+   set bedeutung = x.bedeutung
+  from (values ('KA', 'kasse'), ('VP', 'vp')) x (kuerzel, bedeutung)
+ where b.kuerzel = x.kuerzel and b.bedeutung is null
+   and not exists (select 1 from pep.bereiche y where y.filiale_id = b.filiale_id and y.bedeutung = x.bedeutung);
+
+-- Zusammenhängende Zeit eines Mitarbeiters in einem Bereich. Nie zwei überlappende Blöcke
+-- desselben Mitarbeiters am selben Tag (Trigger unten; btree_gist steht nicht überall bereit).
+-- „Unbesetzt“ wird nicht gespeichert, sondern aus den Abwesenheiten berechnet (pep.unbesetzt).
+create table if not exists pep.plan_bloecke (
+  id             bigint generated always as identity primary key,
+  filiale_id     bigint not null references pep.filialen (id) on delete cascade,
+  mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
+  datum          date not null,
+  von            time not null,
+  bis            time not null,
+  bereich_id     bigint not null references pep.bereiche (id),
+  angelegt_von   uuid,
+  geaendert_am   timestamptz not null default now(),
+  check (extract(minute from von) in (0, 30) and extract(second from von) = 0
+     and extract(minute from bis) in (0, 30) and extract(second from bis) = 0),
+  check (von < bis)
+);
+create index if not exists plan_bloecke_filiale_datum_idx on pep.plan_bloecke (filiale_id, datum);
+create index if not exists plan_bloecke_mitarbeiter_datum_idx on pep.plan_bloecke (mitarbeiter_id, datum);
+
+-- Ein Kommentar je Mitarbeiter und Tag (Kommentarfeld rechts im Raster).
+create table if not exists pep.plan_kommentare (
+  filiale_id     bigint not null references pep.filialen (id) on delete cascade,
+  mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
+  datum          date not null,
+  text           text not null check (char_length(text) between 1 and 200),
+  primary key (mitarbeiter_id, datum)
+);
+create index if not exists plan_kommentare_filiale_datum_idx on pep.plan_kommentare (filiale_id, datum);
+
+-- Eckdaten einer ISO-Woche für die Vorausplanung.
+create table if not exists pep.wochen (
+  filiale_id                bigint not null references pep.filialen (id) on delete cascade,
+  jahr                      int not null,
+  kw                        int not null check (kw between 1 and 53),
+  planumsatz                numeric(12,2),
+  stundenleistung_eur_pro_h numeric(8,2),
+  stundenvorgabe_manuell    numeric(7,2),
+  primary key (filiale_id, jahr, kw)
+);
+
+-- Gespeicherte Tages- oder Wochenpläne (Blöcke ohne Datum).
+create table if not exists pep.vorlagen (
+  id          bigint generated always as identity primary key,
+  filiale_id  bigint not null references pep.filialen (id) on delete cascade,
+  name        text not null check (btrim(name) <> ''),
+  art         text not null check (art in ('tag', 'woche')),
+  daten       jsonb not null,
+  angelegt_am timestamptz not null default now(),
+  unique (filiale_id, name)
+);
+
+alter table pep.plan_bloecke    enable row level security;
+alter table pep.plan_kommentare enable row level security;
+alter table pep.wochen          enable row level security;
+alter table pep.vorlagen        enable row level security;
+
+create or replace function pep.bloecke_ohne_ueberlappung()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from pep.plan_bloecke b
+              where b.mitarbeiter_id = new.mitarbeiter_id and b.datum = new.datum and b.id <> new.id
+                and b.von < new.bis and b.bis > new.von) then
+    raise exception 'UEBERLAPPUNG';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists bloecke_ohne_ueberlappung on pep.plan_bloecke;
+create trigger bloecke_ohne_ueberlappung
+  before insert or update on pep.plan_bloecke
+  for each row execute function pep.bloecke_ohne_ueberlappung();
+
+-- ---------------------------------------------------------------------------
+-- Einsatzplan: interne Funktionen
+-- ---------------------------------------------------------------------------
+
+-- Zeilen und Blöcke als JSON: Zeile = [{von, bis, bereich_id}] mit Uhrzeiten "HH:MI", nach von sortiert.
+create or replace function pep.block_json(p_von time, p_bis time, p_bereich_id bigint)
+returns jsonb
+language sql immutable
+set search_path = ''
+as $$
+  select jsonb_build_object('von', to_char(p_von, 'HH24:MI'), 'bis', to_char(p_bis, 'HH24:MI'),
+                            'bereich_id', p_bereich_id)
+$$;
+
+-- Prüft die Uhrzeiten eines Strichs oder Blocks.
+create or replace function pep.plan_zeiten_pruefen(p_von time, p_bis time)
+returns void
+language plpgsql immutable
+set search_path = ''
+as $$
+begin
+  if p_von is null or p_bis is null then
+    raise exception 'ZEITEN_UNGUELTIG';
+  end if;
+  if extract(minute from p_von) not in (0, 30) or extract(second from p_von) <> 0
+     or extract(minute from p_bis) not in (0, 30) or extract(second from p_bis) <> 0 then
+    raise exception 'HALBE_STUNDE';
+  end if;
+  if p_von >= p_bis then
+    raise exception 'ZEITEN_UNGUELTIG';
+  end if;
+end;
+$$;
+
+-- Sortiert eine Zeile und verschmilzt aneinandergrenzende Blöcke desselben Bereichs.
+-- Überlappungen bleiben stehen (der Trigger lehnt sie beim Schreiben ab).
+create or replace function pep.bloecke_normalisieren(p_bloecke jsonb)
+returns jsonb
+language plpgsql immutable
+set search_path = ''
+as $$
+declare
+  v_erg jsonb := '[]'::jsonb;
+  v_von time;
+  v_bis time;
+  v_ber bigint;
+  r     record;
+begin
+  for r in select (e ->> 'von')::time as von, (e ->> 'bis')::time as bis, (e ->> 'bereich_id')::bigint as bereich_id
+             from jsonb_array_elements(coalesce(p_bloecke, '[]'::jsonb)) e
+            order by 1, 2 loop
+    if v_von is not null and r.von = v_bis and r.bereich_id = v_ber then
+      v_bis := r.bis;
+    else
+      if v_von is not null then
+        v_erg := v_erg || jsonb_build_array(pep.block_json(v_von, v_bis, v_ber));
+      end if;
+      v_von := r.von;
+      v_bis := r.bis;
+      v_ber := r.bereich_id;
+    end if;
+  end loop;
+  if v_von is not null then
+    v_erg := v_erg || jsonb_build_array(pep.block_json(v_von, v_bis, v_ber));
+  end if;
+  return v_erg;
+end;
+$$;
+
+-- Rein: alte Zeile plus Strich [p_von, p_bis) im Bereich p_bereich_id (NULL = radieren) ergibt die
+-- neue Zeile. Getroffene Blöcke werden gekürzt oder geteilt, gleiche Nachbarn verschmolzen.
+create or replace function pep.zeile_mit_strich(p_bloecke jsonb, p_von time, p_bis time, p_bereich_id bigint)
+returns jsonb
+language plpgsql immutable
+set search_path = ''
+as $$
+declare
+  v_teile jsonb := '[]'::jsonb;
+  r       record;
+begin
+  for r in select (e ->> 'von')::time as von, (e ->> 'bis')::time as bis, (e ->> 'bereich_id')::bigint as bereich_id
+             from jsonb_array_elements(coalesce(p_bloecke, '[]'::jsonb)) e loop
+    if r.von < p_von then
+      v_teile := v_teile || jsonb_build_array(pep.block_json(r.von, least(r.bis, p_von), r.bereich_id));
+    end if;
+    if r.bis > p_bis then
+      v_teile := v_teile || jsonb_build_array(pep.block_json(greatest(r.von, p_bis), r.bis, r.bereich_id));
+    end if;
+  end loop;
+  if p_bereich_id is not null then
+    v_teile := v_teile || jsonb_build_array(pep.block_json(p_von, p_bis, p_bereich_id));
+  end if;
+  return pep.bloecke_normalisieren(v_teile);
+end;
+$$;
+
+-- Die gespeicherte Zeile eines Mitarbeiters an einem Tag.
+create or replace function pep.zeile_lesen(p_mitarbeiter_id bigint, p_datum date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(pep.block_json(b.von, b.bis, b.bereich_id) order by b.von), '[]'::jsonb)
+    from pep.plan_bloecke b
+   where b.mitarbeiter_id = p_mitarbeiter_id and b.datum = p_datum
+$$;
+
+-- F2: Ein Block ist unbesetzt, wenn eine sperrende Abwesenheit des Tages ihn zeitlich schneidet
+-- (ohne von/bis = ganzer Tag).
+create or replace function pep.unbesetzt(p_mitarbeiter_id bigint, p_datum date, p_von time, p_bis time)
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select exists (
+    select 1 from pep.abwesenheiten a
+      join pep.abwesenheitscodes c on c.id = a.code_id
+     where a.mitarbeiter_id = p_mitarbeiter_id and a.datum = p_datum and c.sperrt
+       and (a.von is null or (a.von < p_bis and a.bis > p_von)))
+$$;
+
+-- F4: Arbeitsstunden einer Zeile = nicht unbesetzte Blöcke ohne Pause.
+create or replace function pep.arbeitsstunden(p_mitarbeiter_id bigint, p_datum date, p_bloecke jsonb)
+returns numeric
+language sql stable
+set search_path = ''
+as $$
+  select round(coalesce(sum(extract(epoch from (e ->> 'bis')::time - (e ->> 'von')::time) / 3600), 0), 2)
+    from jsonb_array_elements(coalesce(p_bloecke, '[]'::jsonb)) e
+    join pep.bereiche b on b.id = (e ->> 'bereich_id')::bigint
+   where b.art <> 'pause'
+     and not pep.unbesetzt(p_mitarbeiter_id, p_datum, (e ->> 'von')::time, (e ->> 'bis')::time)
+$$;
+
+-- Wochenvorgaben (p_pflicht: Pflicht oder bevorzugt), die die Zeile p_bloecke am Tag verletzen würde.
+-- Unbesetzte Blöcke zählen nicht (F2); Pausen zählen zur Anwesenheit, nicht zu den Stunden.
+-- nicht_verfuegbar mit von/bis sperrt den Zeitraum, ohne Uhrzeit den ganzen Tag. Ausnahme: ohne Uhrzeit,
+-- aber mit Stundengrenze ist es eine reine Stundengrenze (so legt die Mitarbeiterkarte sie an, weil dort
+-- die Art mit „Nicht verfügbar“ vorbelegt ist und Uhrzeiten nur bei „Nur zwischen“ erscheinen).
+-- max_stunden_woche rechnet die ISO-Woche mit p_bloecke statt der gespeicherten Zeile des Tages.
+create or replace function pep.vorgaben_verletzt(
+  p_mitarbeiter_id bigint, p_datum date, p_bloecke jsonb, p_pflicht boolean)
+returns setof pep.wochenvorgaben
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_anwesend jsonb;
+  v_tag      numeric;
+  v_woche    numeric;
+  v_montag   date := p_datum - (extract(isodow from p_datum)::int - 1);
+  v_w        pep.wochenvorgaben;
+begin
+  select coalesce(jsonb_agg(e), '[]'::jsonb) into v_anwesend
+    from jsonb_array_elements(coalesce(p_bloecke, '[]'::jsonb)) e
+   where not pep.unbesetzt(p_mitarbeiter_id, p_datum, (e ->> 'von')::time, (e ->> 'bis')::time);
+  if jsonb_array_length(v_anwesend) = 0 then
+    return;
+  end if;
+  v_tag := pep.arbeitsstunden(p_mitarbeiter_id, p_datum, p_bloecke);
+
+  for v_w in select * from pep.wochenvorgaben w
+              where w.mitarbeiter_id = p_mitarbeiter_id and w.pflicht = p_pflicht
+                and w.gueltig_von <= p_datum and (w.gueltig_bis is null or w.gueltig_bis >= p_datum)
+                and (w.wochentag is null or w.wochentag = extract(isodow from p_datum)::int)
+              order by w.id loop
+    if v_w.max_stunden_woche is not null and v_woche is null then
+      v_woche := v_tag + coalesce((
+        select sum(pep.arbeitsstunden(p_mitarbeiter_id, d.tag, pep.zeile_lesen(p_mitarbeiter_id, d.tag)))
+          from (select v_montag + i as tag from generate_series(0, 6) i) d
+         where d.tag <> p_datum), 0);
+    end if;
+    if (v_w.art = 'nicht_verfuegbar' and v_w.von is null and v_w.bis is null
+          and v_w.max_stunden_tag is null and v_w.max_stunden_woche is null)
+       or (v_w.art = 'nicht_verfuegbar' and (v_w.von is not null or v_w.bis is not null)
+          and exists (select 1 from jsonb_array_elements(v_anwesend) e
+                       where (e ->> 'von')::time < coalesce(v_w.bis, time '24:00')
+                         and (e ->> 'bis')::time > coalesce(v_w.von, time '00:00')))
+       or (v_w.art = 'nur_zwischen'
+          and exists (select 1 from jsonb_array_elements(v_anwesend) e
+                       where (e ->> 'von')::time < v_w.von or (e ->> 'bis')::time > v_w.bis))
+       or v_tag > v_w.max_stunden_tag
+       or v_woche > v_w.max_stunden_woche then
+      return next v_w;
+    end if;
+  end loop;
+end;
+$$;
+
+-- Alle Sperren für die künftige Zeile p_neu gegenüber der bisherigen p_alt (beide [{von, bis, bereich_id}]).
+-- Reihenfolge der Prüfungen = Reihenfolge der Fehler. Uhrzeiten prüfen die Aufrufer (pep.plan_zeiten_pruefen).
+-- Eine leere Zeile löscht nur; dafür genügt wie beim Radieren, dass der Tag nicht vergangen ist.
+create or replace function pep.zeile_pruefen(
+  p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date, p_alt jsonb, p_neu jsonb)
+returns void
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_m   pep.mitarbeiter;
+  v_tag record;
+  v_alt jsonb := coalesce(p_alt, '[]'::jsonb);
+  v_neu jsonb := coalesce(p_neu, '[]'::jsonb);
+begin
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if p_datum < pep.heute() then
+    raise exception 'VERGANGEN';
+  end if;
+  select * into v_m from pep.mitarbeiter where id = p_mitarbeiter_id and filiale_id = p_filiale_id;
+  if not found then
+    raise exception 'MITARBEITER_NICHT_GEFUNDEN';
+  end if;
+  if jsonb_array_length(v_neu) = 0 then
+    return;
+  end if;
+  if not v_m.aktiv or v_m.eintritt > p_datum or v_m.austritt < p_datum then
+    raise exception 'MITARBEITER_INAKTIV';
+  end if;
+  perform pep.vertrag_am(p_mitarbeiter_id, p_datum); -- KEIN_VERTRAG
+  select * into v_tag from pep.tag_status(p_filiale_id, p_datum);
+  if not v_tag.geoeffnet then
+    raise exception 'GESCHLOSSEN';
+  end if;
+  if exists (select 1 from jsonb_array_elements(v_neu) e
+              where (e ->> 'von')::time < v_tag.rahmen_von or (e ->> 'bis')::time > v_tag.rahmen_bis) then
+    raise exception 'AUSSERHALB_RAHMEN';
+  end if;
+  if exists (select 1 from jsonb_array_elements(v_neu) e
+              where not exists (select 1 from pep.bereiche b
+                                 where b.id = (e ->> 'bereich_id')::bigint and b.filiale_id = p_filiale_id and b.aktiv)) then
+    raise exception 'BEREICH_NICHT_GEFUNDEN';
+  end if;
+  if exists (select 1 from jsonb_array_elements(v_neu) e
+               join pep.bereiche b on b.id = (e ->> 'bereich_id')::bigint
+              where b.art = 'funktion') then
+    raise exception 'BEREICH_NICHT_MALBAR';
+  end if;
+  if exists (select 1 from jsonb_array_elements(v_neu) e
+               join pep.bereiche b on b.id = (e ->> 'bereich_id')::bigint
+              where b.kompetenz_noetig
+                and not exists (select 1 from pep.kompetenzen k
+                                 where k.mitarbeiter_id = p_mitarbeiter_id and k.bereich_id = b.id)) then
+    raise exception 'KOMPETENZ_FEHLT';
+  end if;
+  -- Nur neu belegte halbe Stunden: geplante Blöcke dürfen nach einer Krankmeldung stehen bleiben.
+  if exists (select 1 from jsonb_array_elements(v_neu) e
+               cross join lateral generate_series(p_datum + (e ->> 'von')::time,
+                                                  p_datum + (e ->> 'bis')::time - interval '30 minutes',
+                                                  interval '30 minutes') t
+              where not exists (select 1 from jsonb_array_elements(v_alt) a
+                                 where (a ->> 'von')::time <= t::time and (a ->> 'bis')::time > t::time)
+                and pep.unbesetzt(p_mitarbeiter_id, p_datum, t::time, (t + interval '30 minutes')::time)) then
+    raise exception 'ABWESEND';
+  end if;
+  if exists (select 1 from pep.vorgaben_verletzt(p_mitarbeiter_id, p_datum, v_neu, true)) then
+    raise exception 'VORGABE_VERLETZT';
+  end if;
+end;
+$$;
+
+-- Ersetzt die Zeile (sortiert, verschmolzen) und protokolliert vorher/nachher. Unverändert = nichts zu tun.
+-- Keine Prüfung außer der Überlappung: Aufrufer prüfen vorher mit pep.zeile_pruefen.
+create or replace function pep.zeile_schreiben(
+  p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date, p_bloecke jsonb, p_user_id uuid)
+returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_vorher  jsonb;
+  v_nachher jsonb := pep.bloecke_normalisieren(p_bloecke);
+begin
+  -- Schreibvorgänge desselben Mitarbeiters nacheinander (der Trigger sieht fremde offene Transaktionen nicht).
+  perform 1 from pep.mitarbeiter where id = p_mitarbeiter_id for update;
+  v_vorher := pep.zeile_lesen(p_mitarbeiter_id, p_datum);
+  if v_vorher = v_nachher then
+    return;
+  end if;
+  delete from pep.plan_bloecke where mitarbeiter_id = p_mitarbeiter_id and datum = p_datum;
+  insert into pep.plan_bloecke (filiale_id, mitarbeiter_id, datum, von, bis, bereich_id, angelegt_von)
+  select p_filiale_id, p_mitarbeiter_id, p_datum, (e ->> 'von')::time, (e ->> 'bis')::time,
+         (e ->> 'bereich_id')::bigint, p_user_id
+    from jsonb_array_elements(v_nachher) e;
+  perform pep.protokolliere(p_filiale_id, 'setzen', 'plan_bloecke',
+    p_mitarbeiter_id || ':' || to_char(p_datum, 'YYYY-MM-DD'), v_vorher, v_nachher);
+end;
+$$;
+
+-- Ein Block für den Browser.
+create or replace function pep.block_antwort(p_b pep.plan_bloecke)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'id', p_b.id, 'mitarbeiter_id', p_b.mitarbeiter_id, 'datum', to_char(p_b.datum, 'YYYY-MM-DD'),
+    'von', to_char(p_b.von, 'HH24:MI'), 'bis', to_char(p_b.bis, 'HH24:MI'), 'bereich_id', p_b.bereich_id,
+    'unbesetzt', pep.unbesetzt(p_b.mitarbeiter_id, p_b.datum, p_b.von, p_b.bis))
+$$;
+
+-- Antwort auf einen Strich: Blöcke dieser Mitarbeiter an dem Tag; pruefung füllt die Regelprüfung.
+create or replace function pep.tag_antwort(p_filiale_id bigint, p_datum date, p_mitarbeiter_ids bigint[])
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'datum', to_char(p_datum, 'YYYY-MM-DD'),
+    'bloecke', coalesce((select jsonb_agg(pep.block_antwort(b) order by b.mitarbeiter_id, b.von)
+                           from pep.plan_bloecke b
+                          where b.filiale_id = p_filiale_id and b.datum = p_datum
+                            and b.mitarbeiter_id = any (p_mitarbeiter_ids)), '[]'::jsonb),
+    'pruefung', '{}'::jsonb)
+$$;
+
+-- Montag der ISO-KW; DATUM_UNGUELTIG, wenn es die KW im ISO-Jahr nicht gibt (KW 53 nur in manchen Jahren).
+create or replace function pep.kw_montag(p_jahr int, p_kw int)
+returns date
+language plpgsql immutable
+set search_path = ''
+as $$
+declare
+  v_4jan date;
+  v_mo   date;
+begin
+  if p_jahr is null or p_kw is null or p_jahr not between 2000 and 2100 or p_kw not between 1 and 53 then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  v_4jan := make_date(p_jahr, 1, 4); -- liegt immer in KW 1
+  v_mo := v_4jan - (extract(isodow from v_4jan)::int - 1) + (p_kw - 1) * 7;
+  if extract(isoyear from v_mo)::int <> p_jahr or extract(week from v_mo)::int <> p_kw then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  return v_mo;
+end;
+$$;
+
+-- Vertrag einer Woche: der am Montag gültige, sonst der erste, der in der Woche beginnt (sonst leer).
+create or replace function pep.wochenvertrag(p_mitarbeiter_id bigint, p_montag date)
+returns pep.vertraege
+language sql stable
+set search_path = ''
+as $$
+  select v.* from pep.vertraege v
+   where v.mitarbeiter_id = p_mitarbeiter_id and v.gueltig_ab <= p_montag + 6
+   order by v.gueltig_ab <= p_montag desc, abs(v.gueltig_ab - p_montag)
+   limit 1
+$$;
+
+-- Kennzahlen einer Woche (Spec 10; getestet in tests/vorausplanung.test.mjs).
+create or replace function pep.woche_kennzahlen(p_filiale_id bigint, p_jahr int, p_kw int)
+returns jsonb
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_mo       date := pep.kw_montag(p_jahr, p_kw);
+  v_so       date := v_mo + 6;
+  v_w        pep.wochen;
+  v_ids      bigint[];
+  v_leistung numeric;
+  v_soll     numeric;
+  v_vertrag  numeric;
+  v_abw      numeric;
+  v_urlaub   numeric;
+  v_verf     numeric;
+  v_geplant  numeric;
+begin
+  select * into v_w from pep.wochen w where w.filiale_id = p_filiale_id and w.jahr = p_jahr and w.kw = p_kw;
+  v_leistung := coalesce(v_w.stundenleistung_eur_pro_h,
+                         (pep.einstellung(p_filiale_id, 'stundenleistung_eur_h') #>> '{}')::numeric);
+  if v_w.planumsatz is not null and v_leistung > 0 then
+    v_soll := round(round(v_w.planumsatz / v_leistung * 2) / 2, 1);
+  end if;
+
+  -- Aktive Mitarbeiter mit Vertrag in der Woche, eingetreten bis Sonntag, nicht vor Montag ausgetreten
+  select coalesce(array_agg(m.id), '{}'), coalesce(sum(v.wochenstunden), 0) into v_ids, v_vertrag
+    from pep.mitarbeiter m
+    cross join lateral pep.wochenvertrag(m.id, v_mo) v
+   where m.filiale_id = p_filiale_id and m.aktiv
+     and (m.eintritt is null or m.eintritt <= v_so) and (m.austritt is null or m.austritt >= v_mo)
+     and v.id is not null;
+
+  select coalesce(sum(a.stunden), 0), coalesce(sum(a.stunden) filter (where c.code = 'U'), 0)
+    into v_abw, v_urlaub
+    from pep.abwesenheiten a
+    join pep.abwesenheitscodes c on c.id = a.code_id
+   where a.filiale_id = p_filiale_id and a.datum between v_mo and v_so and a.mitarbeiter_id = any (v_ids);
+  v_verf := v_vertrag - v_abw;
+
+  select coalesce(sum(pep.arbeitsstunden(z.mitarbeiter_id, z.datum, pep.zeile_lesen(z.mitarbeiter_id, z.datum))), 0)
+    into v_geplant
+    from (select distinct b.mitarbeiter_id, b.datum from pep.plan_bloecke b
+           where b.filiale_id = p_filiale_id and b.datum between v_mo and v_so) z;
+
+  return jsonb_build_object(
+    'jahr', p_jahr,
+    'kw', p_kw,
+    'montag', to_char(v_mo, 'YYYY-MM-DD'),
+    'planumsatz', v_w.planumsatz,
+    'stundenleistung', v_leistung,
+    'soll', v_soll,
+    'vertragsstunden', v_vertrag,
+    'abwesend', v_abw,
+    'davon_urlaub', v_urlaub,
+    'verfuegbar', v_verf,
+    'ueberhang', v_verf - v_soll,
+    'stundenvorgabe', coalesce(v_w.stundenvorgabe_manuell, v_soll, v_verf),
+    'stundenvorgabe_manuell', v_w.stundenvorgabe_manuell,
+    'vorgabe_quelle', case when v_w.stundenvorgabe_manuell is not null then 'manuell'
+                           when v_soll is not null then 'planumsatz'
+                           else 'verfuegbar' end,
+    'geplant', v_geplant);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Einsatzplan: Funktionen für den Browser
+-- ---------------------------------------------------------------------------
+
+-- Alles, was der Reiter Einsatzplan für eine ISO-Woche braucht (Leitung und Stellvertretung).
+create or replace function public.pep_einsatzplan_woche(p_jahr int, p_kw int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b   pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_f   bigint := v_b.filiale_id;
+  v_mo  date := pep.kw_montag(p_jahr, p_kw);
+  v_so  date := v_mo + 6;
+  v_ids bigint[];
+begin
+  -- Wer in der Woche beschäftigt ist; wer Blöcke in der Woche hat, steht immer in der Liste.
+  select array_agg(m.id order by m.position, m.name, m.id) into v_ids
+    from pep.mitarbeiter m
+   where m.filiale_id = v_f
+     and ((m.aktiv and (m.eintritt is null or m.eintritt <= v_so) and (m.austritt is null or m.austritt >= v_mo)
+           and exists (select 1 from pep.vertraege v where v.mitarbeiter_id = m.id and v.gueltig_ab <= v_so))
+          or exists (select 1 from pep.plan_bloecke b
+                      where b.mitarbeiter_id = m.id and b.datum between v_mo and v_so));
+
+  return jsonb_build_object(
+    'jahr', p_jahr,
+    'kw', p_kw,
+    'montag', to_char(v_mo, 'YYYY-MM-DD'),
+    'heute', to_char(pep.heute(), 'YYYY-MM-DD'),
+    'tage', (
+      select jsonb_agg(jsonb_build_object(
+               'datum', to_char(d.tag, 'YYYY-MM-DD'),
+               'wochentag', extract(isodow from d.tag)::int,
+               'geoeffnet', s.geoeffnet,
+               'oeffnung_von', to_char(s.oeffnung_von, 'HH24:MI'),
+               'oeffnung_bis', to_char(s.oeffnung_bis, 'HH24:MI'),
+               'rahmen_von', to_char(s.rahmen_von, 'HH24:MI'),
+               'rahmen_bis', to_char(s.rahmen_bis, 'HH24:MI'),
+               'feiertag', s.feiertag,
+               'vergangen', d.tag < pep.heute())
+             order by d.tag)
+        from (select v_mo + i as tag from generate_series(0, 6) i) d
+        cross join lateral pep.tag_status(v_f, d.tag) s),
+    'bereiche', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', b.id, 'kuerzel', b.kuerzel, 'name', b.name, 'farbe', b.farbe, 'art', b.art,
+               'bedeutung', b.bedeutung, 'kompetenz_noetig', b.kompetenz_noetig)
+             order by b.position, b.id)
+        from pep.bereiche b
+       where b.filiale_id = v_f and b.aktiv and b.art in ('bereich', 'pause')), '[]'::jsonb),
+    'mitarbeiter', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', m.id,
+               'name', m.name,
+               'personalnummer', m.personalnummer,
+               'vertragsart', v.vertragsart,
+               'wochenstunden', v.wochenstunden,
+               'kompetenzen', coalesce((select jsonb_agg(k.bereich_id order by k.bereich_id)
+                                          from pep.kompetenzen k where k.mitarbeiter_id = m.id), '[]'::jsonb),
+               'vp', exists (select 1 from pep.kompetenzen k
+                               join pep.bereiche b on b.id = k.bereich_id
+                              where k.mitarbeiter_id = m.id and b.bedeutung = 'vp'),
+               'u18', (select jsonb_object_agg(to_char(v_mo + i, 'YYYY-MM-DD'),
+                                               coalesce(pep.alter_am(m.id, v_mo + i) < 18, false))
+                         from generate_series(0, 6) i))
+             order by u.ord)
+        from unnest(v_ids) with ordinality u (id, ord)
+        join pep.mitarbeiter m on m.id = u.id
+        left join lateral pep.wochenvertrag(m.id, v_mo) v on true), '[]'::jsonb),
+    'bloecke', coalesce((
+      select jsonb_agg(pep.block_antwort(b) order by b.datum, b.mitarbeiter_id, b.von)
+        from pep.plan_bloecke b
+       where b.filiale_id = v_f and b.datum between v_mo and v_so), '[]'::jsonb),
+    'abwesenheiten', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'mitarbeiter_id', a.mitarbeiter_id, 'datum', to_char(a.datum, 'YYYY-MM-DD'),
+               'code', c.code, 'name', c.name, 'farbe', c.farbe, 'sperrt', c.sperrt, 'stunden', a.stunden,
+               'von', to_char(a.von, 'HH24:MI'), 'bis', to_char(a.bis, 'HH24:MI'))
+             order by a.datum, a.mitarbeiter_id)
+        from pep.abwesenheiten a
+        join pep.abwesenheitscodes c on c.id = a.code_id
+       where a.filiale_id = v_f and a.datum between v_mo and v_so), '[]'::jsonb),
+    'kommentare', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'mitarbeiter_id', k.mitarbeiter_id, 'datum', to_char(k.datum, 'YYYY-MM-DD'), 'text', k.text)
+             order by k.datum, k.mitarbeiter_id)
+        from pep.plan_kommentare k
+       where k.filiale_id = v_f and k.datum between v_mo and v_so), '[]'::jsonb),
+    'pruefung', (select jsonb_object_agg(to_char(v_mo + i, 'YYYY-MM-DD'), '[]'::jsonb)
+                   from generate_series(0, 6) i),
+    'kennzahlen', pep.woche_kennzahlen(v_f, p_jahr, p_kw));
+end;
+$$;
+
+-- Ein Strich: p_bereich_id malt [p_von, p_bis), NULL radiert. Radieren prüft nur Zeiten, Rechte
+-- und VERGANGEN, damit Blöcke inaktiver oder abwesender Mitarbeiter immer entfernt werden können.
+create or replace function public.pep_plan_malen(
+  p_mitarbeiter_id bigint, p_datum date, p_von time, p_bis time, p_bereich_id bigint)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b   pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_m   pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_alt jsonb;
+  v_neu jsonb;
+begin
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  perform pep.plan_zeiten_pruefen(p_von, p_bis);
+  -- Zeile erst nach der Sperre lesen, sonst überschreibt ein gleichzeitiger Strich den anderen.
+  perform 1 from pep.mitarbeiter where id = v_m.id for update;
+  v_alt := pep.zeile_lesen(v_m.id, p_datum);
+  v_neu := pep.zeile_mit_strich(v_alt, p_von, p_bis, p_bereich_id);
+  if p_bereich_id is null then
+    if p_datum < pep.heute() then
+      raise exception 'VERGANGEN';
+    end if;
+  else
+    perform pep.zeile_pruefen(v_b.filiale_id, v_m.id, p_datum, v_alt, v_neu);
+  end if;
+  perform pep.zeile_schreiben(v_b.filiale_id, v_m.id, p_datum, v_neu, v_b.user_id);
+  return pep.tag_antwort(v_b.filiale_id, p_datum, array[v_m.id]);
+end;
+$$;
+
+-- Ersetzt die ganze Zeile eines Tages atomar (Rückgängig, F10). p_bloecke = [{von, bis, bereich_id}], [] löscht.
+create or replace function public.pep_plan_zeile_setzen(p_mitarbeiter_id bigint, p_datum date, p_bloecke jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b   pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_m   pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_e   jsonb;
+  v_von time;
+  v_bis time;
+  v_alt jsonb;
+  v_neu jsonb;
+begin
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if p_bloecke is null or jsonb_typeof(p_bloecke) <> 'array' then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  for v_e in select e from jsonb_array_elements(p_bloecke) e loop
+    if jsonb_typeof(v_e) <> 'object' or coalesce(jsonb_typeof(v_e -> 'bereich_id'), '') <> 'number' then
+      raise exception 'WERT_UNGUELTIG';
+    end if;
+    begin
+      v_von := (v_e ->> 'von')::time;
+      v_bis := (v_e ->> 'bis')::time;
+    exception when others then
+      raise exception 'WERT_UNGUELTIG';
+    end;
+    perform pep.plan_zeiten_pruefen(v_von, v_bis);
+  end loop;
+
+  perform 1 from pep.mitarbeiter where id = v_m.id for update;
+  v_alt := pep.zeile_lesen(v_m.id, p_datum);
+  v_neu := pep.bloecke_normalisieren(p_bloecke);
+  perform pep.zeile_pruefen(v_b.filiale_id, v_m.id, p_datum, v_alt, v_neu);
+  perform pep.zeile_schreiben(v_b.filiale_id, v_m.id, p_datum, v_neu, v_b.user_id);
+  return pep.tag_antwort(v_b.filiale_id, p_datum, array[v_m.id]);
+end;
+$$;
+
+-- Kommentar eines Mitarbeiters an einem Tag; leer oder NULL löscht. Auch an vergangenen Tagen.
+create or replace function public.pep_kommentar_setzen(p_mitarbeiter_id bigint, p_datum date, p_text text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b    pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_m    pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_text text := nullif(urlaub.trim_alles(p_text), '');
+  v_alt  pep.plan_kommentare;
+  v_neu  pep.plan_kommentare;
+  v_da   boolean;
+  v_schl text;
+begin
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if char_length(v_text) > 200 then
+    raise exception 'TEXT_ZU_LANG';
+  end if;
+  v_schl := v_m.id || ':' || to_char(p_datum, 'YYYY-MM-DD');
+  select * into v_alt from pep.plan_kommentare where mitarbeiter_id = v_m.id and datum = p_datum;
+  v_da := found;
+
+  if v_text is null then
+    if v_da then
+      delete from pep.plan_kommentare where mitarbeiter_id = v_m.id and datum = p_datum;
+      perform pep.protokolliere(v_b.filiale_id, 'loeschen', 'plan_kommentare', v_schl, to_jsonb(v_alt), null);
+    end if;
+    return;
+  end if;
+  if v_da and v_alt.text = v_text then
+    return;
+  end if;
+  insert into pep.plan_kommentare (filiale_id, mitarbeiter_id, datum, text)
+  values (v_b.filiale_id, v_m.id, p_datum, v_text)
+  on conflict (mitarbeiter_id, datum) do update set text = excluded.text
+  returning * into v_neu;
+  perform pep.protokolliere(v_b.filiale_id, case when v_da then 'aendern' else 'anlegen' end,
+    'plan_kommentare', v_schl, case when v_da then to_jsonb(v_alt) end, to_jsonb(v_neu));
+end;
+$$;
+
+-- Reihenfolge im Raster (F12), nur Leitung: p_ids = genau die aktiven Mitarbeiter der Filiale,
+-- jede Id einmal; position = Index (ab 1). Inaktive behalten ihre Position.
+create or replace function public.pep_mitarbeiter_reihenfolge(p_ids bigint[])
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b      pep.benutzer := pep.leitung();
+  v_aktive bigint[];
+  v_vorher jsonb;
+  v_nachher jsonb;
+begin
+  select coalesce(array_agg(m.id order by m.id), '{}'),
+         coalesce(jsonb_object_agg(m.id::text, m.position), '{}'::jsonb)
+    into v_aktive, v_vorher
+    from pep.mitarbeiter m
+   where m.filiale_id = v_b.filiale_id and m.aktiv;
+  -- Sortiert verglichen: fehlende, fremde, doppelte und leere Ids fallen alle auf.
+  if p_ids is null
+     or v_aktive is distinct from (select coalesce(array_agg(x order by x), '{}') from unnest(p_ids) x) then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+
+  update pep.mitarbeiter m
+     set position = u.ord::int
+    from unnest(p_ids) with ordinality u (id, ord)
+   where m.id = u.id;
+  select coalesce(jsonb_object_agg(m.id::text, m.position), '{}'::jsonb) into v_nachher
+    from pep.mitarbeiter m
+   where m.filiale_id = v_b.filiale_id and m.aktiv;
+  perform pep.protokolliere(v_b.filiale_id, 'reihenfolge', 'mitarbeiter', null, v_vorher, v_nachher);
+end;
+$$;
+
 -- Bestehende Filialen nachrüsten (zweiter Schema-Lauf nach einem Update).
 select pep.grundausstattung(id) from pep.filialen;
 
@@ -2443,5 +3216,17 @@ grant execute on function public.pep_urlaub_zuordnung_setzen(bigint, bigint) to 
 grant execute on function public.pep_urlaub_freigeben(bigint, date, date, jsonb, text) to authenticated;
 grant execute on function public.pep_urlaub_ablehnen(bigint, jsonb, text) to authenticated;
 grant execute on function public.pep_freigabe_zuruecknehmen(bigint) to authenticated;
+
+-- Einsatzplan
+revoke all on function public.pep_einsatzplan_woche(int, int) from public, anon, authenticated;
+revoke all on function public.pep_plan_malen(bigint, date, time, time, bigint) from public, anon, authenticated;
+revoke all on function public.pep_plan_zeile_setzen(bigint, date, jsonb) from public, anon, authenticated;
+revoke all on function public.pep_kommentar_setzen(bigint, date, text) from public, anon, authenticated;
+revoke all on function public.pep_mitarbeiter_reihenfolge(bigint[]) from public, anon, authenticated;
+grant execute on function public.pep_einsatzplan_woche(int, int) to authenticated;
+grant execute on function public.pep_plan_malen(bigint, date, time, time, bigint) to authenticated;
+grant execute on function public.pep_plan_zeile_setzen(bigint, date, jsonb) to authenticated;
+grant execute on function public.pep_kommentar_setzen(bigint, date, text) to authenticated;
+grant execute on function public.pep_mitarbeiter_reihenfolge(bigint[]) to authenticated;
 
 commit;
