@@ -610,6 +610,8 @@ begin
      where id = v_id returning * into v_neu;
     perform pep.protokolliere(v_b.filiale_id, 'aendern', 'vertraege', v_neu.id::text, to_jsonb(v_alt), to_jsonb(v_neu));
   end if;
+  -- Abwesenheitstage ab dem frühesten betroffenen Datum neu rechnen
+  perform pep.stunden_neu_berechnen(v_m.id, least(v_ab, coalesce(v_alt.gueltig_ab, v_ab)));
   return v_neu.id;
 end;
 $$;
@@ -636,6 +638,7 @@ begin
   end if;
   delete from pep.vertraege where id = p_id;
   perform pep.protokolliere(v_b.filiale_id, 'loeschen', 'vertraege', p_id::text, to_jsonb(v_alt), null);
+  perform pep.stunden_neu_berechnen(v_alt.mitarbeiter_id, v_alt.gueltig_ab);
 end;
 $$;
 
@@ -1146,6 +1149,11 @@ begin
   on conflict (filiale_id, schluessel) do update set wert = excluded.wert;
   perform pep.protokolliere(v_b.filiale_id, 'aendern', 'einstellungen', p_schluessel,
     to_jsonb(v_alt), to_jsonb(p_wert));
+  if p_schluessel = 'abwesenheit_teiler' then
+    -- alle Teiler-Tage der Filiale mit dem neuen Teiler neu rechnen
+    perform pep.stunden_neu_berechnen(m.id, date '1900-01-01')
+       from pep.mitarbeiter m where m.filiale_id = v_b.filiale_id;
+  end if;
 end;
 $$;
 
@@ -1397,6 +1405,459 @@ begin
 end;
 $$;
 
+-- ---------------------------------------------------------------------------
+-- Abwesenheiten: Tabellen
+-- ---------------------------------------------------------------------------
+
+-- Wiederholungsregel: jeden <wochentag> zwischen von_datum und bis_datum (höchstens 12 Monate).
+create table if not exists pep.wiederholungen (
+  id             bigint generated always as identity primary key,
+  filiale_id     bigint not null references pep.filialen (id) on delete cascade,
+  mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
+  code_id        bigint not null references pep.abwesenheitscodes (id),
+  wochentag      int not null check (wochentag between 1 and 7),
+  von_datum      date not null,
+  bis_datum      date not null check (bis_datum >= von_datum),
+  von            time check (von is null or extract(minute from von) in (0, 30)),
+  bis            time check (bis is null or extract(minute from bis) in (0, 30)),
+  stunden        numeric(5,2) check (stunden is null or (stunden >= 0 and stunden <= 24)),
+  notiz          text,
+  check ((von is null) = (bis is null)),
+  check (von is null or von < bis)
+);
+create index if not exists wiederholungen_mitarbeiter_idx on pep.wiederholungen (mitarbeiter_id);
+
+-- Ein Tag, eine Abwesenheit je Mitarbeiter. Mit von/bis ist der Tag nur teilweise abwesend.
+create table if not exists pep.abwesenheiten (
+  id             bigint generated always as identity primary key,
+  filiale_id     bigint not null references pep.filialen (id) on delete cascade,
+  mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
+  code_id        bigint not null references pep.abwesenheitscodes (id),
+  datum          date not null,
+  stunden        numeric(5,2) not null check (stunden >= 0 and stunden <= 24),
+  von            time check (von is null or extract(minute from von) in (0, 30)),
+  bis            time check (bis is null or extract(minute from bis) in (0, 30)),
+  quelle         text not null check (quelle in ('manuell', 'urlaubstool', 'schnell', 'wiederholung')),
+  wiederholung_id bigint references pep.wiederholungen (id) on delete set null,
+  freigabe_id    bigint,
+  notiz          text,
+  angelegt_von   uuid,
+  angelegt_am    timestamptz not null default now(),
+  unique (mitarbeiter_id, datum),
+  check ((von is null) = (bis is null)),
+  check (von is null or von < bis)
+);
+create index if not exists abwesenheiten_filiale_datum_idx on pep.abwesenheiten (filiale_id, datum);
+
+alter table pep.wiederholungen enable row level security;
+alter table pep.abwesenheiten  enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Abwesenheiten: interne Funktionen
+-- ---------------------------------------------------------------------------
+
+-- Leitung oder Stellvertretung mit Filiale; sonst NUR_LEITUNG.
+create or replace function pep.leitung_oder_stellvertretung()
+returns pep.benutzer
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.ich();
+begin
+  if v_b.rolle not in ('leitung', 'stellvertretung') then
+    raise exception 'NUR_LEITUNG';
+  end if;
+  if v_b.filiale_id is null then
+    raise exception 'KEINE_FILIALE';
+  end if;
+  return v_b;
+end;
+$$;
+
+-- Prüft die Uhrzeiten eines Teiltags; ohne Uhrzeit nichts zu prüfen.
+create or replace function pep.abwesenheit_zeiten_pruefen(p_von time, p_bis time, p_stunden numeric)
+returns void
+language plpgsql immutable
+set search_path = ''
+as $$
+begin
+  if (p_von is null) <> (p_bis is null) then
+    raise exception 'ZEITEN_UNGUELTIG';
+  end if;
+  if p_von is null then
+    return;
+  end if;
+  if extract(minute from p_von) not in (0, 30) or extract(minute from p_bis) not in (0, 30) then
+    raise exception 'HALBE_STUNDE';
+  end if;
+  if p_von >= p_bis then
+    raise exception 'ZEITEN_UNGUELTIG';
+  end if;
+  if p_stunden is null then
+    raise exception 'STUNDEN_FEHLEN';
+  end if;
+end;
+$$;
+
+-- Stunden eines ganzen Abwesenheitstags nach der Stundenregel des Codes.
+-- teiler: Wochenstunden des Vertrags am Tag / abwesenheit_teiler (KEIN_VERTRAG ohne Vertrag).
+create or replace function pep.abwesenheit_stunden(
+  p_mitarbeiter_id bigint, p_datum date, p_code pep.abwesenheitscodes, p_stunden numeric)
+returns numeric
+language plpgsql stable
+set search_path = ''
+as $$
+begin
+  if p_code.stundenregel = 'teiler' then
+    return round((pep.vertrag_am(p_mitarbeiter_id, p_datum)).wochenstunden
+                 / (pep.einstellung(p_code.filiale_id, 'abwesenheit_teiler') #>> '{}')::numeric, 2);
+  elsif p_code.stundenregel = 'tatsaechlich' then
+    if p_stunden is null then
+      raise exception 'STUNDEN_FEHLEN';
+    end if;
+    if p_stunden < 0 or p_stunden > 24 then
+      raise exception 'STUNDEN_UNGUELTIG';
+    end if;
+    return p_stunden;
+  end if;
+  return 0;
+end;
+$$;
+
+-- Einziger Schreibweg für Abwesenheitstage (auch für Freigaben und Wiederholungen).
+-- Zerlegt den Zeitraum in Tage, überspringt geschlossene Tage (Sonntag, Feiertag,
+-- geschlossene Abweichung) und ersetzt vorhandene Tage desselben Mitarbeiters.
+create or replace function pep.abwesenheit_schreiben(
+  p_filiale_id bigint, p_mitarbeiter_id bigint, p_code_id bigint, p_von date, p_bis date,
+  p_stunden numeric, p_von_zeit time, p_bis_zeit time, p_quelle text,
+  p_wiederholung_id bigint, p_freigabe_id bigint, p_notiz text, p_user_id uuid)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_code  pep.abwesenheitscodes;
+  v_tag   date;
+  v_std   numeric;
+  v_tage  int := 0;
+  v_uebersprungen int := 0;
+begin
+  if p_von is null or p_bis is null or p_bis < p_von then
+    raise exception 'ZEITRAUM_UNGUELTIG';
+  end if;
+  if p_bis - p_von + 1 > 366 then
+    raise exception 'ZEITRAUM_ZU_LANG';
+  end if;
+  if not exists (select 1 from pep.mitarbeiter where id = p_mitarbeiter_id and filiale_id = p_filiale_id) then
+    raise exception 'MITARBEITER_NICHT_GEFUNDEN';
+  end if;
+  select * into v_code from pep.abwesenheitscodes
+   where id = p_code_id and filiale_id = p_filiale_id and aktiv;
+  if not found then
+    raise exception 'CODE_NICHT_GEFUNDEN';
+  end if;
+  perform pep.abwesenheit_zeiten_pruefen(p_von_zeit, p_bis_zeit, p_stunden);
+
+  for v_tag in select p_von + i from generate_series(0, p_bis - p_von) i loop
+    if not (select s.geoeffnet from pep.tag_status(p_filiale_id, v_tag) s) then
+      v_uebersprungen := v_uebersprungen + 1;
+      continue;
+    end if;
+    v_std := case when p_von_zeit is not null then p_stunden
+                  else pep.abwesenheit_stunden(p_mitarbeiter_id, v_tag, v_code, p_stunden) end;
+    insert into pep.abwesenheiten (filiale_id, mitarbeiter_id, code_id, datum, stunden, von, bis,
+                                   quelle, wiederholung_id, freigabe_id, notiz, angelegt_von)
+    values (p_filiale_id, p_mitarbeiter_id, p_code_id, v_tag, v_std, p_von_zeit, p_bis_zeit,
+            p_quelle, p_wiederholung_id, p_freigabe_id, p_notiz, p_user_id)
+    on conflict (mitarbeiter_id, datum) do update
+      set code_id = excluded.code_id, stunden = excluded.stunden, von = excluded.von, bis = excluded.bis,
+          quelle = excluded.quelle, wiederholung_id = excluded.wiederholung_id,
+          freigabe_id = excluded.freigabe_id, notiz = excluded.notiz,
+          angelegt_von = excluded.angelegt_von, angelegt_am = now();
+    v_tage := v_tage + 1;
+  end loop;
+
+  perform pep.protokolliere(p_filiale_id, 'setzen', 'abwesenheiten', p_mitarbeiter_id::text, null,
+    jsonb_build_object('code', v_code.code, 'von', p_von, 'bis', p_bis,
+                       'tage', v_tage, 'uebersprungen', v_uebersprungen));
+  return jsonb_build_object('tage', v_tage, 'uebersprungen', v_uebersprungen);
+end;
+$$;
+
+-- Rechnet die Stunden der Teiler-Tage ganztägiger Abwesenheiten ab p_ab neu.
+-- Tage ohne Vertrag am Datum bleiben unverändert. Liefert die Zahl der Zeilen.
+create or replace function pep.stunden_neu_berechnen(p_mitarbeiter_id bigint, p_ab date)
+returns int
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_m      pep.mitarbeiter;
+  v_anzahl int;
+begin
+  select * into v_m from pep.mitarbeiter where id = p_mitarbeiter_id;
+  if not found then
+    raise exception 'MITARBEITER_NICHT_GEFUNDEN';
+  end if;
+  update pep.abwesenheiten a
+     set stunden = pep.abwesenheit_stunden(a.mitarbeiter_id, a.datum, c, null)
+    from pep.abwesenheitscodes c
+   where c.id = a.code_id and c.stundenregel = 'teiler' and a.von is null
+     and a.mitarbeiter_id = p_mitarbeiter_id and a.datum >= p_ab
+     and exists (select 1 from pep.vertraege v
+                  where v.mitarbeiter_id = a.mitarbeiter_id and v.gueltig_ab <= a.datum);
+  get diagnostics v_anzahl = row_count;
+  perform pep.protokolliere(v_m.filiale_id, 'neu_berechnet', 'abwesenheiten', p_mitarbeiter_id::text, null,
+    jsonb_build_object('anzahl', v_anzahl, 'ab', p_ab));
+  return v_anzahl;
+end;
+$$;
+
+-- Erzeugt die Tage einer Wiederholungsregel ab heute (vergangene bleiben unberührt).
+create or replace function pep.wiederholung_erzeugen(p_w pep.wiederholungen, p_user_id uuid)
+returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_start date := greatest(p_w.von_datum, pep.heute());
+  v_tag   date;
+begin
+  for v_tag in select v_start + i from generate_series(0, p_w.bis_datum - v_start) i
+                where extract(isodow from v_start + i)::int = p_w.wochentag loop
+    perform pep.abwesenheit_schreiben(p_w.filiale_id, p_w.mitarbeiter_id, p_w.code_id, v_tag, v_tag,
+      p_w.stunden, p_w.von, p_w.bis, 'wiederholung', p_w.id, null, p_w.notiz, p_user_id);
+  end loop;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Abwesenheiten: Funktionen für den Browser
+-- ---------------------------------------------------------------------------
+
+-- Leitung und Stellvertretung. Ohne p_von_zeit/p_bis_zeit ganze Tage; mit Uhrzeit
+-- ist der Tag nur teilweise abwesend und p_stunden Pflicht.
+create or replace function public.pep_abwesenheit_setzen(
+  p_mitarbeiter_id bigint, p_code_id bigint, p_von date, p_bis date,
+  p_stunden numeric, p_von_zeit time, p_bis_zeit time, p_notiz text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_m pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+begin
+  if not v_m.aktiv then
+    raise exception 'MITARBEITER_INAKTIV';
+  end if;
+  return pep.abwesenheit_schreiben(v_b.filiale_id, v_m.id, p_code_id, p_von, p_bis, p_stunden,
+    p_von_zeit, p_bis_zeit, 'manuell', null, null, p_notiz, v_b.user_id);
+end;
+$$;
+
+-- Liefert die Zahl der gelöschten Tage.
+create or replace function public.pep_abwesenheit_loeschen(p_mitarbeiter_id bigint, p_von date, p_bis date)
+returns int
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b      pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_m      pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_anzahl int;
+begin
+  if p_von is null or p_bis is null or p_bis < p_von then
+    raise exception 'ZEITRAUM_UNGUELTIG';
+  end if;
+  delete from pep.abwesenheiten
+   where mitarbeiter_id = v_m.id and filiale_id = v_b.filiale_id and datum between p_von and p_bis;
+  get diagnostics v_anzahl = row_count;
+  perform pep.protokolliere(v_b.filiale_id, 'loeschen', 'abwesenheiten', v_m.id::text, null,
+    jsonb_build_object('von', p_von, 'bis', p_bis, 'tage', v_anzahl));
+  return v_anzahl;
+end;
+$$;
+
+-- p_daten: id (zum Ändern), code_id, wochentag (1–7), von_datum, bis_datum, von, bis, stunden, notiz.
+-- Ändern löscht die künftigen Tage der Regel und erzeugt sie neu.
+create or replace function public.pep_wiederholung_speichern(p_mitarbeiter_id bigint, p_daten jsonb)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b    pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_m    pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_id   bigint := (p_daten ->> 'id')::bigint;
+  v_code bigint := (p_daten ->> 'code_id')::bigint;
+  v_wt   int := (p_daten ->> 'wochentag')::int;
+  v_von  date := (p_daten ->> 'von_datum')::date;
+  v_bis  date := (p_daten ->> 'bis_datum')::date;
+  v_vz   time := (p_daten ->> 'von')::time;
+  v_bz   time := (p_daten ->> 'bis')::time;
+  v_std  numeric := (p_daten ->> 'stunden')::numeric;
+  v_alt  pep.wiederholungen;
+  v_neu  pep.wiederholungen;
+begin
+  if not v_m.aktiv then
+    raise exception 'MITARBEITER_INAKTIV';
+  end if;
+  if v_wt is null or v_wt not between 1 and 7 then
+    raise exception 'WOCHENTAG_UNGUELTIG';
+  end if;
+  if v_von is null or v_bis is null or v_bis < v_von or v_bis < pep.heute() then
+    raise exception 'ZEITRAUM_UNGUELTIG';
+  end if;
+  if v_bis > (v_von + interval '12 months')::date then
+    raise exception 'ZEITRAUM_ZU_LANG';
+  end if;
+  if not exists (select 1 from pep.abwesenheitscodes where id = v_code and filiale_id = v_b.filiale_id and aktiv) then
+    raise exception 'CODE_NICHT_GEFUNDEN';
+  end if;
+  perform pep.abwesenheit_zeiten_pruefen(v_vz, v_bz, v_std);
+
+  if v_id is null then
+    insert into pep.wiederholungen (filiale_id, mitarbeiter_id, code_id, wochentag, von_datum, bis_datum,
+                                    von, bis, stunden, notiz)
+    values (v_b.filiale_id, v_m.id, v_code, v_wt, v_von, v_bis, v_vz, v_bz, v_std, p_daten ->> 'notiz')
+    returning * into v_neu;
+    perform pep.protokolliere(v_b.filiale_id, 'anlegen', 'wiederholungen', v_neu.id::text, null, to_jsonb(v_neu));
+  else
+    select * into v_alt from pep.wiederholungen
+     where id = v_id and mitarbeiter_id = v_m.id and filiale_id = v_b.filiale_id;
+    if not found then
+      raise exception 'WIEDERHOLUNG_NICHT_GEFUNDEN';
+    end if;
+    delete from pep.abwesenheiten where wiederholung_id = v_id and datum >= pep.heute();
+    update pep.wiederholungen
+       set code_id = v_code, wochentag = v_wt, von_datum = v_von, bis_datum = v_bis,
+           von = v_vz, bis = v_bz, stunden = v_std, notiz = p_daten ->> 'notiz'
+     where id = v_id returning * into v_neu;
+    perform pep.protokolliere(v_b.filiale_id, 'aendern', 'wiederholungen', v_neu.id::text, to_jsonb(v_alt), to_jsonb(v_neu));
+  end if;
+  perform pep.wiederholung_erzeugen(v_neu, v_b.user_id);
+  return v_neu.id;
+end;
+$$;
+
+-- Künftige Tage der Regel verschwinden; vergangene bleiben ohne Verweis auf die Regel.
+create or replace function public.pep_wiederholung_loeschen(p_id bigint)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b   pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_alt pep.wiederholungen;
+begin
+  select * into v_alt from pep.wiederholungen where id = p_id and filiale_id = v_b.filiale_id;
+  if not found then
+    raise exception 'WIEDERHOLUNG_NICHT_GEFUNDEN';
+  end if;
+  delete from pep.abwesenheiten where wiederholung_id = p_id and datum >= pep.heute();
+  update pep.abwesenheiten set wiederholung_id = null where wiederholung_id = p_id;
+  delete from pep.wiederholungen where id = p_id;
+  perform pep.protokolliere(v_b.filiale_id, 'loeschen', 'wiederholungen', p_id::text, to_jsonb(v_alt), null);
+end;
+$$;
+
+-- Monatsdaten für die Abwesenheitsansicht (Leitung und Stellvertretung).
+create or replace function public.pep_abwesenheiten(p_jahr int, p_monat int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b   pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_f   bigint := v_b.filiale_id;
+  v_von date;
+  v_bis date;
+  v_ids bigint[];
+begin
+  if p_jahr is null or p_monat is null or p_jahr not between 2000 and 2100 or p_monat not between 1 and 12 then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  v_von := make_date(p_jahr, p_monat, 1);
+  v_bis := (v_von + interval '1 month' - interval '1 day')::date;
+
+  select array_agg(m.id order by m.aktiv desc, m.position, m.name, m.id) into v_ids
+    from pep.mitarbeiter m
+   where m.filiale_id = v_f
+     and (m.aktiv or exists (select 1 from pep.abwesenheiten a
+                              where a.mitarbeiter_id = m.id and a.datum between v_von and v_bis));
+
+  return jsonb_build_object(
+    'tage', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'datum', d.tag,
+               'wochentag', extract(isodow from d.tag)::int,
+               'kw', extract(week from d.tag)::int,
+               'geoeffnet', s.geoeffnet,
+               'feiertag', s.feiertag,
+               'schulferien', (select sf.name from pep.schulferien sf
+                                where sf.filiale_id = v_f and d.tag between sf.von and sf.bis
+                                order by sf.von, sf.id limit 1))
+             order by d.tag)
+        from (select v_von + i as tag from generate_series(0, v_bis - v_von) i) d
+        cross join lateral pep.tag_status(v_f, d.tag) s), '[]'::jsonb),
+    'mitarbeiter', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', m.id,
+               'name', m.name,
+               'aktiv', m.aktiv,
+               'wochenstunden', (select x.wochenstunden from pep.vertraege x
+                                  where x.mitarbeiter_id = m.id and x.gueltig_ab <= v_von
+                                  order by x.gueltig_ab desc limit 1),
+               'tage', coalesce((
+                  select jsonb_object_agg(a.datum::text, jsonb_build_object(
+                           'id', a.id, 'code', c.code, 'code_id', a.code_id, 'stunden', a.stunden,
+                           'von', a.von, 'bis', a.bis, 'quelle', a.quelle,
+                           'freigabe_id', a.freigabe_id, 'wiederholung_id', a.wiederholung_id))
+                    from pep.abwesenheiten a join pep.abwesenheitscodes c on c.id = a.code_id
+                   where a.mitarbeiter_id = m.id and a.datum between v_von and v_bis), '{}'::jsonb))
+             order by u.ord)
+        from unnest(v_ids) with ordinality u(id, ord)
+        join pep.mitarbeiter m on m.id = u.id), '[]'::jsonb),
+    'summen', coalesce((
+      select jsonb_object_agg(s.datum::text, s.summe)
+        from (select a.datum, sum(a.stunden) as summe from pep.abwesenheiten a
+               where a.filiale_id = v_f and a.datum between v_von and v_bis
+               group by a.datum) s), '{}'::jsonb),
+    'codes', coalesce((
+      select jsonb_agg(jsonb_build_object('id', c.id, 'code', c.code, 'name', c.name, 'farbe', c.farbe,
+                                          'stundenregel', c.stundenregel, 'sperrt', c.sperrt)
+                       order by c.position, c.id)
+        from pep.abwesenheitscodes c where c.filiale_id = v_f and c.aktiv), '[]'::jsonb),
+    'wuensche', '[]'::jsonb,
+    'urlaub', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'mitarbeiter_id', u.id,
+               'anspruch', j.anspruch,
+               'rest_vorjahr', j.rest_vorjahr,
+               'genehmigt', j.genehmigt,
+               'rest', j.anspruch + j.rest_vorjahr - j.genehmigt)
+             order by u.ord)
+        from unnest(v_ids) with ordinality u(id, ord)
+        cross join lateral (
+          select coalesce((select y.anspruch_stunden from pep.urlaubsjahre y
+                            where y.mitarbeiter_id = u.id and y.jahr = p_jahr), 0) as anspruch,
+                 coalesce((select y.rest_vorjahr_stunden from pep.urlaubsjahre y
+                            where y.mitarbeiter_id = u.id and y.jahr = p_jahr), 0) as rest_vorjahr,
+                 coalesce((select sum(a.stunden) from pep.abwesenheiten a
+                             join pep.abwesenheitscodes c on c.id = a.code_id
+                            where a.mitarbeiter_id = u.id and c.code = 'U'
+                              and a.datum >= make_date(p_jahr, 1, 1)
+                              and a.datum < make_date(p_jahr + 1, 1, 1)), 0) as genehmigt) j), '[]'::jsonb));
+end;
+$$;
+
 -- Bestehende Filialen nachrüsten (zweiter Schema-Lauf nach einem Update).
 select pep.grundausstattung(id) from pep.filialen;
 
@@ -1456,5 +1917,17 @@ grant execute on function public.pep_schulferien_speichern(bigint, date, date, t
 grant execute on function public.pep_schulferien_loeschen(bigint) to authenticated;
 grant execute on function public.pep_benutzer_setzen(text, text) to authenticated;
 grant execute on function public.pep_benutzer_entfernen(uuid) to authenticated;
+
+-- Abwesenheiten
+revoke all on function public.pep_abwesenheit_setzen(bigint, bigint, date, date, numeric, time, time, text) from public, anon, authenticated;
+revoke all on function public.pep_abwesenheit_loeschen(bigint, date, date) from public, anon, authenticated;
+revoke all on function public.pep_wiederholung_speichern(bigint, jsonb) from public, anon, authenticated;
+revoke all on function public.pep_wiederholung_loeschen(bigint) from public, anon, authenticated;
+revoke all on function public.pep_abwesenheiten(int, int) from public, anon, authenticated;
+grant execute on function public.pep_abwesenheit_setzen(bigint, bigint, date, date, numeric, time, time, text) to authenticated;
+grant execute on function public.pep_abwesenheit_loeschen(bigint, date, date) to authenticated;
+grant execute on function public.pep_wiederholung_speichern(bigint, jsonb) to authenticated;
+grant execute on function public.pep_wiederholung_loeschen(bigint) to authenticated;
+grant execute on function public.pep_abwesenheiten(int, int) to authenticated;
 
 commit;
