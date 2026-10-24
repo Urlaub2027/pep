@@ -251,3 +251,14 @@ test('Umfrage im Urlaubstool löschen bricht nicht: Zuordnung und urlaub_umfrage
   assert.equal((await freigabe(id)).status, 'genehmigt');
   assert.equal((await uTage('2027-04-01', '2027-04-01')).length, 1);
 });
+
+test('Ausschalten klappt auch, wenn der Eigentümer nicht mehr in der Filiale ist', async () => {
+  const chef2 = await pepBenutzer(db, 'chef2', 'leitung', fil);
+  const o = await pepBenutzer(db, 'ehemalig', 'leitung', fil);
+  const u = await umfrageAnlegen(db, o, { titel: 'Ehemalig 2027' });
+  await aufruf(o, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
+  await aufruf(chef2, 'select public.pep_benutzer_entfernen($1)', [o]);
+  await aufruf(chef2, 'select public.pep_urlaub_umfrage_schalten($1, false)', [u]);
+  assert.equal((await db.query('select count(*)::int as n from pep.urlaub_umfragen where umfrage_id = $1', [u])).rows[0].n, 0);
+  await wirft(aufruf(chef2, 'select public.pep_urlaub_umfrage_schalten($1, false)', [u]), 'UMFRAGE_NICHT_GEFUNDEN');
+});

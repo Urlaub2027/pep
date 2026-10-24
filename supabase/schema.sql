@@ -2147,13 +2147,14 @@ begin
   if p_aktiv is null then
     raise exception 'WERT_UNGUELTIG';
   end if;
-  -- Einschalten nur für die eigenen Umfragen; Ausschalten darf die Leitung der Filiale.
+  -- Einschalten nur für die eigenen Umfragen; Ausschalten darf die Leitung der Filiale,
+  -- solange die Umfrage für die Filiale eingeschaltet ist (auch wenn der Eigentümer weg ist).
   if not exists (select 1 from urlaub.umfragen u
                    join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
                   where u.id = p_umfrage_id
                     and case when p_aktiv then u.organisator_id = v_b.user_id
-                             else exists (select 1 from pep.benutzer o
-                                           where o.user_id = u.organisator_id and o.filiale_id = v_b.filiale_id)
+                             else exists (select 1 from pep.urlaub_umfragen s
+                                           where s.umfrage_id = u.id and s.filiale_id = v_b.filiale_id)
                          end) then
     raise exception 'UMFRAGE_NICHT_GEFUNDEN';
   end if;

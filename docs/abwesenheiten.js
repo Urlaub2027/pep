@@ -153,9 +153,10 @@ function zelle(m, tag, farben) {
   const datum = tagIso(tag.datum);
   const eintrag = m.tage?.[datum];
   const wunsch = wunschAm(m, datum);
-  const abgelehnt = wunsch?.status === 'abgelehnt';
+  // Abgelehnte Wünsche zeigen sich nur in leeren Zellen; ein echter Eintrag geht vor.
+  const abgelehnt = wunsch?.status === 'abgelehnt' && !eintrag;
   const klassen = ['abw-zelle', ...zellenKlasse(tag)];
-  if (wunsch) klassen.push(abgelehnt ? 'wunsch-abgelehnt' : 'wunsch');
+  if (wunsch && (abgelehnt || wunsch.status === 'offen')) klassen.push(abgelehnt ? 'wunsch-abgelehnt' : 'wunsch');
   const td = element('td', { class: klassen.join(' '), 'data-datum': datum, 'data-mitarbeiter': m.id });
   const titel = [tag.feiertag, tag.schulferien].filter(Boolean);
   if (eintrag) {
@@ -172,7 +173,7 @@ function zelle(m, tag, farben) {
   } else if (wunsch) {
     td.append(element('span', { class: 'kz' }, 'U?'));
   }
-  if (wunsch) titel.push(abgelehnt ? 'Abgelehnter Wunsch' : 'Urlaubswunsch (offen)');
+  if (wunsch && (abgelehnt || wunsch.status === 'offen')) titel.push(abgelehnt ? 'Abgelehnter Wunsch' : 'Urlaubswunsch (offen)');
   if (titel.length) td.title = titel.join(' · ');
   return td;
 }
@@ -408,7 +409,7 @@ function beiKlick(e) {
   if (!m) return;
   const datum = td.dataset.datum;
   const wunsch = wunschAm(m, datum);
-  if (wunsch) oeffneWunsch(m, wunsch);
+  if (wunsch && (wunsch.status === 'offen' || !m.tage?.[datum])) oeffneWunsch(m, wunsch);
   else if (m.tage?.[datum]) oeffneInfo(m, datum);
 }
 

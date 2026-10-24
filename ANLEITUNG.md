@@ -83,7 +83,8 @@ gelb, Schulferien hellgrün.
   Dialog nach den Stunden, bei „mit Uhrzeit“ zusätzlich nach von/bis.
 - **Wiederholung …:** Code, Wochentag und Ende wählen (z. B. BS jeden Dienstag bis
   30.06.). „In Schulferien aussetzen“ (Standard an) lässt die Tage in den
-  eingetragenen Schulferien aus. Löschen einer Wiederholung entfernt alle künftigen Tage.
+  eingetragenen Schulferien aus; nachträglich geänderte Schulferien wirken erst, wenn die
+  Wiederholung neu gespeichert wird. Löschen einer Wiederholung entfernt alle künftigen Tage.
 - **Ansehen** (Standard-Modus): Klick auf eine Zelle öffnet den Info- oder
   Wunsch-Dialog.
 - **Urlaubswünsche freigeben (nur Leitung):** Offene Wünsche aus dem Urlaubstool
