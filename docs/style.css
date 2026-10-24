@@ -160,6 +160,8 @@ th { background: var(--hell); font-weight: 600; }
 .abw-tabelle .feiertag { background: var(--feiertag); }
 .abw-tabelle .wochenende, .abw-tabelle .geschlossen { background: var(--geschlossen); }
 .abw-zelle.wunsch { outline: 2px dashed var(--schwarz); outline-offset: -3px; }
+.abw-zelle.wunsch-abgelehnt { outline: 1px dashed var(--grau); outline-offset: -3px; }
+.abw-zelle.wunsch-abgelehnt .kz { color: var(--grau); font-weight: 400; text-decoration: line-through; opacity: 0.6; }
 .abw-zelle.markiert { outline: 2px solid var(--schwarz); outline-offset: -2px; background: var(--netto-gelb); }
 .abw-tabelle tr.inaktiv th.abw-name { color: var(--grau); font-style: italic; }
 .abw-summe td, .abw-summe th { font-weight: 600; background: var(--hell); }

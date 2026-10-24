@@ -28,8 +28,12 @@ const zeigeFehler = (fehler) => { if (!fehler.behandelt) meldung(fehlerText(fehl
 
 // ---------------------------------------------------------------- Laden
 
+let ladeNummer = 0; // verwirft veraltete Antworten, wenn der Monat schnell gewechselt wird
 async function lade() {
-  daten = await aufruf('pep_abwesenheiten', { p_jahr: jahr, p_monat: monat });
+  const nummer = ++ladeNummer;
+  const antwort = await aufruf('pep_abwesenheiten', { p_jahr: jahr, p_monat: monat });
+  if (nummer !== ladeNummer) return;
+  daten = antwort;
   zeichneAlles();
 }
 
@@ -139,15 +143,19 @@ function textfarbe(farbe) {
 }
 
 const wuenscheVon = (m) => (daten.wuensche || []).filter((w) => w.mitarbeiter_id === m.id);
-const offenerWunschAm = (m, datum) => wuenscheVon(m).find((w) =>
-  w.status === 'offen' && tagIso(w.von) <= datum && datum <= tagIso(w.bis));
+// Offene Wünsche gehen vor; abgelehnte bleiben (abgeblendet) sichtbar und lassen sich erneut genehmigen.
+const wunschAm = (m, datum) => {
+  const treffer = wuenscheVon(m).filter((w) => tagIso(w.von) <= datum && datum <= tagIso(w.bis));
+  return treffer.find((w) => w.status === 'offen') ?? treffer.find((w) => w.status === 'abgelehnt');
+};
 
 function zelle(m, tag, farben) {
   const datum = tagIso(tag.datum);
   const eintrag = m.tage?.[datum];
-  const wunsch = offenerWunschAm(m, datum);
+  const wunsch = wunschAm(m, datum);
+  const abgelehnt = wunsch?.status === 'abgelehnt';
   const klassen = ['abw-zelle', ...zellenKlasse(tag)];
-  if (wunsch) klassen.push('wunsch');
+  if (wunsch) klassen.push(abgelehnt ? 'wunsch-abgelehnt' : 'wunsch');
   const td = element('td', { class: klassen.join(' '), 'data-datum': datum, 'data-mitarbeiter': m.id });
   const titel = [tag.feiertag, tag.schulferien].filter(Boolean);
   if (eintrag) {
@@ -164,7 +172,7 @@ function zelle(m, tag, farben) {
   } else if (wunsch) {
     td.append(element('span', { class: 'kz' }, 'U?'));
   }
-  if (wunsch) titel.push('Urlaubswunsch (offen)');
+  if (wunsch) titel.push(abgelehnt ? 'Abgelehnter Wunsch' : 'Urlaubswunsch (offen)');
   if (titel.length) td.title = titel.join(' · ');
   return td;
 }
@@ -267,15 +275,20 @@ function dialog(titel, koerper, aktionen, beimSchliessen = () => {}) {
     onclick: async () => {
       fehlerZeile.hidden = true;
       alle.forEach((k) => { k.disabled = true; });
+      let geschafft = false;
       try {
         await a.aktion();
+        geschafft = true;
         d.close();
-        if (a.danach) await a.danach();
       } catch (fehler) {
         if (fehler.behandelt) d.close();
         else { fehlerZeile.textContent = fehlerText(fehler.message); fehlerZeile.hidden = false; }
       } finally {
         alle.forEach((k) => { k.disabled = false; });
+      }
+      // Fehler beim Neuladen erscheinen auf der Seite, der Dialog ist dann schon geschlossen.
+      if (geschafft && a.danach) {
+        try { await a.danach(); } catch (fehler) { zeigeFehler(fehler); }
       }
     },
   }, a.text));
@@ -343,15 +356,15 @@ function oeffneWunsch(m, w) {
       }),
       danach: nachSpeichern,
     },
-    {
+    ...(w.status === 'abgelehnt' ? [] : [{
       text: 'Ablehnen', sekundaer: true,
       aktion: () => aufruf('pep_urlaub_ablehnen',
         { p_mitarbeiter_id: m.id, p_wunsch: wunschFuerDb(w), p_notiz: notiz.value || null }),
       danach: nachSpeichern,
-    },
+    }]),
   ] : [];
   dialog(wunschTitel(w), [
-    element('p', { class: 'hinweis' }, m.name),
+    element('p', { class: 'hinweis' }, w.status === 'abgelehnt' ? `${m.name} – abgelehnter Wunsch, kann erneut genehmigt werden` : m.name),
     feld('von', von), feld('bis', bis), feld('Notiz', notiz),
     istLeitung() ? null : element('p', { class: 'hinweis' }, 'Nur die Filialleitung kann Wünsche genehmigen oder ablehnen.'),
   ], aktionen);
@@ -394,7 +407,7 @@ function beiKlick(e) {
   const m = td && daten.mitarbeiter.find((x) => x.id === Number(td.dataset.mitarbeiter));
   if (!m) return;
   const datum = td.dataset.datum;
-  const wunsch = offenerWunschAm(m, datum);
+  const wunsch = wunschAm(m, datum);
   if (wunsch) oeffneWunsch(m, wunsch);
   else if (m.tage?.[datum]) oeffneInfo(m, datum);
 }
@@ -414,12 +427,14 @@ async function oeffneWiederholung() {
   const bisZeit = eingabe('time', '', { step: '1800' });
   const stunden = eingabe('text', '', { inputmode: 'decimal' });
   const notiz = eingabe('text', '');
+  const ferien = eingabe('checkbox', true);
   dialog('Wiederholung …', [
     element('p', { class: 'hinweis' }, 'Bestehende Wiederholungen werden über das Raster sichtbar (Quelle „wiederholung“).'),
     feld('Mitarbeiter', wer), feld('Code', code), feld('Wochentag', tag),
     feld('von Datum', von), feld('bis Datum', bis),
     feld('von (optional)', vonZeit), feld('bis (optional)', bisZeit),
     feld('Stunden (leer = nach Regel)', stunden), feld('Notiz', notiz),
+    element('label', { class: 'haken' }, ferien, ' In Schulferien aussetzen'),
   ], [{
     text: 'Speichern',
     aktion: async () => {
@@ -433,6 +448,7 @@ async function oeffneWiederholung() {
         p_daten: {
           code_id: Number(code.value), wochentag: Number(tag.value), von_datum: von.value, bis_datum: bis.value,
           von: vonZeit.value || null, bis: bisZeit.value || null, stunden: s, notiz: notiz.value || null,
+          schulferien_aussetzen: ferien.checked,
         },
       });
     },
