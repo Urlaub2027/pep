@@ -100,3 +100,28 @@ button:disabled { opacity: 0.5; cursor: default; }
 table { width: 100%; border-collapse: collapse; }
 th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--linie); }
 th { background: var(--hell); font-weight: 600; }
+
+/* Reiter Mitarbeiter */
+.zweispaltig { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .zweispaltig { grid-template-columns: 1fr; } }
+.ma-liste { list-style: none; margin: 12px 0 0; padding: 0; }
+.ma-eintrag { display: block; width: 100%; min-height: 44px; margin-bottom: 4px; padding: 6px 10px; font: inherit; text-align: left; color: var(--schwarz); background: #fff; border: 1px solid var(--linie); border-radius: 4px; cursor: pointer; }
+.ma-eintrag:hover { background: var(--hell); }
+.ma-eintrag.gewaehlt { border: 2px solid var(--schwarz); background: var(--netto-gelb); }
+.ma-eintrag.inaktiv { color: var(--grau); background: var(--hell); }
+.ma-eintrag small { display: block; color: var(--grau); }
+.ma-eintrag.gewaehlt small { color: var(--schwarz); }
+.badge { display: inline-block; margin-left: 4px; padding: 0 6px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--schwarz); border-radius: 8px; background: #fff; }
+.hinweis { color: var(--grau); }
+.zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--linie); }
+.zeile .feld { width: 170px; margin-bottom: 0; }
+.zeile .feld.breit { width: 100%; }
+.zeile .feld textarea { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font: inherit; border: 1px solid #999; border-radius: 4px; }
+.zeile .zeilentitel { width: 100%; }
+.zeile .zeiten { display: flex; gap: 12px; }
+.zeile .zeiten[hidden] { display: none; }
+.zeile .zeiten .feld { width: 120px; }
+.feld.haken, .haken { display: flex; align-items: center; gap: 6px; min-height: 40px; }
+.feld.haken input, .haken input { width: 20px; min-height: 20px; margin: 0; }
+.haken-liste { display: flex; flex-wrap: wrap; gap: 4px 24px; }
+.zeile .knopf { background: #fff; }
