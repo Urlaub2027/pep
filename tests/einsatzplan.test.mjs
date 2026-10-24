@@ -104,11 +104,77 @@ test('U ganztags → malen ABWESEND; vorher geplanter Block wird unbesetzt und l
   await abwesend(a, 'U', '2026-11-10');
   await wirft(malen(leitung, a, '2026-11-10', '14:00', '16:00', 'KA'), 'ABWESEND');
   assert.deepEqual(zeile(await woche(), a), [blk('08:00', '12:00', 'KA', true)]);
-  // Den Bereich eines unbesetzten Blocks wechseln belegt keine neue Zeit
-  let r = await malen(leitung, a, '2026-11-10', '08:00', '12:00', 'PA');
-  assert.deepEqual(zeile(r, a), [blk('08:00', '12:00', 'PA', true)]);
-  r = await malen(leitung, a, '2026-11-10', '08:00', '12:00', null);
+  // Unveränderte Zeile wiederherstellen geht; den Bereich eines unbesetzten Blocks wechseln nicht
+  await setzen(a, '2026-11-10', [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA }]);
+  await wirft(malen(leitung, a, '2026-11-10', '08:00', '12:00', 'PA'), 'ABWESEND');
+  const r = await malen(leitung, a, '2026-11-10', '08:00', '12:00', null);
   assert.deepEqual(zeile(r, a), []);
+});
+
+// Spätere Änderungen an Stammdaten und Einstellungen blockieren nur, was ein Strich ändert.
+test('Kompetenz KA nach Block KA 08–12 entzogen: Pause 12:00–12:30 daneben erlaubt, KA 13–14 → KOMPETENZ_FEHLT', async () => {
+  const a = await ma('Test, Kora');
+  await malen(leitung, a, '2026-11-12', '08:00', '12:00', 'KA');
+  await aufruf(leitung, 'select public.pep_kompetenz_setzen($1, $2, false)', [a, bereich.KA]);
+  const r = await malen(leitung, a, '2026-11-12', '12:00', '12:30', 'PA');
+  assert.deepEqual(zeile(r, a), [blk('08:00', '12:00', 'KA'), blk('12:00', '12:30', 'PA')]);
+  await wirft(malen(leitung, a, '2026-11-12', '13:00', '14:00', 'KA'), 'KOMPETENZ_FEHLT');
+  await wirft(malen(leitung, a, '2026-11-12', '07:30', '08:00', 'KA'), 'KOMPETENZ_FEHLT'); // KA-Block wächst
+  await setzen(a, '2026-11-12', [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA },
+    { von: '12:00', bis: '12:30', bereich_id: bereich.PA }]);
+});
+
+test('Rahmen Fr auf bis 18:00 verkürzt nach Block 16–20: 08–10 in der Zeile erlaubt, Verlängern bis 21:00 → AUSSERHALB_RAHMEN', async () => {
+  const a = await ma('Test, Rahel');
+  await malen(leitung, a, '2026-11-13', '16:00', '20:00', 'KA');
+  const rahmen = (bis) => aufruf(leitung, 'select public.pep_rahmen_speichern(5, $1::jsonb)', [JSON.stringify({
+    geoeffnet: true, oeffnung_von: '07:00', oeffnung_bis: bis === '21:30' ? '20:00' : bis, rahmen_von: '06:00', rahmen_bis: bis })]);
+  await rahmen('18:00');
+  try {
+    const r = await malen(leitung, a, '2026-11-13', '08:00', '10:00', 'KA');
+    assert.deepEqual(zeile(r, a), [blk('08:00', '10:00', 'KA'), blk('16:00', '20:00', 'KA')]);
+    await wirft(malen(leitung, a, '2026-11-13', '20:00', '21:00', 'KA'), 'AUSSERHALB_RAHMEN');
+    await wirft(malen(leitung, a, '2026-11-13', '18:00', '20:00', 'PA'), 'AUSSERHALB_RAHMEN'); // Bereichswechsel
+    await setzen(a, '2026-11-13', [{ von: '08:00', bis: '10:00', bereich_id: bereich.KA },
+      { von: '16:00', bis: '20:00', bereich_id: bereich.KA }]);
+  } finally {
+    await rahmen('21:30');
+  }
+});
+
+test('Pflicht max_stunden_tag 6 nach 8-h-Zeile angelegt: radieren 1 h erlaubt, +0,5 h → VORGABE_VERLETZT', async () => {
+  const a = await ma('Test, Malte');
+  await malen(leitung, a, '2026-11-12', '08:00', '16:00', 'KA');
+  await vorgabe(a, { pflicht: true, wochentag: 4, art: 'nicht_verfuegbar', max_stunden_tag: 6 });
+  await malen(leitung, a, '2026-11-12', '15:00', '16:00', null);
+  await wirft(malen(leitung, a, '2026-11-12', '15:00', '15:30', 'KA'), 'VORGABE_VERLETZT');
+  // Pause statt Kasse senkt die Stunden (6,5 h, weiter über 6): erlaubt
+  const r = await malen(leitung, a, '2026-11-12', '12:00', '12:30', 'PA');
+  assert.deepEqual(zeile(r, a), [blk('08:00', '12:00', 'KA'), blk('12:00', '12:30', 'PA'), blk('12:30', '15:00', 'KA')]);
+  // Nur Stundengrenze, nicht ganztags gesperrt: an einem anderen Do ist 08–14 erlaubt
+  await malen(leitung, a, '2026-11-19', '08:00', '14:00', 'KA');
+});
+
+test('pep_plan_zeile_setzen mit unveränderter Zeile scheitert an keiner nachträglichen Sperre', async () => {
+  const a = await ma('Test, Doro', { kompetenzen: ['KA', 'OG'] });
+  const tag = '2026-11-14';
+  const z = [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA }, { von: '12:00', bis: '12:30', bereich_id: bereich.PA },
+    { von: '12:30', bis: '16:00', bereich_id: bereich.OG }];
+  await setzen(a, tag, z);
+  // Danach: Kompetenz KA weg, OG braucht Kompetenz und ist inaktiv, Pflicht nur 08–10, BS 10–12, Sa ganztags nicht verfügbar
+  await aufruf(leitung, 'select public.pep_kompetenz_setzen($1, $2, false)', [a, bereich.KA]);
+  await vorgabe(a, { pflicht: true, wochentag: 6, art: 'nur_zwischen', von: '08:00', bis: '10:00' });
+  await vorgabe(a, { pflicht: true, wochentag: 6, art: 'nicht_verfuegbar' });
+  await abwesend(a, 'BS', tag, 2, '10:00', '12:00');
+  await aufruf(leitung, `select public.pep_bereich_speichern($1, '{"kompetenz_noetig":true,"aktiv":false}')`, [bereich.OG]);
+  try {
+    const r = await setzen(a, tag, z);
+    assert.deepEqual(zeile(r, a), [blk('08:00', '12:00', 'KA', true), blk('12:00', '12:30', 'PA'), blk('12:30', '16:00', 'OG')]);
+    // Jede echte Änderung prüft wieder: neue halbe Stunde am ganztags gesperrten Samstag
+    await wirft(malen(leitung, a, tag, '16:00', '16:30', 'PA'), 'VORGABE_VERLETZT');
+  } finally {
+    await aufruf(leitung, `select public.pep_bereich_speichern($1, '{"kompetenz_noetig":false,"aktiv":true}')`, [bereich.OG]);
+  }
 });
 
 test('BS 08:00–13:00 mit von/bis: 13–18 erlaubt, 12–14 ABWESEND; vorher 09–12 unbesetzt, 14–18 nicht', async () => {

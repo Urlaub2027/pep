@@ -2588,63 +2588,88 @@ as $$
      and not pep.unbesetzt(p_mitarbeiter_id, p_datum, (e ->> 'von')::time, (e ->> 'bis')::time)
 $$;
 
--- Wochenvorgaben (p_pflicht: Pflicht oder bevorzugt), die die Zeile p_bloecke am Tag verletzen würde.
--- Unbesetzte Blöcke zählen nicht (F2); Pausen zählen zur Anwesenheit, nicht zu den Stunden.
+-- Halbe Stunden der Zeile p_neu, die gegenüber p_alt neu belegt sind (neu_belegt) oder den Bereich
+-- wechseln. Nur sie prüfen die Sperren, damit spätere Änderungen an Einstellungen oder Stammdaten
+-- (Kompetenz entzogen, Rahmen verkürzt, Vorgabe angelegt) nicht jeden weiteren Strich der Zeile blockieren.
+-- p_alt = [] liefert die ganze Zeile.
+create or replace function pep.zeile_aenderungen(p_alt jsonb, p_neu jsonb)
+returns table (von time, bereich_id bigint, neu_belegt boolean)
+language sql immutable
+set search_path = ''
+as $$
+  select t::time, (e ->> 'bereich_id')::bigint,
+         not exists (select 1 from jsonb_array_elements(coalesce(p_alt, '[]'::jsonb)) a
+                      where (a ->> 'von')::time <= t::time and (a ->> 'bis')::time > t::time)
+    from jsonb_array_elements(coalesce(p_neu, '[]'::jsonb)) e
+    cross join lateral generate_series(date '2000-01-01' + (e ->> 'von')::time,
+                                       date '2000-01-01' + (e ->> 'bis')::time - interval '30 minutes',
+                                       interval '30 minutes') t
+   where not exists (select 1 from jsonb_array_elements(coalesce(p_alt, '[]'::jsonb)) a
+                      where (a ->> 'von')::time <= t::time and (a ->> 'bis')::time > t::time
+                        and (a ->> 'bereich_id')::bigint = (e ->> 'bereich_id')::bigint)
+$$;
+
+-- Wochenvorgaben (p_pflicht: Pflicht oder bevorzugt), die der Wechsel von p_alt auf p_neu am Tag
+-- verletzt; p_alt = [] prüft die ganze Zeile p_neu.
+-- Zeitvorgaben (nicht_verfuegbar, nur_zwischen) zählen nur geänderte halbe Stunden (pep.zeile_aenderungen),
+-- Stundengrenzen nur, wenn die Stunden steigen und danach über der Grenze liegen.
+-- Unbesetzte Zeit zählt nicht (F2); Pausen zählen zur Anwesenheit, nicht zu den Stunden (F4).
 -- nicht_verfuegbar mit von/bis sperrt den Zeitraum, ohne Uhrzeit den ganzen Tag. Ausnahme: ohne Uhrzeit,
 -- aber mit Stundengrenze ist es eine reine Stundengrenze (so legt die Mitarbeiterkarte sie an, weil dort
 -- die Art mit „Nicht verfügbar“ vorbelegt ist und Uhrzeiten nur bei „Nur zwischen“ erscheinen).
--- max_stunden_woche rechnet die ISO-Woche mit p_bloecke statt der gespeicherten Zeile des Tages.
+-- max_stunden_woche rechnet die ISO-Woche mit der neuen statt der gespeicherten Zeile des Tages.
+drop function if exists pep.vorgaben_verletzt(bigint, date, jsonb, boolean);
 create or replace function pep.vorgaben_verletzt(
-  p_mitarbeiter_id bigint, p_datum date, p_bloecke jsonb, p_pflicht boolean)
+  p_mitarbeiter_id bigint, p_datum date, p_alt jsonb, p_neu jsonb, p_pflicht boolean)
 returns setof pep.wochenvorgaben
 language plpgsql stable
 set search_path = ''
 as $$
 declare
-  v_anwesend jsonb;
-  v_tag      numeric;
-  v_woche    numeric;
+  v_slots    jsonb;
+  v_tag_alt  numeric := pep.arbeitsstunden(p_mitarbeiter_id, p_datum, p_alt);
+  v_tag_neu  numeric := pep.arbeitsstunden(p_mitarbeiter_id, p_datum, p_neu);
+  v_rest     numeric;
   v_montag   date := p_datum - (extract(isodow from p_datum)::int - 1);
   v_w        pep.wochenvorgaben;
 begin
-  select coalesce(jsonb_agg(e), '[]'::jsonb) into v_anwesend
-    from jsonb_array_elements(coalesce(p_bloecke, '[]'::jsonb)) e
-   where not pep.unbesetzt(p_mitarbeiter_id, p_datum, (e ->> 'von')::time, (e ->> 'bis')::time);
-  if jsonb_array_length(v_anwesend) = 0 then
-    return;
-  end if;
-  v_tag := pep.arbeitsstunden(p_mitarbeiter_id, p_datum, p_bloecke);
+  select coalesce(jsonb_agg(z.von), '[]'::jsonb) into v_slots
+    from pep.zeile_aenderungen(p_alt, p_neu) z
+   where not pep.unbesetzt(p_mitarbeiter_id, p_datum, z.von, z.von + interval '30 minutes');
 
   for v_w in select * from pep.wochenvorgaben w
               where w.mitarbeiter_id = p_mitarbeiter_id and w.pflicht = p_pflicht
                 and w.gueltig_von <= p_datum and (w.gueltig_bis is null or w.gueltig_bis >= p_datum)
                 and (w.wochentag is null or w.wochentag = extract(isodow from p_datum)::int)
               order by w.id loop
-    if v_w.max_stunden_woche is not null and v_woche is null then
-      v_woche := v_tag + coalesce((
+    if v_w.max_stunden_woche is not null and v_rest is null then
+      v_rest := coalesce((
         select sum(pep.arbeitsstunden(p_mitarbeiter_id, d.tag, pep.zeile_lesen(p_mitarbeiter_id, d.tag)))
           from (select v_montag + i as tag from generate_series(0, 6) i) d
          where d.tag <> p_datum), 0);
     end if;
     if (v_w.art = 'nicht_verfuegbar' and v_w.von is null and v_w.bis is null
-          and v_w.max_stunden_tag is null and v_w.max_stunden_woche is null)
+          and v_w.max_stunden_tag is null and v_w.max_stunden_woche is null
+          and jsonb_array_length(v_slots) > 0)
        or (v_w.art = 'nicht_verfuegbar' and (v_w.von is not null or v_w.bis is not null)
-          and exists (select 1 from jsonb_array_elements(v_anwesend) e
-                       where (e ->> 'von')::time < coalesce(v_w.bis, time '24:00')
-                         and (e ->> 'bis')::time > coalesce(v_w.von, time '00:00')))
+          and exists (select 1 from jsonb_array_elements_text(v_slots) s
+                       where s::time >= coalesce(v_w.von, time '00:00') and s::time < coalesce(v_w.bis, time '24:00')))
        or (v_w.art = 'nur_zwischen'
-          and exists (select 1 from jsonb_array_elements(v_anwesend) e
-                       where (e ->> 'von')::time < v_w.von or (e ->> 'bis')::time > v_w.bis))
-       or v_tag > v_w.max_stunden_tag
-       or v_woche > v_w.max_stunden_woche then
+          and exists (select 1 from jsonb_array_elements_text(v_slots) s
+                       where s::time < v_w.von or s::time >= v_w.bis))
+       or (v_tag_neu > v_tag_alt and v_tag_neu > v_w.max_stunden_tag)
+       or (v_tag_neu > v_tag_alt and v_rest + v_tag_neu > v_w.max_stunden_woche) then
       return next v_w;
     end if;
   end loop;
 end;
 $$;
 
--- Alle Sperren für die künftige Zeile p_neu gegenüber der bisherigen p_alt (beide [{von, bis, bereich_id}]).
+-- Alle Sperren für den Wechsel der Zeile von p_alt auf p_neu (beide [{von, bis, bereich_id}]).
 -- Reihenfolge der Prüfungen = Reihenfolge der Fehler. Uhrzeiten prüfen die Aufrufer (pep.plan_zeiten_pruefen).
+-- Für die ganze Zeile: VERGANGEN, MITARBEITER_INAKTIV, KEIN_VERTRAG, GESCHLOSSEN. Rahmen, Bereich,
+-- Kompetenz, Abwesenheit und Zeitvorgaben nur für geänderte halbe Stunden (pep.zeile_aenderungen),
+-- Stundengrenzen nur bei steigenden Stunden. Eine unveränderte Zeile besteht daher immer.
 -- Eine leere Zeile löscht nur; dafür genügt wie beim Radieren, dass der Tag nicht vergangen ist.
 create or replace function pep.zeile_pruefen(
   p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date, p_alt jsonb, p_neu jsonb)
@@ -2679,38 +2704,35 @@ begin
   if not v_tag.geoeffnet then
     raise exception 'GESCHLOSSEN';
   end if;
-  if exists (select 1 from jsonb_array_elements(v_neu) e
-              where (e ->> 'von')::time < v_tag.rahmen_von or (e ->> 'bis')::time > v_tag.rahmen_bis) then
+  -- Halbe Stunden liegen auf :00/:30 wie der Rahmen: eine beginnt außerhalb, wenn vor rahmen_von oder ab rahmen_bis.
+  if exists (select 1 from pep.zeile_aenderungen(v_alt, v_neu) z
+              where z.von < v_tag.rahmen_von or z.von >= v_tag.rahmen_bis) then
     raise exception 'AUSSERHALB_RAHMEN';
   end if;
-  if exists (select 1 from jsonb_array_elements(v_neu) e
+  if exists (select 1 from pep.zeile_aenderungen(v_alt, v_neu) z
               where not exists (select 1 from pep.bereiche b
-                                 where b.id = (e ->> 'bereich_id')::bigint and b.filiale_id = p_filiale_id and b.aktiv)) then
+                                 where b.id = z.bereich_id and b.filiale_id = p_filiale_id and b.aktiv)) then
     raise exception 'BEREICH_NICHT_GEFUNDEN';
   end if;
-  if exists (select 1 from jsonb_array_elements(v_neu) e
-               join pep.bereiche b on b.id = (e ->> 'bereich_id')::bigint
+  if exists (select 1 from pep.zeile_aenderungen(v_alt, v_neu) z
+               join pep.bereiche b on b.id = z.bereich_id
               where b.art = 'funktion') then
     raise exception 'BEREICH_NICHT_MALBAR';
   end if;
-  if exists (select 1 from jsonb_array_elements(v_neu) e
-               join pep.bereiche b on b.id = (e ->> 'bereich_id')::bigint
+  if exists (select 1 from pep.zeile_aenderungen(v_alt, v_neu) z
+               join pep.bereiche b on b.id = z.bereich_id
               where b.kompetenz_noetig
                 and not exists (select 1 from pep.kompetenzen k
                                  where k.mitarbeiter_id = p_mitarbeiter_id and k.bereich_id = b.id)) then
     raise exception 'KOMPETENZ_FEHLT';
   end if;
-  -- Nur neu belegte halbe Stunden: geplante Blöcke dürfen nach einer Krankmeldung stehen bleiben.
-  if exists (select 1 from jsonb_array_elements(v_neu) e
-               cross join lateral generate_series(p_datum + (e ->> 'von')::time,
-                                                  p_datum + (e ->> 'bis')::time - interval '30 minutes',
-                                                  interval '30 minutes') t
-              where not exists (select 1 from jsonb_array_elements(v_alt) a
-                                 where (a ->> 'von')::time <= t::time and (a ->> 'bis')::time > t::time)
-                and pep.unbesetzt(p_mitarbeiter_id, p_datum, t::time, (t + interval '30 minutes')::time)) then
+  -- Geplante Blöcke dürfen nach einer Krankmeldung stehen bleiben (dann unbesetzt), aber nicht wachsen
+  -- oder den Bereich wechseln.
+  if exists (select 1 from pep.zeile_aenderungen(v_alt, v_neu) z
+              where pep.unbesetzt(p_mitarbeiter_id, p_datum, z.von, z.von + interval '30 minutes')) then
     raise exception 'ABWESEND';
   end if;
-  if exists (select 1 from pep.vorgaben_verletzt(p_mitarbeiter_id, p_datum, v_neu, true)) then
+  if exists (select 1 from pep.vorgaben_verletzt(p_mitarbeiter_id, p_datum, v_alt, v_neu, true)) then
     raise exception 'VORGABE_VERLETZT';
   end if;
 end;
