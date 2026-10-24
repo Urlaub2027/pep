@@ -20,7 +20,9 @@ let jahr = ganzzahl('jahr', 2000, 2100) ?? start.jahr;
 let kw = ganzzahl('kw', 1, 53) ?? start.kw;
 let wochen = []; // Antwort von pep_vorausplanung: sechs Kennzahlen-Objekte
 const rahmen = {}; // Container: kopf, tabelle
-let offeneSpeicherung = Promise.resolve(); // läuft das letzte Speichern noch?
+let offeneSpeicherung = Promise.resolve(); // läuft das letzte Speichern noch? (nie abgelehnt, siehe speichere)
+let speicherZaehler = 0; // zählt abgeschlossene Speicherungen
+const gespeichert = new Map(); // 'jahr-kw' → { neu, nr }: letzte Antwort einer Speicherung
 let zellen = []; // zellen[zeile][woche] = <td>
 
 const darfSchreiben = () => ich?.rolle === 'leitung' || ich?.rolle === 'stellvertretung';
@@ -60,6 +62,7 @@ async function speichere(index, feld, roh, eingabefeld, anzeige) {
       meldung('Gespeichert.', 'ok');
       // Antwort nur in die Spalte derselben Woche übernehmen; zeigt die Tabelle inzwischen andere Wochen, entfällt das.
       const i = wochen.findIndex((x) => x.jahr === w.jahr && x.kw === w.kw);
+      if (neu) gespeichert.set(`${w.jahr}-${w.kw}`, { neu, nr: ++speicherZaehler });
       if (neu && i >= 0) { wochen[i] = neu; fuelleWoche(i); }
     } catch (fehler) {
       zeigeFehler(fehler);
@@ -67,8 +70,8 @@ async function speichere(index, feld, roh, eingabefeld, anzeige) {
       if (i >= 0) fuelleWoche(i); // Feld auf den gespeicherten Wert zurücksetzen
     }
   });
-  offeneSpeicherung = lauf;
-  await lauf;
+  offeneSpeicherung = lauf.catch(() => {}); // ein Fehler beim Zeichnen darf spätere Ladevorgänge nicht blockieren
+  await offeneSpeicherung;
 }
 
 // ---------------------------------------------------------------- Zeilen
@@ -169,7 +172,14 @@ async function lade(j = jahr, k = kw) {
   if (nummer !== ladeNummer) return;
   let antwort;
   try {
+    const stand = speicherZaehler; // Speicherungen, die erst nach dieser Anfrage fertig werden, fehlen evtl. in der Antwort
     antwort = await aufruf('pep_vorausplanung', { p_jahr: j, p_kw: k });
+    if (antwort) {
+      antwort.wochen = antwort.wochen.map((x) => {
+        const g = gespeichert.get(`${x.jahr}-${x.kw}`);
+        return g && g.nr > stand ? g.neu : x;
+      });
+    }
   } catch (fehler) {
     if (nummer !== ladeNummer) return; // veraltete Anfrage: Fehler egal
     throw fehler;
