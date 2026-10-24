@@ -1,6 +1,8 @@
 // Erzeugt die Vorschau-Daten aus einer PGlite-Testdatenbank (echte Funktionsausgaben, erfundene Namen).
 import { writeFileSync } from 'node:fs';
-import { neueDatenbank, als, pepBenutzer, filiale, heuteSetzen } from '../helfer.mjs';
+import {
+  neueDatenbank, als, pepBenutzer, filiale, heuteSetzen, umfrageAnlegen, urlaubsfrageId, umfrageMitarbeiter, abgeben,
+} from '../helfer.mjs';
 
 const db = await neueDatenbank();
 await heuteSetzen(db, '2026-11-02');
@@ -129,4 +131,17 @@ schreib('pep_vorlagen', await q('select public.pep_vorlagen() as r'));
 schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
 schreib('pep_vorausplanung', await q('select public.pep_vorausplanung(2026, 46) as r'));
 schreib('pep_resturlaub', await q('select public.pep_resturlaub(2026) as r'));
+// Startseite: zuletzt, mit zwei offenen Urlaubswünschen aus einer Urlaubstool-Umfrage und einer Woche mit Stunden-Lücke
+// (KW 50, Planumsatz 95 000). Beides entsteht erst nach den übrigen Dateien, damit deren Vorschau (Abwesenheiten,
+// Einsatzplan, Vorausplanung) unverändert bleibt.
+await woche(50, { planumsatz: 95000 });
+const umfrage = await umfrageAnlegen(db, leitung, { titel: 'Urlaub 2026', jahr: 2026 });
+const frage = await urlaubsfrageId(db, umfrage);
+await q('select public.pep_urlaub_umfrage_schalten($1, true) as r', [umfrage]);
+for (const [i, kw] of [[6, 48], [11, 47]]) {
+  const tn = await umfrageMitarbeiter(db, umfrage, namen[i]);
+  await q('select public.pep_urlaub_zuordnung_setzen($1, $2) as r', [tn.id, ids[i]]);
+  await abgeben(db, tn.code, { [frage]: [kw] });
+}
+schreib('pep_startseite', await q('select public.pep_startseite() as r'));
 console.log('Vorschau-Daten geschrieben');

@@ -729,6 +729,33 @@ table.vorausplanung td.plus { color: var(--ok); font-weight: 700; }
 table.vorausplanung td.vorgabe strong { display: block; font-size: 1.1rem; }
 table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); font-weight: 400; }
 
+/* ---------------------------------------------------------------- Startseite (start.js)
+   Vier Kacheln: oben ein farbiger Rand (Rot nur bei Verstoß oder Lücke, Grün ohne Befund, sonst Gelb). */
+.start-kopf { margin: 0 0 var(--a3); color: var(--text-2); }
+.start-kopf strong { color: var(--text); }
+.kacheln { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--a4); align-items: stretch; }
+@media (max-width: 1200px) { .kacheln { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .kacheln { grid-template-columns: minmax(0, 1fr); } }
+.kachel { display: flex; flex-direction: column; margin: 0; border-top: 6px solid var(--netto-gelb); }
+.kachel.rot { border-top-color: var(--netto-rot); }
+.kachel.gruen { border-top-color: var(--ok); }
+.kachel h2 { margin: 0; }
+.kachel-zeitraum { margin: 2px 0 0; color: var(--text-2); font-size: 0.9rem; }
+.kachel-zahl { margin: var(--a3) 0; font-size: 3rem; font-weight: 800; line-height: 1; }
+.kachel.rot .kachel-zahl { color: var(--netto-rot); }
+.kachel.gruen .kachel-zahl { color: var(--ok); }
+.kachel-einheit { margin-left: var(--a2); font-size: 1rem; font-weight: 600; color: var(--text-2); }
+.kachel-gruen { margin: 0 0 var(--a3); color: var(--ok); font-weight: 700; }
+.kachel-liste { margin: 0 0 var(--a3); padding: 0; list-style: none; }
+.kachel-liste li { padding: 3px 0; border-bottom: 1px solid var(--linie); overflow-wrap: anywhere; }
+.kachel-liste li:last-child { border-bottom: 0; }
+.kachel-tag { min-height: 32px; padding: 0; font: inherit; font-weight: 700; color: inherit; background: none;
+  border: 0; border-bottom: 2px solid var(--netto-gelb); cursor: pointer; }
+.kachel-tag:hover { background: var(--hover-gelb); }
+.kachel-ungeplant { margin: 0 0 var(--a3); }
+.kachel-fuss { margin: 0 0 var(--a3); font-size: 0.85rem; }
+.kachel-sprung { margin-top: auto; align-self: flex-start; }
+
 /* ---------------------------------------------------------------- Ausdrucke (druck.js)
    Die Druckansicht #ansicht-druck ist am Bildschirm immer verborgen. Mit body.druckt ist sie beim Drucken das Einzige;
    ohne (Strg+P ohne Knopf) druckt der Browser die Seite, wie sie ist. Farben drucken mit (print-color-adjust),

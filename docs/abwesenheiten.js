@@ -4,7 +4,7 @@ import {
   $, meldung, fehlerText, element, datumDE, stundenDE, WOCHENTAGE, textfarbe,
   zahl, feld, eingabe, auswahlfeld,
 } from './hilfe.js';
-import { aufruf, ich, reiter } from './app.js';
+import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { dialog } from './dialog.js';
 import { druckAuswahlAbwesenheiten } from './druck.js';
 import {
@@ -55,6 +55,13 @@ async function lade() {
 }
 
 const neuLaden = () => lade().catch(zeigeFehler);
+
+// Sprungziel für die Startseite: öffnet den Reiter mit diesem Monat.
+export function oeffneMonat(j, m) {
+  jahr = j;
+  monat = m;
+  zeigeAnsicht('abwesenheiten');
+}
 
 // Nach einer erfolgreichen Aktion im Dialog: Meldung und Monat neu laden.
 const nachSpeichern = async () => {

@@ -4621,6 +4621,129 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Startseite: vier Kacheln (Spec 14)
+-- ---------------------------------------------------------------------------
+
+-- Was die Startseite zählt (Leitung und Stellvertretung), Stichtag pep.heute():
+-- abwesend    laufende ISO-Woche (Mo–So), je Mitarbeiter und Code ein Eintrag vom ersten bis zum letzten Tag (alle
+--             Codes); anzahl = Personen.
+-- luecke      sechs Wochen ab der laufenden (pep.woche_kennzahlen wie pep_vorausplanung), nur Überhang < 0;
+--             summe = Summe dieser Überhänge (also ≤ 0).
+-- verstoesse  heute bis heute + 6, geöffnete Tage. Gezählt werden die Einträge aus pep.pruefung nach Schwere, aber
+--             - Wochenregeln (wochenstunden, wochenstunden_unter, Wochenhöchstzeit unter 18 = hoechstarbeitszeit ohne
+--               Uhrzeit) stehen dort an jedem Arbeitstag der Woche: hier einmal je Art, Mitarbeiter und ISO-Woche,
+--               am ersten Tag im Fenster;
+--             - eine zu kurze Ruhezeit steht dort zweimal („… nach HH:MI“ am ersten, „… vor HH:MI“ am zweiten Tag):
+--               hier nur als „vor“, außer der zweite Tag liegt hinter dem Fenster;
+--             - ein geöffneter Tag ganz ohne Block heißt ungeplant = true und zählt 0/0 (pep.pruefung meldete dort nur
+--               „Kasse unbesetzt“ und „Keine VP“ über den ganzen Tag).
+--             Nur Tage mit mindestens einem gezählten Eintrag oder ungeplant.
+-- offene_wuensche  Wünsche aus dem Urlaubstool, die heute bis heute + 365 berühren und keine entschiedene Freigabe
+--             haben (wie pep_abwesenheiten); erster_wunsch = frühester Beginn davon (Sprungziel), sonst null.
+create or replace function public.pep_startseite()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b        pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_f        bigint := v_b.filiale_id;
+  v_heute    date := pep.heute();
+  v_mo       date := v_heute - (extract(isodow from v_heute)::int - 1);
+  v_ende     date := v_heute + 6;
+  v_abw      jsonb;
+  v_luecke   jsonb;
+  v_verst    jsonb;
+  v_wunsch_n bigint;
+  v_wunsch_ab date;
+begin
+  select jsonb_build_object(
+           'anzahl', count(distinct x.mitarbeiter_id),
+           'liste', coalesce(jsonb_agg(jsonb_build_object(
+                      'mitarbeiter_id', x.mitarbeiter_id, 'name', x.name, 'code', x.code,
+                      'von', to_char(x.von, 'YYYY-MM-DD'), 'bis', to_char(x.bis, 'YYYY-MM-DD'))
+                    order by x.name, x.mitarbeiter_id, x.von, x.code), '[]'::jsonb))
+    into v_abw
+    from (select a.mitarbeiter_id, m.name, c.code, min(a.datum) as von, max(a.datum) as bis
+            from pep.abwesenheiten a
+            join pep.mitarbeiter m on m.id = a.mitarbeiter_id
+            join pep.abwesenheitscodes c on c.id = a.code_id
+           where a.filiale_id = v_f and a.datum between v_mo and v_mo + 6
+           group by a.mitarbeiter_id, m.name, c.code) x;
+
+  select jsonb_build_object(
+           'summe', coalesce(sum((k.w ->> 'ueberhang')::numeric), 0),
+           'wochen', coalesce(jsonb_agg(jsonb_build_object(
+                       'jahr', k.jahr, 'kw', k.kw, 'montag', k.w -> 'montag', 'ueberhang', k.w -> 'ueberhang')
+                     order by k.i), '[]'::jsonb))
+    into v_luecke
+    from (select i, z.jahr, z.kw, pep.woche_kennzahlen(v_f, z.jahr, z.kw) as w
+            from generate_series(0, 5) i
+            cross join lateral (select extract(isoyear from v_mo + 7 * i)::int as jahr,
+                                       extract(week from v_mo + 7 * i)::int as kw) z) k
+   where (k.w ->> 'ueberhang')::numeric < 0;
+
+  with tage as (
+    select d.datum,
+           exists (select 1 from pep.plan_bloecke b where b.filiale_id = v_f and b.datum = d.datum) as geplant
+      from (select v_heute + i as datum from generate_series(0, 6) i) d
+      cross join lateral pep.tag_status(v_f, d.datum) s
+     where s.geoeffnet
+  ), eintraege as (
+    select t.datum, e.value as e, e.ordinality as nr,
+           e.value ->> 'art' in ('wochenstunden', 'wochenstunden_unter')
+           or (e.value ->> 'art' = 'hoechstarbeitszeit' and e.value ->> 'von' is null) as wochenregel
+      from tage t
+      cross join lateral jsonb_array_elements(pep.pruefung(v_f, t.datum)) with ordinality e
+     where t.geplant
+  ), gezaehlt as (
+    select x.datum, x.e ->> 'schwere' as schwere,
+           case
+             when x.wochenregel
+               then row_number() over (partition by x.wochenregel, x.e ->> 'art', x.e ->> 'mitarbeiter_id',
+                                                    x.datum - (extract(isodow from x.datum)::int - 1)
+                                       order by x.datum, x.nr) = 1
+             when x.e ->> 'art' = 'ruhezeit' and x.e ->> 'text' ~ ' nach [0-9]{2}:[0-9]{2}$'
+               then x.datum = v_ende
+             else true
+           end as zaehlt
+      from eintraege x
+  ), je_tag as (
+    select g.datum,
+           count(*) filter (where g.zaehlt and g.schwere = 'warnung') as warnungen,
+           count(*) filter (where g.zaehlt and g.schwere = 'hinweis') as hinweise
+      from gezaehlt g
+     group by g.datum
+  )
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'datum', to_char(t.datum, 'YYYY-MM-DD'),
+           'warnungen', coalesce(j.warnungen, 0),
+           'hinweise', coalesce(j.hinweise, 0),
+           'ungeplant', not t.geplant) order by t.datum), '[]'::jsonb)
+    into v_verst
+    from tage t
+    left join je_tag j on j.datum = t.datum
+   where not t.geplant or j.warnungen + j.hinweise > 0;
+
+  select count(*), min(w.von) into v_wunsch_n, v_wunsch_ab
+    from pep.urlaubswuensche(v_f, v_heute, v_heute + 365) w
+    left join lateral pep.freigabe_zum_wunsch(v_f,
+      pep.wunsch_json(w.umfrage_id, w.urlaub_mitarbeiter_id, w.art, w.kw,
+                      case when w.art = 'tag' then w.von end)) fg on true
+   where coalesce(fg.status, 'offen') = 'offen';
+
+  return jsonb_build_object(
+    'heute', to_char(v_heute, 'YYYY-MM-DD'),
+    'abwesend', v_abw,
+    'luecke', v_luecke,
+    'verstoesse', v_verst,
+    'offene_wuensche', v_wunsch_n,
+    'erster_wunsch', to_char(v_wunsch_ab, 'YYYY-MM-DD'));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Rechte
 -- ---------------------------------------------------------------------------
 
@@ -4756,5 +4879,9 @@ grant execute on function public.pep_woche_speichern(int, int, jsonb) to authent
 -- Berichte
 revoke all on function public.pep_resturlaub(int) from public, anon, authenticated;
 grant execute on function public.pep_resturlaub(int) to authenticated;
+
+-- Startseite
+revoke all on function public.pep_startseite() from public, anon, authenticated;
+grant execute on function public.pep_startseite() to authenticated;
 
 commit;

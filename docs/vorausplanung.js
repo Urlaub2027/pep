@@ -2,7 +2,7 @@
 // Verfügbar, Überhang und die Stundenvorgabe, die der Einsatzplan benutzt. Die Rechnung steht in
 // pep.woche_kennzahlen (schema.sql); hier wird nur angezeigt und gespeichert.
 import { $, meldung, fehlerText, element, eingabe, geldZahl } from './hilfe.js';
-import { aufruf, ich, reiter } from './app.js';
+import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { isoWoche, kwVorZurueck, plusTage } from './zeit.js';
 import { oeffneWoche } from './einsatzplan.js';
 
@@ -190,6 +190,13 @@ async function lade(j = jahr, k = kw) {
   wochen = antwort.wochen;
   zeichneKopf();
   zeichneTabelle();
+}
+
+// Sprungziel für die Startseite: öffnet den Reiter mit den sechs Wochen ab (j, k).
+export function oeffneVorausplanung(j, k) {
+  jahr = j;
+  kw = k;
+  zeigeAnsicht('vorausplanung');
 }
 
 function verschiebe(schritt) {

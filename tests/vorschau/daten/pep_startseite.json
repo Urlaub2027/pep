@@ -1,0 +1,73 @@
+{
+ "heute": "2026-11-02",
+ "luecke": {
+  "summe": -56.5,
+  "wochen": [
+   {
+    "kw": 50,
+    "jahr": 2026,
+    "montag": "2026-12-07",
+    "ueberhang": -56.5
+   }
+  ]
+ },
+ "abwesend": {
+  "liste": [
+   {
+    "bis": "2026-11-05",
+    "von": "2026-11-03",
+    "code": "KM",
+    "name": "Beispiel, Cem",
+    "mitarbeiter_id": 3
+   },
+   {
+    "bis": "2026-11-03",
+    "von": "2026-11-03",
+    "code": "BS",
+    "name": "Modell, Kai",
+    "mitarbeiter_id": 11
+   }
+  ],
+  "anzahl": 2
+ },
+ "verstoesse": [
+  {
+   "datum": "2026-11-02",
+   "hinweise": 0,
+   "ungeplant": false,
+   "warnungen": 3
+  },
+  {
+   "datum": "2026-11-03",
+   "hinweise": 0,
+   "ungeplant": false,
+   "warnungen": 3
+  },
+  {
+   "datum": "2026-11-04",
+   "hinweise": 0,
+   "ungeplant": false,
+   "warnungen": 3
+  },
+  {
+   "datum": "2026-11-05",
+   "hinweise": 0,
+   "ungeplant": false,
+   "warnungen": 4
+  },
+  {
+   "datum": "2026-11-06",
+   "hinweise": 0,
+   "ungeplant": true,
+   "warnungen": 0
+  },
+  {
+   "datum": "2026-11-07",
+   "hinweise": 0,
+   "ungeplant": false,
+   "warnungen": 4
+  }
+ ],
+ "erster_wunsch": "2026-11-16",
+ "offene_wuensche": 2
+}
