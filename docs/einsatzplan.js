@@ -170,7 +170,9 @@ function farbfeld(farbe, klasse = '') {
 
 function pinselLeiste() {
   if (!tag()?.geoeffnet) return element('p', { class: 'hinweis' }, 'An diesem Tag ist geschlossen.');
-  if (tag().vergangen) return element('p', { class: 'hinweis-gelb' }, VERGANGEN_TEXT);
+  if (tag().vergangen) {
+    return element('p', { class: 'hinweis-gelb' }, VERGANGEN_TEXT, darfZeichnen() ? ' Kommentare bleiben änderbar.' : '');
+  }
   if (!darfZeichnen()) return element('p', { class: 'hinweis' }, 'Keine Berechtigung zum Bearbeiten.');
   const gueltig = pinsel === 'radieren' || woche.bereiche.some((b) => String(b.id) === pinsel);
   if (!gueltig) pinsel = String((woche.bereiche.find((b) => b.bedeutung === 'kasse') ?? woche.bereiche[0])?.id ?? 'radieren');
@@ -233,7 +235,7 @@ function namensZelle(m) {
 function kommentarZelle(m) {
   const td = element('td', { class: 'ep-kom', 'data-kommentar': m.id });
   const text = kommentarVon(m.id);
-  const bearbeitbar = darfZeichnen() && !tag()?.vergangen;
+  const bearbeitbar = darfZeichnen(); // auch an vergangenen Tagen (Server erlaubt es); Malen bleibt dort gesperrt
   td.append(text ? element('span', { title: text }, text) : bearbeitbar ? element('span', { class: 'ep-kom-leer' }, '+ Notiz') : '');
   if (bearbeitbar) {
     td.classList.add('bearbeitbar');

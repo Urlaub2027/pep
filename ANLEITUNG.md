@@ -168,7 +168,8 @@ Raster stehen die Abdeckungszeilen Kasse und VP: Rot heißt „niemand da“.
   der Plan springt dann zu diesem Tag.
 - **Kommentar:** in die Kommentarspalte klicken, Text tippen, Enter. Escape verwirft,
   leeren löscht.
-- **Vergangene Tage** sind schreibgeschützt (die IST-Erfassung kommt später).
+- **Vergangene Tage** sind schreibgeschützt (die IST-Erfassung kommt später); nur
+  Kommentare lassen sich dort noch schreiben.
 - **Unbesetzt:** Wird jemand krank oder abwesend, der schon geplant ist, bleiben seine
   Blöcke stehen, werden aber rot gestreift. Sie zählen nirgends mit. Daneben steht
   der Knopf „Ersatz“.
@@ -387,7 +388,8 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
 ## 5. Bekannte Grenzen (Stufe 1)
 - Die Reihenfolge der Mitarbeiter wird mit ▲/▼ geändert, nicht per Ziehen.
 - Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), IST-Erfassung und Zeitkonto
-  folgen in späteren Stufen. Vergangene Tage im Einsatzplan sind bis dahin schreibgeschützt.
+  folgen in späteren Stufen. Vergangene Tage im Einsatzplan sind bis dahin schreibgeschützt
+  (außer Kommentaren).
 - Kopieren fügt Blöcke eines Mitarbeiters, der am Ziel abwesend ist, trotzdem ein
   (unbesetzt) und prüft dabei die Pflicht-Vorgaben gegen diese Zeit nicht. Wird die
   Abwesenheit später gelöscht, kann ein Block einer Pflicht-Vorgabe widersprechen,
