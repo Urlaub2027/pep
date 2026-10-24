@@ -216,3 +216,36 @@ test('jedes Speichern schreibt Protokoll mit tabelle und schluessel', async () =
   assert.ok(hat('wochenvorgaben', 'loeschen', String(w)));
   assert.ok(hat('urlaubsjahre', 'anlegen', `${m}:2027`));
 });
+
+test('fremde Filiale: Löschen, Kompetenz und Wochenvorgabe sind gesperrt, nichts ändert sich', async () => {
+  const m = await neuerMitarbeiter('Fremd, Fritz');
+  const v1 = await vertrag(m, { gueltig_ab: '2026-01-01', vertragsart: 'teilzeit', wochenstunden: 20 });
+  await vertrag(m, { gueltig_ab: '2026-06-01', vertragsart: 'vollzeit', wochenstunden: 40 });
+  const w = await vorgabe(m, { gueltig_von: '2026-01-01', pflicht: false, wochentag: 4, art: 'nicht_verfuegbar' });
+  const ka = (await bereiche()).find((x) => x.kuerzel === 'KA').id;
+
+  const leitung2 = await pepBenutzer(db, 'chef3');
+  await filiale(db, leitung2, { name: 'Netto Fulda', nummer: '4321', bundesland: 'HE' });
+  const ka2 = (await json(leitung2, 'select public.pep_bereiche() as r')).find((x) => x.kuerzel === 'KA').id;
+  assert.notEqual(ka2, ka);
+
+  await fehler(leitung2, 'select public.pep_vertrag_loeschen($1)', [v1], 'VERTRAG_NICHT_GEFUNDEN');
+  await fehler(leitung2, 'select public.pep_wochenvorgabe_loeschen($1)', [w], 'WOCHENVORGABE_NICHT_GEFUNDEN');
+  await fehler(leitung2, 'select public.pep_kompetenz_setzen($1, $2, true)', [m, ka2], 'MITARBEITER_NICHT_GEFUNDEN');
+  await fehler(leitung2, 'select public.pep_wochenvorgabe_speichern($1, $2::jsonb) as r',
+    [m, JSON.stringify({ gueltig_von: '2026-01-01', pflicht: false, art: 'nicht_verfuegbar' })],
+    'MITARBEITER_NICHT_GEFUNDEN');
+
+  // Bereich einer anderen Filiale beim eigenen Mitarbeiter
+  const m2 = await json(leitung2, 'select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r',
+    [JSON.stringify({ name: 'Eigen, Erna' })]);
+  await fehler(leitung2, 'select public.pep_kompetenz_setzen($1, $2, true)', [m2, ka], 'BEREICH_NICHT_GEFUNDEN');
+
+  // In der ersten Filiale ist nichts verändert worden
+  const r = await json(leitung, 'select public.pep_mitarbeiter($1) as r', [m]);
+  assert.equal(r.vertraege.length, 2);
+  assert.equal(r.wochenvorgaben.length, 1);
+  assert.deepEqual(r.kompetenzen, []);
+  const k = await db.query('select count(*)::int n from pep.kompetenzen where mitarbeiter_id in ($1, $2)', [m, m2]);
+  assert.equal(k.rows[0].n, 0);
+});
