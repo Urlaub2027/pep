@@ -7,11 +7,18 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+// Chrome zuerst (wie tests/vorschau/foto.mjs), sonst Edge – beide sprechen dasselbe DevTools-Protokoll.
 const BROWSER = [
   'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
+  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
   '/usr/bin/chromium', '/usr/bin/google-chrome',
 ].find(existsSync);
+// Wegwerf-Profil löschen; Chrome gibt Dateien nach dem Beenden evtl. erst kurz danach frei.
+const profilWeg = (profil) => {
+  try { rmSync(profil, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }); } catch { /* bleibt liegen */ }
+};
 
 const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
@@ -27,7 +34,7 @@ const uhrSkript = (heute) => `(() => {
 })();`;
 
 export async function starteChrome({ heute = null, breite = 1440, hoehe = 900 } = {}) {
-  if (!BROWSER) throw new Error('Kein Chrome gefunden');
+  if (!BROWSER) throw new Error('Kein Chrome/Edge gefunden');
   const profil = mkdtempSync(join(tmpdir(), 'pep-cdp-'));
   const prozess = spawn(BROWSER, ['--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
     '--remote-debugging-port=0', `--user-data-dir=${profil}`, '--hide-scrollbars', '--disable-extensions',
@@ -264,11 +271,17 @@ export async function starteChrome({ heute = null, breite = 1440, hoehe = 900 } 
     try { ws.close(); } catch { /* egal */ }
     await new Promise((ok) => { if (prozess.exitCode !== null) ok(); else { prozess.once('exit', ok); setTimeout(ok, 5000); } });
     if (prozess.exitCode === null) prozess.kill('SIGKILL');
-    try { rmSync(profil, { recursive: true, force: true }); } catch { /* Chrome hält evtl. noch Dateien */ }
+    profilWeg(profil);
+  }
+
+  // Notbremse bei einem Absturz des Testlaufs (synchron, vor process.exit): Chrome beenden, Profil löschen.
+  function notAus() {
+    try { if (prozess.exitCode === null) prozess.kill('SIGKILL'); } catch { /* schon zu */ }
+    profilWeg(profil);
   }
 
   return {
     sende, auf, werte, warteAuf, navigiere, punkt, klick, tippe, taste, setzeWert, ziehe, wische, tippeTouch,
-    tablet, foto, schliessen, protokoll, dialoge, maus, pid: prozess.pid,
+    tablet, foto, schliessen, notAus, protokoll, dialoge, maus, pid: prozess.pid,
   };
 }

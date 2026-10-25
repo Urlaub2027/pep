@@ -10,12 +10,12 @@
 // Allein starten (zum Ausprobieren): node tests/browser/server.mjs [port] → http://localhost:<port>/browser/
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { extname, join, normalize } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { extname, join, normalize, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { neueDatenbank } from '../helfer.mjs';
 import { befuellen } from './daten.mjs';
 
-const WURZEL = new URL('../../', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const WURZEL = fileURLToPath(new URL('../../', import.meta.url));
 const DOCS = join(WURZEL, 'docs');
 const TYPEN = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' };
 export const PASSWORT = 'test';
@@ -122,7 +122,7 @@ export async function starteServer({ port = 0, protokoll = () => {} } = {}) {
 
   async function seite(pfad) {
     const datei = normalize(join(DOCS, pfad.replace(/^\/browser\/?/, '') || 'index.html'));
-    if (!datei.startsWith(normalize(DOCS))) throw new Error('außerhalb');
+    if (!datei.startsWith(normalize(DOCS) + sep)) throw new Error('außerhalb'); // mit Trenner: nicht „docs-alt/…“
     if (datei.endsWith(`${normalize('/config.js')}`) || datei.endsWith('\\config.js')) {
       return { typ: 'text/javascript', inhalt: "export const SUPABASE_URL = location.origin;\nexport const SUPABASE_KEY = 'sb_publishable_browsertest';\n" };
     }
@@ -144,8 +144,16 @@ export async function starteServer({ port = 0, protokoll = () => {} } = {}) {
   });
 
   const server = createServer(async (anfrage, antwort) => {
-    const url = new URL(anfrage.url, 'http://x');
-    const pfad = decodeURIComponent(url.pathname);
+    let url;
+    let pfad;
+    try {
+      url = new URL(anfrage.url, 'http://x');
+      pfad = decodeURIComponent(url.pathname);
+    } catch { // z. B. „%E0%A4%A“: ungültige Adresse ist ein Fehler der Anfrage, kein Absturz
+      antwort.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' });
+      antwort.end('Ungültige Adresse');
+      return;
+    }
     const senden = ({ status, json }) => {
       if (status === 204) { antwort.writeHead(204); antwort.end(); return; }
       antwort.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });

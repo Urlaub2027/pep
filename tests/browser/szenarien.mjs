@@ -5,11 +5,12 @@
 // Ergebnis: Zusammenfassung auf der Konsole und tests/browser/fotos/ergebnis.json.
 import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { crc32 } from 'node:zlib';
+import { fileURLToPath } from 'node:url';
 import { starteServer, PASSWORT } from './server.mjs';
 import { starteChrome } from './cdp.mjs';
 import { HEUTE, TAGE } from './daten.mjs';
 
-const FOTOS = new URL('./fotos/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+const FOTOS = fileURLToPath(new URL('./fotos/', import.meta.url)); // mit abschließendem Trenner
 rmSync(FOTOS, { recursive: true, force: true });
 mkdirSync(FOTOS, { recursive: true });
 const filter = process.argv[2] ?? '';
@@ -17,7 +18,7 @@ const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
 const s = await starteServer();
 const c = await starteChrome({ heute: HEUTE });
-const notAus = (e) => { console.error(e); try { process.kill(c.pid); } catch { /* schon zu */ } process.exit(2); };
+const notAus = (e) => { console.error(e); c.notAus(); process.exit(2); }; // Chrome beenden, Wegwerf-Profil löschen
 process.on('uncaughtException', notAus);
 process.on('unhandledRejection', notAus);
 const B = s.bestand;
