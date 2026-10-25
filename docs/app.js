@@ -2,7 +2,7 @@
 import { $, meldung, fehlerText } from './hilfe.js';
 import * as sitzung from './sitzung.js';
 
-const ANSICHTEN = ['login', 'filiale', 'start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'mitarbeiter', 'einstellungen'];
+const ANSICHTEN = ['login', 'filiale', 'start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'zeitkonto', 'mitarbeiter', 'einstellungen'];
 
 export let ich = null;
 // Reiter-Module tragen sich beim Import ein: reiter.<name> = { zeigen() }.

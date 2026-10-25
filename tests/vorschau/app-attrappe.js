@@ -4,7 +4,7 @@ import { $, meldung } from '/docs/hilfe.js';
 
 export let ich = null;
 export const reiter = {};
-const ANSICHTEN = ['login', 'filiale', 'start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'mitarbeiter', 'einstellungen'];
+const ANSICHTEN = ['login', 'filiale', 'start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'zeitkonto', 'mitarbeiter', 'einstellungen'];
 
 export function zeigeAnsicht(name) {
   for (const a of ANSICHTEN) { const s = $(`ansicht-${a}`); if (s) s.hidden = a !== name; }
@@ -13,7 +13,14 @@ export function zeigeAnsicht(name) {
   Promise.resolve(reiter[name]?.zeigen?.()).catch((f) => meldung(String(f.message)));
 }
 
+// Ausnahme: Funktionen in JE_WOCHE suchen zuerst <funktion>_<jahr>_<kw>.json (Zeitkonto: offene und abgeschlossene Woche).
+const JE_WOCHE = new Set(['pep_zeitkonto_woche']);
+
 export async function aufruf(funktion, parameter = {}) {
+  if (JE_WOCHE.has(funktion) && parameter.p_jahr && parameter.p_kw) {
+    const woche = await fetch(`/tests/vorschau/daten/${funktion}_${parameter.p_jahr}_${parameter.p_kw}.json`);
+    if (woche.ok) return woche.json();
+  }
   const antwort = await fetch(`/tests/vorschau/daten/${funktion}.json`);
   if (!antwort.ok) return null;
   return antwort.json();

@@ -778,6 +778,43 @@ table.vorausplanung td.plus { color: var(--ok); font-weight: 700; }
 table.vorausplanung td.vorgabe strong { display: block; font-size: 1.1rem; }
 table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); font-weight: 400; }
 
+/* ---------------------------------------------------------------- Zeitkonto (zeitkonto.js)
+   Plus grün, Minus rot (wie Vorausplanung); Saldo über dem Warnwert zusätzlich ⚠ auf gelbem Hinweisgrund. */
+.zk-status-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a2) var(--a3); margin-left: auto; }
+.zk-status { margin: 0; color: var(--text-2); }
+.zk-gebucht { margin-left: auto; color: var(--text); font-weight: 600; }
+.zk-gebucht span { color: var(--ok); font-weight: 800; }
+.zk-offen {
+  padding: 2px 8px; font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--text); white-space: nowrap;
+  background: var(--hinweis); border: 0; border-left: 3px solid var(--netto-gelb); border-radius: 3px; cursor: pointer;
+}
+.zk-offen:hover { background: var(--hover-gelb); text-decoration: underline; }
+/* Passt ohne Querscrollen auf 1024 px (Tablet): lange Spaltenköpfe brechen um, der Scroll-Container ist nur Reserve */
+table.zk-tabelle { min-width: 760px; font-variant-numeric: tabular-nums; }
+table.zk-tabelle thead th { vertical-align: bottom; }
+table.zk-tabelle th.zahl { text-align: right; }
+table.zk-tabelle tbody th { font-weight: 400; background: none; white-space: nowrap; }
+table.zk-tabelle tbody tr:hover > * { background: var(--hover-gelb); }
+table.zk-tabelle tfoot th, table.zk-tabelle tfoot td { font-weight: 700; background: var(--hell); border-bottom: 0; }
+table.zk-tabelle td { white-space: nowrap; }
+table.zk-tabelle tr.inaktiv > * { color: var(--text-2); }
+.zk-tabelle .zahl.plus, .zk-journal .zahl.plus { color: var(--ok); font-weight: 700; }
+table.zk-tabelle td.zk-warnung { background: var(--hinweis); }
+.zk-name {
+  padding: 0; font: inherit; color: var(--text); text-align: left; background: none; border: 0; cursor: pointer;
+  text-decoration: underline dotted var(--linie-stark); text-underline-offset: 3px;
+}
+.zk-name:hover { text-decoration-color: var(--schwarz); }
+.zk-fuss { margin: var(--a2) 0 0; font-size: 0.85rem; }
+.dialog.zk-journal-dialog { max-width: 900px; }
+.zk-saldo { margin: 0 0 var(--a3); }
+.zk-saldo strong { font-size: 1.1rem; }
+table.zk-journal-tabelle { font-size: 0.9rem; }
+table.zk-journal-tabelle th.zahl { text-align: right; }
+table.zk-journal-tabelle td { white-space: nowrap; }
+table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; overflow-wrap: anywhere; }
+.zk-journal-knoepfe { display: contents; } /* Knöpfe fließen in die Knopfleiste des Dialogs */
+
 /* ---------------------------------------------------------------- Startseite (start.js)
    Vier Kacheln: oben ein farbiger Rand (Rot nur bei Verstoß oder Lücke, Grün ohne Befund, sonst Gelb). */
 .start-kopf { margin: 0 0 var(--a3); color: var(--text-2); }

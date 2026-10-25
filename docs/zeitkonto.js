@@ -1,0 +1,363 @@
+// Reiter „Zeitkonto“: Wochenübersicht je Mitarbeiter (Soll, IST, Abwesend, Feiertag, Diff, Saldo), Wochenabschluss
+// („Woche buchen“) und das Journal je Mitarbeiter mit Startsaldo und Korrektur von Hand. Gerechnet und gebucht wird in
+// der Datenbank (pep_zeitkonto_woche, pep_wochenabschluss, pep_zeitkonto_journal, pep_zeitkonto_buchen).
+// Ansehen dürfen Leitung und Stellvertretung; buchen (Woche, Startsaldo, Korrektur) nur die Leitung.
+import { $, meldung, fehlerText, element, stundenDE, datumDE } from './hilfe.js';
+import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
+import { dialog } from './dialog.js';
+import { isoWoche, kwVorZurueck, plusTage, heuteDatum } from './zeit.js';
+import { kurz } from './plan-raster.js';
+import { oeffneIst } from './einsatzplan.js';
+import { vorzeichen, journalZeilen, wochenSumme, stundenEingabe } from './zeitkonto-daten.js';
+
+// Adresse: ?jahr=&kw= wählen die Woche, ?heute=JJJJ-MM-TT ersetzt das heutige Datum (Vorschau).
+const adresse = new URLSearchParams(location.search);
+const ganzzahl = (name, min, max) => {
+  const n = Number(adresse.get(name));
+  return Number.isInteger(n) && n >= min && n <= max ? n : null;
+};
+const heuteIso = () => heuteDatum(adresse.get('heute')); // bei jedem Aufruf neu (Tablet über Nacht offen)
+// Ohne Angabe die Vorwoche: das ist die Woche, die am Montag abgeschlossen wird.
+const start = isoWoche(plusTage(heuteIso(), -7));
+let jahr = ganzzahl('jahr', 2000, 2100) ?? start.jahr;
+let kw = ganzzahl('kw', 1, 53) ?? start.kw;
+let woche = null; // Antwort von pep_zeitkonto_woche
+let journalNachLaden = null; // Mitarbeiter-Id: Journal öffnen, sobald die Woche geladen ist (oeffneZeitkonto)
+const rahmen = {}; // Container: kopf, tabelle
+
+const darfBuchen = () => ich?.rolle === 'leitung';
+const zeigeFehler = (fehler) => { if (!fehler.behandelt) meldung(fehlerText(fehler.message)); };
+
+const VERTRAG_KURZ = { vollzeit: 'VZ', teilzeit: 'TZ', minijob: 'MJ', azubi: 'AZ', fuehrung: 'F' };
+const kurzDatum = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+const anzahl = (n, eins, mehr) => `${n} ${n === 1 ? eins : mehr}`;
+const vorzeichenKlasse = (n) => (Math.round(Number(n) * 100) > 0 ? 'plus' : Math.round(Number(n) * 100) < 0 ? 'minus' : '');
+const uhrzeitAus = (zeitstempel) => new Date(zeitstempel).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+const datumAus = (zeitstempel) => new Date(zeitstempel).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+// ---------------------------------------------------------------- Laden
+
+let ladeNummer = 0; // verwirft veraltete Antworten, wenn schnell geblättert wird
+// jahr/kw gelten erst nach Erfolg, damit Zustand und Anzeige übereinstimmen.
+async function lade(j = jahr, k = kw) {
+  const nummer = ++ladeNummer;
+  let antwort;
+  try {
+    antwort = await aufruf('pep_zeitkonto_woche', { p_jahr: j, p_kw: k });
+  } catch (fehler) {
+    if (nummer !== ladeNummer) return; // veraltete Anfrage: Fehler egal
+    throw fehler;
+  }
+  if (nummer !== ladeNummer || !antwort) return;
+  jahr = j;
+  kw = k;
+  woche = antwort;
+  zeichneKopf();
+  zeichneTabelle();
+}
+
+function verschiebe(schritt) {
+  const ziel = kwVorZurueck(jahr, kw, schritt);
+  lade(ziel.jahr, ziel.kw).catch(zeigeFehler);
+}
+
+function vorwoche() {
+  const ziel = isoWoche(plusTage(heuteIso(), -7));
+  lade(ziel.jahr, ziel.kw).catch(zeigeFehler);
+}
+
+// Sprungziel (Startseite, spätere Tasks): öffnet den Reiter mit dieser Woche, optional gleich das Journal.
+export function oeffneZeitkonto(j, k, mitarbeiterId = null) {
+  jahr = j;
+  kw = k;
+  journalNachLaden = mitarbeiterId;
+  zeigeAnsicht('zeitkonto');
+}
+
+// „n Tage offen“: in den IST-Modus auf den ersten offenen Tag (mid null = der ganzen Filiale). pep_zeitkonto_woche
+// nennt nur die Anzahl; welcher Tag offen ist, steht im Status von pep_ist_woche. Ohne Treffer der Montag.
+async function zumErstenOffenenTag(mid = null) {
+  const { jahr: j, kw: k, montag } = woche;
+  let ziel = montag;
+  try {
+    const ist = await aufruf('pep_ist_woche', { p_jahr: j, p_kw: k });
+    const offen = (ist?.status ?? []).filter((s) => !s.bestaetigt && (mid == null || s.mitarbeiter_id === mid))
+      .map((s) => s.datum).sort();
+    if (offen.length) ziel = offen[0];
+  } catch (fehler) {
+    if (fehler.behandelt) return; // abgemeldet
+  }
+  oeffneIst(j, k, ziel);
+}
+
+// ---------------------------------------------------------------- Kopf: Woche und Abschluss
+
+function abschlussTeil() {
+  const a = woche.abgeschlossen;
+  if (a) {
+    return element('p', { class: 'zk-status zk-gebucht' }, element('span', { 'aria-hidden': 'true' }, '✓ '),
+      `Abgeschlossen am ${datumAus(a.am)} um ${uhrzeitAus(a.am)}${a.von_name ? ` von ${a.von_name}` : ''}`);
+  }
+  const sonntag = plusTage(woche.montag, 6);
+  const laeuft = sonntag >= heuteIso();
+  const offen = woche.offene_tage;
+  const teile = [];
+  if (darfBuchen()) {
+    teile.push(element('button', {
+      type: 'button', class: 'knopf primaer', disabled: offen > 0 || laeuft, onclick: wocheBuchen,
+      title: 'Bucht je Mitarbeiter die Differenz dieser Woche ins Zeitkonto',
+    }, 'Woche buchen'));
+  } else {
+    teile.push(element('span', { class: 'zk-status' }, 'Noch nicht abgeschlossen (bucht die Filialleitung).'));
+  }
+  if (offen > 0) {
+    teile.push(element('button', {
+      type: 'button', class: 'zk-offen', onclick: () => zumErstenOffenenTag(), title: 'Zum ersten offenen Tag im IST',
+    }, `${anzahl(offen, 'Tag', 'Tage')} im IST offen`));
+  }
+  if (laeuft) {
+    teile.push(element('span', { class: 'hinweis' },
+      `Die Woche läuft noch; abschließen geht ab ${datumDE(plusTage(sonntag, 1))}.`));
+  } else if (offen > 0 && darfBuchen()) {
+    teile.push(element('span', { class: 'hinweis' }, 'Erst alle Tage im IST bestätigen, dann die Woche buchen.'));
+  }
+  return element('div', { class: 'zk-status-zeile' }, teile);
+}
+
+function zeichneKopf() {
+  const so = plusTage(woche.montag, 6);
+  rahmen.kopf.replaceChildren(element('div', { class: 'werkzeug-zeile' },
+    element('div', { class: 'monatsnavi' },
+      element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Eine Woche zurück', onclick: () => verschiebe(-1) }, '◀'),
+      element('strong', { class: 'monatsname' }, `KW ${woche.kw}/${woche.jahr}`),
+      element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Eine Woche weiter', onclick: () => verschiebe(1) }, '▶'),
+      element('span', { class: 'hinweis' }, `${kurzDatum(woche.montag)}–${kurzDatum(so)}${so.slice(0, 4)}`),
+      element('button', { type: 'button', class: 'knopf', onclick: vorwoche }, 'Vorwoche')),
+    abschlussTeil()));
+}
+
+// ---------------------------------------------------------------- Tabelle
+
+const SPALTEN = [
+  ['Vertrag', 'Vertragsart und Wochenstunden'],
+  ['Soll', 'Wochenstunden anteilig für die beschäftigten Tage Mo–Sa'],
+  ['IST', 'bestätigte Arbeitszeit ohne Pausen'],
+  ['Abwesend', 'Abwesenheiten mit Gutschrift (z. B. Urlaub, krank)'],
+  ['Feiertag', 'Gutschrift für gesetzliche Feiertage, an denen die Filiale geschlossen ist'],
+  ['Diff', 'IST + Abwesend + Feiertag − Soll (Führung: Plus erst über der Grenze)'],
+  ['Saldo Vorwoche', 'Zeitkonto vor dieser Woche'],
+  ['Saldo aktuell', 'Saldo Vorwoche + Buchungen dieser Woche; solange die Woche offen ist, mit der Diff (vorläufig)'],
+  ['Spät', 'bestätigte Arbeitszeit ab der Spätgrenze (Einstellungen)'],
+  ['Offen', 'Tage dieser Woche, die im IST noch nicht bestätigt sind'],
+];
+
+function vertragText(m) {
+  return `${VERTRAG_KURZ[m.vertragsart] ?? m.vertragsart ?? ''} ${kurz(Number(m.wochenstunden) || 0)}`.trim();
+}
+
+const zahlZelle = (wert, klasse = '') => element('td', { class: `zahl ${klasse}`.trim() }, wert);
+
+function saldoZelle(m) {
+  const warn = m.warnung === 'plus' || m.warnung === 'minus';
+  const td = zahlZelle(vorzeichen(m.saldo_aktuell), `${vorzeichenKlasse(m.saldo_aktuell)}${warn ? ' zk-warnung' : ''}`);
+  if (warn) {
+    td.title = m.warnung === 'plus'
+      ? 'Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen)'
+      : 'Saldo unter dem Warnwert (−Warnfaktor × Wochenstunden, Einstellungen)';
+    td.prepend(element('span', { class: 'zk-warnsymbol', 'aria-label': 'Warnung' }, '⚠ '));
+  }
+  return td;
+}
+
+function zeile(m) {
+  const fuehrung = m.vertragsart === 'fuehrung' && m.grenze != null;
+  return element('tr', { 'data-mitarbeiter': m.id, class: m.aktiv ? '' : 'inaktiv' },
+    element('th', { scope: 'row' },
+      element('button', { type: 'button', class: 'zk-name', title: 'Journal öffnen', onclick: () => oeffneJournal(m) }, m.name),
+      m.aktiv ? null : element('small', {}, ' (inaktiv)')),
+    element('td', { class: 'zk-vertrag', title: fuehrung ? `Führung: Plus zählt erst über ${stundenDE(m.grenze)} h` : null }, vertragText(m)),
+    zahlZelle(stundenDE(m.soll)),
+    zahlZelle(stundenDE(m.ist)),
+    zahlZelle(stundenDE(m.abwesend)),
+    zahlZelle(stundenDE(m.feiertag)),
+    zahlZelle(vorzeichen(m.diff), vorzeichenKlasse(m.diff)),
+    zahlZelle(vorzeichen(m.saldo_vorwoche)),
+    saldoZelle(m),
+    zahlZelle(stundenDE(m.spaet)),
+    element('td', { class: 'zk-offen-zelle' }, m.offene_tage > 0
+      ? element('button', {
+        type: 'button', class: 'zk-offen', title: 'Zum ersten offenen Tag im IST', onclick: () => zumErstenOffenenTag(m.id),
+      }, anzahl(m.offene_tage, 'Tag', 'Tage'))
+      : element('span', { class: 'hinweis' }, '–')));
+}
+
+function zeichneTabelle() {
+  const liste = woche.mitarbeiter ?? [];
+  if (!liste.length) {
+    rahmen.tabelle.replaceChildren(element('p', { class: 'hinweis' }, 'In dieser Woche hat niemand einen Vertrag.'));
+    return;
+  }
+  const s = wochenSumme(liste);
+  const kopf = element('tr', {}, element('th', { scope: 'col' }, 'Mitarbeiter'),
+    SPALTEN.map(([titel, hinweis], i) => element('th', {
+      scope: 'col', title: hinweis, class: i > 0 && i < SPALTEN.length - 1 ? 'zahl' : '',
+    }, titel)));
+  const fuss = element('tr', {}, element('th', { scope: 'row' }, 'Summe'), element('td'),
+    zahlZelle(stundenDE(s.soll)), zahlZelle(stundenDE(s.ist)), zahlZelle(stundenDE(s.abwesend)),
+    zahlZelle(stundenDE(s.feiertag)), zahlZelle(vorzeichen(s.diff), vorzeichenKlasse(s.diff)),
+    element('td'), element('td'), element('td'), element('td'));
+  rahmen.tabelle.replaceChildren(
+    element('div', { class: 'tabelle-scroll' },
+      element('table', { class: 'zk-tabelle' },
+        element('thead', {}, kopf), element('tbody', {}, liste.map(zeile)), element('tfoot', {}, fuss))),
+    element('p', { class: 'hinweis zk-fuss' },
+      'Klick auf einen Namen öffnet das Journal. ⚠ = Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).',
+      woche.abgeschlossen ? '' : ' Solange die Woche nicht gebucht ist, enthält „Saldo aktuell“ die Diff vorläufig.'));
+}
+
+// ---------------------------------------------------------------- Woche buchen
+
+function wocheBuchen() {
+  const { jahr: j, kw: k } = woche;
+  let antwort = null;
+  dialog(`KW ${k}/${j} abschließen`, [
+    element('p', {}, 'Bucht für jeden Mitarbeiter die Diff dieser Woche ins Zeitkonto.'),
+    element('p', { class: 'hinweis' },
+      'Ein Abschluss lässt sich nicht zurücknehmen. Ändert sich danach etwas in dieser Woche (IST, Abwesenheit, Vertrag), '
+      + 'bucht PEP die Änderung automatisch als Korrektur nach.'),
+  ], [{
+    text: 'Woche buchen',
+    aktion: async () => { antwort = await aufruf('pep_wochenabschluss', { p_jahr: j, p_kw: k }); },
+    danach: async () => {
+      meldung(`KW ${k}/${j} abgeschlossen: ${anzahl(antwort?.gebucht ?? 0, 'Buchung', 'Buchungen')}.`, 'ok');
+      await lade();
+    },
+  }]);
+}
+
+// ---------------------------------------------------------------- Journal
+
+// Dialog mit allen Buchungen eines Mitarbeiters in Buchungsreihenfolge (journalZeilen), darunter für die Leitung
+// „Korrektur buchen“ und – nur solange das Journal leer ist – „Startsaldo“ (der Server lehnt sonst START_NICHT_ERSTE ab).
+// Die Buchungsknöpfe stehen vor „Schließen“ in der Knopfleiste des Dialogs; sie öffnen einen zweiten Dialog darüber,
+// danach werden Journal und Wochentabelle neu geladen.
+function oeffneJournal(m) {
+  const inhalt = element('div', { class: 'zk-journal' }, element('p', { class: 'hinweis' }, 'Lädt …'));
+  const knoepfe = element('span', { class: 'zk-journal-knoepfe' });
+  const d = dialog(`Zeitkonto: ${m.name}`, [inhalt], [], () => {}, 'Schließen');
+  d.classList.add('zk-journal-dialog');
+  d.querySelector('.dialog-knoepfe').prepend(knoepfe);
+  const fuellen = async () => {
+    const zeilen = journalZeilen(await aufruf('pep_zeitkonto_journal', { p_mitarbeiter_id: m.id, p_von: null, p_bis: null }));
+    const nachBuchung = async () => { await fuellen(); await lade(); };
+    inhalt.replaceChildren(...journalInhalt(zeilen));
+    knoepfe.replaceChildren(...buchungsKnoepfe(m, zeilen, nachBuchung));
+  };
+  fuellen().catch((fehler) => {
+    if (fehler.behandelt) { d.close(); return; }
+    inhalt.replaceChildren(element('p', { class: 'meldung fehler', role: 'alert' }, fehlerText(fehler.message)));
+  });
+}
+
+function journalInhalt(zeilen) {
+  const saldo = zeilen.length ? zeilen[zeilen.length - 1].saldo : 0;
+  const teile = [element('p', { class: 'zk-saldo' }, 'Saldo: ',
+    element('strong', { class: `zahl ${vorzeichenKlasse(saldo)}`.trim() }, `${vorzeichen(saldo)} h`),
+    element('span', { class: 'hinweis' }, ` · ${anzahl(zeilen.length, 'Buchung', 'Buchungen')}`))];
+  if (zeilen.length) {
+    teile.push(element('div', { class: 'tabelle-scroll' }, element('table', { class: 'zk-journal-tabelle' },
+      element('thead', {}, element('tr', {},
+        ['Gebucht am', 'KW', 'Art', 'Stunden', 'Saldo', 'Grund', 'Von'].map((t, i) =>
+          element('th', { scope: 'col', class: i === 3 || i === 4 ? 'zahl' : '' }, t)))),
+      element('tbody', {}, zeilen.map((z) => element('tr', {},
+        element('td', {}, z.am ? datumDE(z.am) : ''),
+        element('td', { class: 'zk-kw' }, z.kw),
+        element('td', {}, z.art),
+        zahlZelle(vorzeichen(z.stunden), vorzeichenKlasse(z.stunden)),
+        zahlZelle(vorzeichen(z.saldo)),
+        element('td', { class: 'zk-grund' }, z.grund),
+        element('td', {}, z.von)))))));
+    teile.push(element('p', { class: 'hinweis zk-fuss' },
+      'Reihenfolge wie gebucht; „Saldo“ ist der Stand nach der Buchung. KW = Woche, für die gebucht wurde.'));
+  } else {
+    teile.push(element('p', { class: 'hinweis' }, 'Noch keine Buchungen.'));
+  }
+  return teile;
+}
+
+// Nur die Leitung bucht. „Startsaldo“ nur bei leerem Journal (sonst START_NICHT_ERSTE vom Server).
+function buchungsKnoepfe(m, zeilen, nachBuchung) {
+  if (!darfBuchen()) return [];
+  return [
+    zeilen.length ? null
+      : element('button', { type: 'button', class: 'knopf', onclick: () => buchungsDialog(m, 'start', nachBuchung) }, 'Startsaldo'),
+    element('button', { type: 'button', class: 'knopf', onclick: () => buchungsDialog(m, 'manuell', nachBuchung) }, 'Korrektur buchen'),
+  ].filter(Boolean);
+}
+
+// Startsaldo oder Korrektur von Hand. Stunden mit Komma („−4,5“, „2,25“), Grund Pflicht, Datum bestimmt die Woche,
+// in deren Saldo die Buchung zählt. Vorbelegt: Korrektur heute; Startsaldo der Sonntag vor der angezeigten Woche, damit er
+// dort als „Saldo Vorwoche“ erscheint (mit heute stünde er erst in der laufenden Woche, nach den ersten Abschlüssen).
+function buchungsDialog(m, art, nachBuchung) {
+  const stunden = element('input', {
+    type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: 'z. B. −4,5 oder 2,25', class: 'zk-stunden',
+  });
+  const datum = element('input', { type: 'date', value: art === 'start' ? plusTage(woche.montag, -1) : heuteIso() });
+  const grund = element('input', {
+    type: 'text', maxlength: '200', autocomplete: 'off',
+    placeholder: art === 'start' ? 'z. B. Übernahme aus der bisherigen Liste' : 'z. B. Überstunden ausgezahlt',
+  });
+  const d = dialog(art === 'start' ? `Startsaldo: ${m.name}` : `Korrektur buchen: ${m.name}`, [
+    element('p', { class: 'hinweis' }, art === 'start'
+      ? `Stand des Zeitkontos zu Beginn; das Datum ist auf den Tag vor KW ${woche.kw}/${woche.jahr} vorbelegt. `
+        + 'Geht nur als erste Buchung des Mitarbeiters.'
+      : 'Plus schreibt Stunden gut, Minus zieht sie ab. Die Buchung zählt in der Woche des Datums.'),
+    element('label', { class: 'feld' }, 'Stunden (Plus oder Minus)', stunden),
+    element('label', { class: 'feld' }, 'Datum', datum),
+    element('label', { class: 'feld' }, 'Grund (Pflicht)', grund),
+  ], [{
+    text: 'Buchen',
+    aktion: async () => {
+      const n = stundenEingabe(stunden.value);
+      if (n === null) throw new Error('STUNDEN_FEHLEN');
+      if (Number.isNaN(n)) throw new Error('STUNDEN_UNGUELTIG');
+      const g = grund.value.trim();
+      if (!g) throw new Error('GRUND_FEHLT');
+      if (!datum.value) throw new Error('DATUM_UNGUELTIG');
+      await aufruf('pep_zeitkonto_buchen', { p_mitarbeiter_id: m.id, p_art: art, p_stunden: n, p_grund: g, p_datum: datum.value });
+    },
+    danach: async () => {
+      meldung('Gebucht.', 'ok');
+      await nachBuchung();
+    },
+  }]);
+  d.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
+    e.preventDefault();
+    d.querySelector('.dialog-knoepfe .knopf.primaer')?.click();
+  });
+  stunden.focus();
+}
+
+// ---------------------------------------------------------------- Anzeigen
+
+async function zeigen() {
+  meldung('');
+  if (!rahmen.kopf) {
+    rahmen.kopf = element('div', { class: 'box werkzeugleiste' });
+    rahmen.tabelle = element('div', { class: 'box' });
+    $('ansicht-zeitkonto').replaceChildren(rahmen.kopf, rahmen.tabelle);
+  }
+  try {
+    await lade();
+  } catch (fehler) {
+    zeigeFehler(fehler);
+    return;
+  }
+  const mid = journalNachLaden;
+  journalNachLaden = null;
+  const m = mid == null ? null : woche?.mitarbeiter.find((x) => x.id === mid);
+  if (m) oeffneJournal(m);
+}
+
+reiter.zeitkonto = { zeigen };

@@ -6,6 +6,7 @@ import './mitarbeiter.js';
 import './einstellungen.js';
 import './abwesenheiten.js';
 import './einsatzplan.js';
+import './zeitkonto.js';
 import './vorausplanung.js';
 import './start.js';
 

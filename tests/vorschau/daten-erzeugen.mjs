@@ -162,4 +162,36 @@ await istMalen(ids[6], TAGE[2], '10:30', '11:00', null); // Mi: früher gegangen
 await q('select public.pep_ist_zeile_setzen($1, $2::date, $3::jsonb, null) as r', [ids[8], TAGE[2], '[]']); // Mi: nicht gekommen
 await bestaetigen(TAGE[2], [ids[11]]); // Mi: eine Zeile einzeln bestätigt
 schreib('pep_ist_woche', await q('select public.pep_ist_woche(2026, 46) as r'));
+
+// Zeitkonto, nach dem IST (damit pep_ist_woche unverändert bleibt); „heute“ bleibt Do 12.11. KW 45 (02.–07.11.) bekommt
+// IST nach dem Muster des Plans von KW 46 (Emil hat dort eigenen Plan und bekommt beim Bestätigen den Vorschlag),
+// alle Tage werden bestätigt und die Woche abgeschlossen. Davor drei Startsalden (Ben und Anna über dem Warnwert),
+// danach eine Änderung mit Grund in KW 45 (automatische Korrektur) und eine Korrektur von Hand in KW 46.
+// KW 46 bleibt offen (Mi teilweise, Do offen). Die Attrappe liefert pep_zeitkonto_woche je Woche
+// (pep_zeitkonto_woche_2026_45.json), das Journal immer das von „Demo, Emil“.
+const KW45 = ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07'];
+const istPlan = { ...plan, 0: { frei: 6, bloecke: [['06:00', '12:30', 'OG']] } };
+let istGesperrt = 0;
+for (const [i, p] of Object.entries(istPlan)) {
+  if (Number(i) === 4) continue; // Emil: Vorschlag aus seinem Plan
+  for (const [t, datum] of KW45.entries()) {
+    if (t === p.frei) continue;
+    for (const [von, bis, k] of p.bloecke) {
+      try { await istMalen(ids[i], datum, von, bis, k); } catch { istGesperrt += 1; } // abwesend (KM, Berufsschule)
+    }
+  }
+}
+const buchen = (m, art, stunden, grund, datum) => q('select public.pep_zeitkonto_buchen($1, $2, $3, $4, $5::date) as r',
+  [m, art, stunden, grund, datum]);
+await buchen(ids[1], 'start', 45, 'Übernahme aus der bisherigen Liste', '2026-11-01');
+await buchen(ids[0], 'start', -40, 'Übernahme aus der bisherigen Liste', '2026-11-01');
+await buchen(ids[4], 'start', 12.5, 'Übernahme aus der bisherigen Liste', '2026-11-01');
+for (const d of KW45) await bestaetigen(d);
+console.log(`Zeitkonto: ${istGesperrt} IST-Striche wegen Abwesenheit übersprungen; Abschluss KW 45:`,
+  JSON.stringify(await q('select public.pep_wochenabschluss(2026, 45) as r')));
+await istMalen(ids[4], KW45[1], '12:00', '13:00', 'OG', 'Inventur länger'); // bestätigt und abgeschlossen: Korrektur +1
+await buchen(ids[4], 'manuell', -4, 'Überstunden ausgezahlt', TAGE[0]);
+schreib('pep_zeitkonto_woche', await q('select public.pep_zeitkonto_woche(2026, 46) as r'));
+schreib('pep_zeitkonto_woche_2026_45', await q('select public.pep_zeitkonto_woche(2026, 45) as r'));
+schreib('pep_zeitkonto_journal', await q('select public.pep_zeitkonto_journal($1, null, null) as r', [ids[4]]));
 console.log('Vorschau-Daten geschrieben');
