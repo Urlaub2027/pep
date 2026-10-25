@@ -2366,6 +2366,7 @@ await szenario('Hilfe: „?“ auf jedem Reiter, Escape, Klick daneben, IST, Tab
   await pause(300);
   await reiter('zeitkonto');
   await oeffne();
+  await pause(300); // Einblende-Animation (180 ms, translateX) abwarten, sonst misst man die Leiste mitten im Hereinschieben
   const masse = await c.werte(() => {
     const r = document.querySelector('dialog.hilfe-leiste[open]').getBoundingClientRect();
     return { links: Math.round(r.left), breite: Math.round(r.width), hoehe: Math.round(r.height), fenster: [innerWidth, innerHeight] };
