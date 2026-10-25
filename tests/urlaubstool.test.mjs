@@ -62,8 +62,11 @@ test('pep_urlaub_umfragen listet die eigene Umfrage mit teilnehmer 2, abgaben 0;
   assert.equal(l[0].aktiv, false);
   assert.equal(l[0].teilnehmer, 2);
   assert.equal(l[0].abgaben, 0);
-  // Die Stellvertretung sieht erst, was für die Filiale eingeschaltet ist.
-  assert.deepEqual(await json(stellv, 'select public.pep_urlaub_umfragen() as r'), []);
+  assert.equal(l[0].organisator, 'chef');
+  assert.equal(l[0].eigene, true);
+  // Die Stellvertretung sieht dieselben Umfragen (Organisator ist ein PEP-Benutzer der Filiale), nicht als eigene.
+  const sv = await json(stellv, 'select public.pep_urlaub_umfragen() as r');
+  assert.deepEqual(sv.map((u) => [u.id, u.organisator, u.eigene]), [[umfrage, 'chef', false]]);
 });
 
 test('Umfrage schalten: nur Leitung, fremde Umfrage UMFRAGE_NICHT_GEFUNDEN', async () => {
@@ -75,14 +78,25 @@ test('Umfrage schalten: nur Leitung, fremde Umfrage UMFRAGE_NICHT_GEFUNDEN', asy
   assert.equal((await json(stellv, 'select public.pep_urlaub_umfragen() as r')).length, 1);
 });
 
-test('Leitung ordnet fremden Organisator als Stellvertretung zu: dessen Umfrage lässt sich nicht einschalten', async () => {
+test('Organisator als Stellvertretung der Filiale: seine Umfrage ist sichtbar und einschaltbar; entfernt: nur noch die eingeschaltete', async () => {
   const extern = await organisator(db, 'extern');
   const externeUmfrage = await umfrageAnlegen(db, extern, { titel: 'Extern 2027' });
-  await aufruf(leitung, 'select public.pep_benutzer_setzen($1, $2)', ['extern', 'stellvertretung']);
+  const sichtbar = async () => (await json(leitung, 'select public.pep_urlaub_umfragen() as r')).some((u) => u.id === externeUmfrage);
+  // Noch kein PEP-Benutzer: unsichtbar, Einschalten UMFRAGE_NICHT_GEFUNDEN
+  assert.equal(await sichtbar(), false);
   await wirft(aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]), 'UMFRAGE_NICHT_GEFUNDEN');
-  assert.ok(!(await json(leitung, 'select public.pep_urlaub_umfragen() as r')).some((u) => u.id === externeUmfrage));
-  assert.equal((await db.query('select count(*)::int as n from pep.urlaub_umfragen where umfrage_id = $1', [externeUmfrage])).rows[0].n, 0);
+  // Als Stellvertretung der Filiale eingetragen: sichtbar, die Leitung schaltet ein, die Stellvertretung selbst nicht
+  await aufruf(leitung, 'select public.pep_benutzer_setzen($1, $2)', ['extern', 'stellvertretung']);
+  assert.equal(await sichtbar(), true);
+  await wirft(aufruf(extern, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]), 'NUR_LEITUNG');
+  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]);
+  // Wieder entfernt: die eingeschaltete Umfrage bleibt sichtbar und lässt sich ausschalten, danach ist sie weg
   await aufruf(leitung, 'select public.pep_benutzer_entfernen($1)', [extern]);
+  assert.equal(await sichtbar(), true);
+  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, false)', [externeUmfrage]);
+  assert.equal(await sichtbar(), false);
+  await wirft(aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]), 'UMFRAGE_NICHT_GEFUNDEN');
+  assert.equal((await db.query('select count(*)::int as n from pep.urlaub_umfragen where umfrage_id = $1', [externeUmfrage])).rows[0].n, 0);
 });
 
 test('Zuordnungsvorschlag trifft trotz Tab und Groß/Klein; setzen und lösen', async () => {
@@ -261,4 +275,90 @@ test('Ausschalten klappt auch, wenn der Eigentümer nicht mehr in der Filiale is
   await aufruf(chef2, 'select public.pep_urlaub_umfrage_schalten($1, false)', [u]);
   assert.equal((await db.query('select count(*)::int as n from pep.urlaub_umfragen where umfrage_id = $1', [u])).rows[0].n, 0);
   await wirft(aufruf(chef2, 'select public.pep_urlaub_umfrage_schalten($1, false)', [u]), 'UMFRAGE_NICHT_GEFUNDEN');
+});
+
+// ------------------------------------------------------------ Task 13: Umfragen aller Leitungen der Filiale
+
+test('Umfrage einer anderen Leitung der Filiale: sichtbar mit Organisator, jede Leitung schaltet ein, Stellvertretung nicht', async () => {
+  const leiterin = await pepBenutzer(db, 'leiterin', 'leitung', fil);
+  await db.query("update urlaub.organisatoren set anzeigename = 'Leiterin Nord' where user_id = $1", [leiterin]);
+  const u = await umfrageAnlegen(db, leiterin, { titel: 'Wünsche Leiterin 2027' });
+  const l = await json(leitung, 'select public.pep_urlaub_umfragen() as r');
+  const zeile = l.find((x) => x.id === u);
+  assert.ok(zeile, 'für chef sichtbar');
+  assert.deepEqual([zeile.organisator, zeile.eigene, zeile.aktiv, zeile.jahr], ['Leiterin Nord', false, false, 2027]);
+  assert.equal((await json(leiterin, 'select public.pep_urlaub_umfragen() as r')).find((x) => x.id === u).eigene, true);
+  await wirft(aufruf(stellv, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]), 'NUR_LEITUNG');
+  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
+  assert.deepEqual((await db.query('select filiale_id from pep.urlaub_umfragen where umfrage_id = $1', [u])).rows, [{ filiale_id: fil }]);
+  assert.equal((await json(stellv, 'select public.pep_urlaub_umfragen() as r')).find((x) => x.id === u).aktiv, true);
+  // Teilnehmer erscheinen zum Zuordnen; die Leiterin schaltet wieder aus
+  await umfrageMitarbeiter(db, u, 'Anna Test');
+  assert.ok((await json(leitung, 'select public.pep_urlaub_zuordnung() as r')).some((t) => t.umfrage_id === u));
+  await aufruf(leiterin, 'select public.pep_urlaub_umfrage_schalten($1, false)', [u]);
+  assert.equal((await db.query('select count(*)::int as n from pep.urlaub_umfragen where umfrage_id = $1', [u])).rows[0].n, 0);
+});
+
+test('Organisator ohne PEP-Benutzer oder aus einer fremden Filiale: unsichtbar und UMFRAGE_NICHT_GEFUNDEN', async () => {
+  const ohne = await organisator(db, 'nurumfrage');
+  const u = await umfrageAnlegen(db, ohne, { titel: 'Ohne PEP 2027' });
+  const ids = (await json(leitung, 'select public.pep_urlaub_umfragen() as r')).map((x) => x.id);
+  assert.ok(!ids.includes(u));
+  assert.ok(!ids.includes(fremdeUmfrage));
+  await wirft(aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]), 'UMFRAGE_NICHT_GEFUNDEN');
+  await wirft(aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [fremdeUmfrage]), 'UMFRAGE_NICHT_GEFUNDEN');
+  // Umfrage ohne Urlaubswochen-Frage einer Leitung der Filiale: ebenfalls nicht
+  const ohneFrage = (await db.query("insert into urlaub.umfragen (organisator_id, titel, frist) values ($1, 'Nur Text', now() + interval '1 day') returning id",
+    [leitung])).rows[0].id;
+  assert.ok(!(await json(leitung, 'select public.pep_urlaub_umfragen() as r')).some((x) => x.id === ohneFrage));
+  await wirft(aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [ohneFrage]), 'UMFRAGE_NICHT_GEFUNDEN');
+  assert.equal((await db.query('select count(*)::int as n from pep.urlaub_umfragen where umfrage_id = any ($1)',
+    [[u, fremdeUmfrage, ohneFrage]])).rows[0].n, 0);
+});
+
+test('pep.namensteile: Kleinschreibung, Kommas weg, Bindestrich und Leerraum trennen, sortiert und ohne Doppelte', async () => {
+  const teile = async (t) => (await db.query('select pep.namensteile($1) as t', [t])).rows[0].t;
+  assert.deepEqual(await teile('Muster-Beispiel,\tAnna '), ['anna', 'beispiel', 'muster']);
+  assert.deepEqual(await teile('Anna  MUSTER - Beispiel'), ['anna', 'beispiel', 'muster']);
+  assert.deepEqual(await teile('anna, Anna'), ['anna']);
+  assert.deepEqual(await teile(' , - '), []);
+  assert.deepEqual(await teile(null), []);
+});
+
+test('Zuordnungsvorschlag unabhängig von der Reihenfolge: gleiche Menge vor Teilmenge, mehrdeutig und inaktiv nie', async () => {
+  // Eigene Filiale mit festem Mitarbeiterbestand (erfundene Namen)
+  const nord = await pepBenutzer(db, 'nordchef');
+  await filiale(db, nord, { name: 'Netto Nordstadt', nummer: '8888' });
+  const ma = {};
+  for (const [name, aktiv] of [['Probe, Lena', true], ['Demo, Karl', true], ['Skizze, Mia', true], ['Vorlage, Mia', true],
+    ['Muster-Beispiel, Anna', true], ['Fiktiv, Uwe', false], ['Probe, Tom', true], ['Probe-Lang, Tom', true], ['Ng, J', true]]) {
+    ma[name] = await json(nord, 'select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r', [JSON.stringify({ name, aktiv })]);
+  }
+  const u = await umfrageAnlegen(db, nord, { titel: 'Nord 2027' });
+  await aufruf(nord, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
+  const faelle = [
+    ['Lena Probe', 'Probe, Lena'], // Vorname Nachname ↔ Nachname, Vorname
+    ['Karl', 'Demo, Karl'], // nur Vorname, eindeutig
+    ['Mia', null], // nur Vorname, zweimal vorhanden
+    ['Anna Muster-Beispiel', 'Muster-Beispiel, Anna'], // Doppelname mit Bindestrich
+    ['Anna Muster Beispiel', 'Muster-Beispiel, Anna'], // Doppelname ohne Bindestrich
+    ['anna muster', 'Muster-Beispiel, Anna'], // Teil des Doppelnamens, eindeutig
+    ['Uwe Fiktiv', null], // inaktiv
+    ['Tom Probe', 'Probe, Tom'], // gleiche Menge schlägt die Obermenge „Probe-Lang, Tom“
+    ['Tom', null], // zwei Obermengen
+    ['J', null], // nur ein einzelner Buchstabe
+    ['Lena Probe Extra', null], // mehr Teile als jeder Mitarbeiter
+  ];
+  const tn = {};
+  for (const [name] of faelle) tn[name] = (await umfrageMitarbeiter(db, u, name)).id;
+  const v = Object.fromEntries((await json(nord, 'select public.pep_urlaub_zuordnung() as r')).map((t) => [t.name, t.vorschlag_id]));
+  for (const [name, erwartet] of faelle) assert.equal(v[name], erwartet === null ? null : ma[erwartet], name);
+  // Schon zugeordnete Mitarbeiter werden nicht ausgeschlossen (zwei Umfragen dürfen auf denselben zeigen)
+  await aufruf(nord, 'select public.pep_urlaub_zuordnung_setzen($1, $2)', [tn['Lena Probe'], ma['Probe, Lena']]);
+  const zweite = await umfrageAnlegen(db, nord, { titel: 'Nord Nachtrag 2027' });
+  await aufruf(nord, 'select public.pep_urlaub_umfrage_schalten($1, true)', [zweite]);
+  const nochmal = (await umfrageMitarbeiter(db, zweite, 'Probe,  Lena')).id;
+  const z = await json(nord, 'select public.pep_urlaub_zuordnung() as r');
+  assert.equal(z.find((t) => t.urlaub_mitarbeiter_id === nochmal).vorschlag_id, ma['Probe, Lena']);
+  assert.equal(z.find((t) => t.urlaub_mitarbeiter_id === tn['Lena Probe']).vorschlag_id, ma['Probe, Lena']);
 });

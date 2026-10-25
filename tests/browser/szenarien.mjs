@@ -2151,6 +2151,85 @@ await szenario('Sicherung: herunterladen, in zweite leere Filiale einspielen, Mi
   pruefe(!(await sichtbar('#ansicht-start .start-sicherung')), 'Stellvertretung: keine Zeile zur Sicherung');
 }, { erlaubeHttp: ['BESTAETIGUNG_FALSCH'] });
 
+// ================================================================ Stufe 2: Urlaubstool aller Leitungen
+// Eine zweite Leitung der Filiale („Leiterin Süd“) hat eine eigene Umfrage; ihre Teilnehmer schreiben sich „Vorname
+// Nachname“ bzw. nur den Vornamen. chef schaltet erst die eigene Umfrage aus (Hinweis statt Teilnehmerliste), dann
+// beide ein, übernimmt die Vorschläge; die Kopfzeile zählt mit. Am Ende, damit kein anderes Szenario die zweite Leitung
+// sieht.
+await szenario('Urlaubstool: Umfrage einer zweiten Leitung einschalten, Vorschläge übernehmen, Kopfzeile zählt', async () => {
+  if (!(await sql("select 1 from urlaub.organisatoren where benutzername = 'leiterin'")).length) {
+    await sql("insert into urlaub.organisatoren (user_id, anzeigename, benutzername) values (gen_random_uuid(), 'Leiterin Süd', 'leiterin')");
+    const uid = (await sql("select user_id from urlaub.organisatoren where benutzername = 'leiterin'"))[0].user_id;
+    await sql("insert into pep.benutzer (user_id, filiale_id, rolle) values ($1, $2, 'leitung')", [uid, B.fil]);
+    const u = (await sql("insert into urlaub.umfragen (organisator_id, titel, frist) values ($1, 'Urlaub 2026 Frühschicht', now() + interval '1 day') returning id",
+      [uid]))[0].id;
+    await sql("select urlaub.standard_urlaubsfrage($1, 2026, 'BY')", [u]);
+    for (const name of ['Cem Beispiel', 'Dana', 'Ohnetreffer, Zoe']) await sql('insert into urlaub.mitarbeiter (umfrage_id, name) values ($1, $2)', [u, name]);
+  }
+  const fremd = (await sql("select u.id from urlaub.umfragen u join urlaub.organisatoren o on o.user_id = u.organisator_id where o.benutzername = 'leiterin'"))[0].id;
+  const maId = async (name) => (await sql('select id from pep.mitarbeiter where filiale_id = $1 and name = $2', [B.fil, name]))[0].id;
+  const box = '#ansicht-einstellungen .box';
+  const urlaubBox = async () => c.werte((sel) => {
+    const b = [...document.querySelectorAll(sel)].find((x) => x.querySelector('h2')?.textContent === 'Urlaubstool');
+    if (b) b.dataset.t = 'urlaubbox';
+    return Boolean(b);
+  }, box);
+  // Haken „aktiv“ der Umfragezeile, deren Titel mit `titel` beginnt
+  const haken = async (titel) => {
+    const ok = await c.werte((t) => {
+      const z = [...document.querySelectorAll('[data-t="urlaubbox"] .zeile')].find((x) => x.querySelector('.zeilentitel')?.textContent.startsWith(t));
+      const k = z?.querySelector('input[type="checkbox"]');
+      if (k) k.dataset.t = 'umfragehaken';
+      return Boolean(k);
+    }, titel);
+    if (!ok) throw new Error(`Umfrage „${titel}“ nicht gefunden`);
+    await c.klick('[data-t="umfragehaken"]');
+    await ruhe();
+    await urlaubBox();
+  };
+  const geschaltet = async () => (await sql('select umfrage_id from pep.urlaub_umfragen where filiale_id = $1 order by umfrage_id', [B.fil]))
+    .map((r) => r.umfrage_id);
+  const zaehler = () => text('[data-t="urlaubbox"] .urlaub-zaehler');
+  const zeilenTitel = () => texte('[data-t="urlaubbox"] form .zeilentitel');
+
+  await alsBenutzer('chef');
+  await reiter('einstellungen');
+  pruefe(await urlaubBox(), 'Abschnitt Urlaubstool');
+  const umfrageZeilen = await texte('[data-t="urlaubbox"] .zeile:not(form)');
+  pruefe(umfrageZeilen.some((z) => z.startsWith('Urlaub 2026 Frühschicht (2026)') && z.includes('von Leiterin Süd')), 'Zeile „von Leiterin Süd“', umfrageZeilen);
+  pruefe(umfrageZeilen.some((z) => z.startsWith('Urlaub 2026 (2026)') && z.includes('eigene Umfrage')), 'Zeile „eigene Umfrage“', umfrageZeilen);
+  pruefe((await text('[data-t="urlaubbox"]')).includes('Jeder Teilnehmer der Umfrage wird einem PEP-Mitarbeiter zugeordnet; erst dann erscheinen seine Wünsche unter Abwesenheiten zum Freigeben.'),
+    'Erklärung über der Liste');
+
+  // Eigene Umfrage aus: keine eingeschaltet → Hinweis statt Liste
+  await haken('Urlaub 2026 (2026)');
+  gleich(await geschaltet(), [], 'DB: keine Umfrage eingeschaltet');
+  pruefe((await text('[data-t="urlaubbox"]')).includes('Zuerst oben eine Umfrage einschalten – dann erscheinen hier ihre Teilnehmer.'), 'Hinweis ohne eingeschaltete Umfrage');
+  gleich(await zaehler(), null, 'keine Kopfzeile ohne eingeschaltete Umfrage');
+
+  // Beide einschalten (die der Leiterin schaltet chef ein)
+  await haken('Urlaub 2026 (2026)');
+  await haken('Urlaub 2026 Frühschicht (2026)');
+  gleich(await geschaltet(), [B.umfrage, fremd].sort((a, b) => a - b), 'DB: beide Umfragen eingeschaltet');
+  gleich(await zaehler(), '2 von 5 zugeordnet', 'Kopfzeile vorher');
+  gleich((await zeilenTitel()).slice(0, 3), ['Cem Beispiel', 'Dana', 'Ohnetreffer, Zoe'], 'nicht zugeordnete zuerst');
+  await c.werte(() => document.querySelector('[data-t="urlaubbox"]').scrollIntoView());
+  await c.foto(`${FOTOS}urlaubstool-vorschlaege.png`);
+
+  // Vorschläge übernehmen: Cem (andere Reihenfolge) und Dana (nur Vorname); Zoe ohne Treffer bleibt offen
+  await c.klick({ text: 'Vorschläge übernehmen (2)', in: '[data-t="urlaubbox"]', sel: 'button', genau: true });
+  await ruhe();
+  await urlaubBox();
+  const zuordnung = await sql(`select t.name, z.mitarbeiter_id as m from urlaub.mitarbeiter t
+      left join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id where t.umfrage_id = $1 order by t.name`, [fremd]);
+  gleich(zuordnung, [{ name: 'Cem Beispiel', m: await maId('Beispiel, Cem') }, { name: 'Dana', m: await maId('Probe, Dana') },
+    { name: 'Ohnetreffer, Zoe', m: null }], 'DB: Zuordnung nach „Vorschläge übernehmen“');
+  gleich(await zaehler(), '4 von 5 zugeordnet', 'Kopfzeile nachher');
+  gleich((await zeilenTitel())[0], 'Ohnetreffer, Zoe', 'der nicht zugeordnete steht oben');
+  pruefe(!(await texte('[data-t="urlaubbox"] button')).some((t) => t.startsWith('Vorschläge übernehmen')), 'kein Knopf „Vorschläge übernehmen“ mehr');
+  gleich((await meldungen()).toast, 'Gespeichert.', 'Toast');
+});
+
 // ================================================================ Ende
 
 const ok = ergebnisse.filter((e) => e.ok).length;

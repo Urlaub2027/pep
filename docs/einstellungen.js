@@ -327,14 +327,17 @@ function zeichneUrlaub() {
     });
     return element('div', { class: 'zeile' },
       element('strong', { class: 'zeilentitel' }, `${u.titel} (${u.jahr})`),
-      element('span', { class: 'hinweis' },
-        `Bundesland ${u.bundesland} · Frist ${u.frist ? datumDE(u.frist) : '–'} · ${u.abgaben} von ${u.teilnehmer} haben abgegeben`),
+      element('span', { class: 'hinweis' }, `${u.eigene ? 'eigene Umfrage' : `von ${u.organisator ?? '–'}`} · `
+        + `Bundesland ${u.bundesland} · Frist ${u.frist ? datumDE(u.frist) : '–'} · ${u.abgaben} von ${u.teilnehmer} haben abgegeben`),
       haken('aktiv', kasten));
   });
 
   const optionen = [['', '— keine Zuordnung —'], ...mitarbeiter.map((m) => [String(m.id), m.name])];
   const offen = zuordnung.filter((z) => !z.mitarbeiter_id && z.vorschlag_id);
-  const zuordnungsZeilen = zuordnung.map((z) => {
+  const zugeordnet = zuordnung.filter((z) => z.mitarbeiter_id).length;
+  // Nicht zugeordnete zuerst, sonst in der Reihenfolge der Datenbank (Umfrage, Name)
+  const sortiert = [...zuordnung.filter((z) => !z.mitarbeiter_id), ...zuordnung.filter((z) => z.mitarbeiter_id)];
+  const zuordnungsZeilen = sortiert.map((z) => {
     const wahl = auswahlfeld(optionen, z.mitarbeiter_id ?? z.vorschlag_id ?? '');
     return zeilenformular(
       () => speichereUrlaub(() => aufruf('pep_urlaub_zuordnung_setzen', {
@@ -351,11 +354,22 @@ function zeichneUrlaub() {
         { p_urlaub_mitarbeiter_id: z.urlaub_mitarbeiter_id, p_mitarbeiter_id: z.vorschlag_id });
     }
   })) : null;
+  let teilnehmer;
+  if (!umfragen.some((u) => u.aktiv)) {
+    teilnehmer = element('p', { class: 'hinweis' }, 'Zuerst oben eine Umfrage einschalten – dann erscheinen hier ihre Teilnehmer.');
+  } else if (!zuordnungsZeilen.length) {
+    teilnehmer = element('p', { class: 'hinweis' }, 'Keine Teilnehmer vorhanden.');
+  } else {
+    const kopf = element('p', { class: 'urlaub-zaehler' }, element('strong', {}, `${zugeordnet} von ${zuordnung.length} zugeordnet`));
+    teilnehmer = [kopf, uebernehmen, ...zuordnungsZeilen];
+  }
   boxen.urlaub.replaceChildren(abschnitt('Urlaubstool',
     element('h3', {}, 'Umfragen'),
     umfrageZeilen.length ? umfrageZeilen : element('p', { class: 'hinweis' }, 'Keine Umfragen vorhanden.'),
-    element('h3', {}, 'Teilnehmer zuordnen'), uebernehmen,
-    zuordnungsZeilen.length ? zuordnungsZeilen : element('p', { class: 'hinweis' }, 'Keine Teilnehmer vorhanden.')));
+    element('h3', {}, 'Teilnehmer zuordnen'),
+    element('p', { class: 'hinweis' }, 'Jeder Teilnehmer der Umfrage wird einem PEP-Mitarbeiter zugeordnet; '
+      + 'erst dann erscheinen seine Wünsche unter Abwesenheiten zum Freigeben.'),
+    teilnehmer));
 }
 
 // ---------------------------------------------------------------- Benutzer

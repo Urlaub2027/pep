@@ -7,7 +7,7 @@ import {
 const db = await neueDatenbank();
 await heuteSetzen(db, '2026-11-02');
 const leitung = await pepBenutzer(db, 'chef');
-await filiale(db, leitung);
+const fil = await filiale(db, leitung);
 const q = async (sql, p = []) => (await als(db, 'authenticated', leitung, sql, p))[0]?.r;
 const namen = ['Test, Anna', 'Muster, Ben', 'Beispiel, Cem', 'Probe, Dana', 'Demo, Emil', 'Fiktiv, Frieda',
   'Platzhalter, Gustav', 'Vorlage, Hanna', 'Entwurf, Ivo', 'Skizze, Jana', 'Modell, Kai', 'Attrappe, Lea'];
@@ -122,8 +122,6 @@ schreib('pep_mitarbeiter_liste', await q('select public.pep_mitarbeiter_liste() 
 schreib('pep_mitarbeiter', await q('select public.pep_mitarbeiter($1) as r', [ids[0]]));
 schreib('pep_bereiche', await q('select public.pep_bereiche() as r'));
 schreib('pep_feiertage', await q('select public.pep_feiertage(2026) as r'));
-schreib('pep_urlaub_umfragen', await q('select public.pep_urlaub_umfragen() as r'));
-schreib('pep_urlaub_zuordnung', await q('select public.pep_urlaub_zuordnung() as r'));
 schreib('pep_einsatzplan_woche', await q('select public.pep_einsatzplan_woche(2026, 46) as r'));
 schreib('pep_vorlagen', await q('select public.pep_vorlagen() as r'));
 schreib('pep_vorausplanung', await q('select public.pep_vorausplanung(2026, 46) as r'));
@@ -206,4 +204,17 @@ schreib('pep_einstellungen', await q('select public.pep_einstellungen() as r'));
 // Ben, Cem mit KM), damit der PDF-Druck drei Seiten zeigen muss.
 const blatt = await q('select public.pep_stundenblatt(null, $1::date, $2::date) as r', ['2026-10-12', '2026-11-11']);
 schreib('pep_stundenblatt', { ...blatt, mitarbeiter: blatt.mitarbeiter.slice(0, 3) });
+// Urlaubstool ganz zuletzt (Stufe 2, Aufgabe 13; ändert keine andere Datei): Die Umfrage der Leitung (Gustav und Lea
+// zugeordnet) und die einer zweiten Leitung der Filiale, von chef eingeschaltet. Deren Teilnehmer schreiben sich
+// „Vorname Nachname“ oder nur den Vornamen: Vorschläge trotz anderer Reihenfolge, einer ohne Treffer, einer zugeordnet.
+const leiterin = await pepBenutzer(db, 'leiterin', 'leitung', fil);
+await db.query("update urlaub.organisatoren set anzeigename = 'Leiterin Süd' where user_id = $1", [leiterin]);
+const umfrage2 = await umfrageAnlegen(db, leiterin, { titel: 'Urlaub 2026 Frühschicht', jahr: 2026 });
+await q('select public.pep_urlaub_umfrage_schalten($1, true) as r', [umfrage2]);
+for (const name of ['Anna Test', 'Ben Muster', 'Jana', 'Kai Modell', 'Ohnetreffer, Zoe']) {
+  const tn = await umfrageMitarbeiter(db, umfrage2, name);
+  if (name === 'Kai Modell') await q('select public.pep_urlaub_zuordnung_setzen($1, $2) as r', [tn.id, ids[10]]);
+}
+schreib('pep_urlaub_umfragen', await q('select public.pep_urlaub_umfragen() as r'));
+schreib('pep_urlaub_zuordnung', await q('select public.pep_urlaub_zuordnung() as r'));
 console.log('Vorschau-Daten geschrieben');

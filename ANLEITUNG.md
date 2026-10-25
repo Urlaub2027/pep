@@ -175,12 +175,36 @@ sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck
   „Start von IST und Zeitkonto“ in Abschnitt 1). Nach dem ersten Wochenabschluss
   gesperrt.
 - **Schulferien:** anlegen und löschen.
-- **Urlaubstool:** welche Umfragen als Urlaubswünsche einfließen; Zuordnung der
-  Teilnehmer zu Mitarbeitern (Vorschläge übernehmen). Die Umfrage muss der
-  PEP-Leitung der Filiale selbst gehören (Anmeldung der Leitung im Urlaubstool
-  als Organisator) und wird von dieser Leitung eingeschaltet; Umfragen anderer
-  Organisatoren, auch wenn sie als Stellvertretung eingetragen sind, lassen sich
-  nicht einschalten. Ausschalten kann jede Leitung der Filiale.
+- **Urlaubstool:** welche Umfragen als Urlaubswünsche einfließen und welcher
+  Teilnehmer welcher Mitarbeiter ist.
+  - **Umfragen:** Angezeigt werden die Umfragen des Urlaubstools mit
+    Urlaubswochen-Frage, deren Organisator unter „Benutzer“ dieser Filiale eingetragen
+    ist (Leitung oder Stellvertretung), dazu die schon eingeschalteten. Jede Zeile
+    nennt den Organisator („von …“, bei den eigenen „eigene Umfrage“). **Jede Leitung
+    der Filiale** kann jede dieser Umfragen einschalten, auch die einer anderen
+    Leitung. Eine Umfrage kann nur in einer Filiale eingeschaltet sein. Ausschalten
+    kann jede Leitung der Filiale, auch wenn der Organisator nicht mehr dabei ist.
+    Wer jemanden unter „Benutzer“ einträgt, macht damit auch dessen Umfragen hier
+    sichtbar.
+  - **Teilnehmer zuordnen, Schritt für Schritt:**
+    1. Oben die Umfrage mit dem Haken „aktiv“ einschalten. Solange keine Umfrage
+       eingeschaltet ist, steht unter „Teilnehmer zuordnen“ nur der Hinweis
+       „Zuerst oben eine Umfrage einschalten …“.
+    2. Unter „Teilnehmer zuordnen“ stehen alle Teilnehmer der eingeschalteten
+       Umfragen, die noch nicht zugeordneten zuerst. Die Kopfzeile zählt
+       „n von m zugeordnet“.
+    3. Wo PEP einen Mitarbeiter vorschlägt, steht er schon in der Auswahl, daneben
+       „Vorschlag (noch nicht gespeichert)“. „Vorschläge übernehmen (k)“ speichert alle
+       Vorschläge auf einmal, „Speichern“ in der Zeile nur diesen.
+    4. Ohne Vorschlag den Mitarbeiter in der Auswahl wählen und „Speichern“.
+       „— keine Zuordnung —“ und „Speichern“ löst eine Zuordnung.
+    5. Erst danach erscheinen die Wünsche des Teilnehmers unter Abwesenheiten zum
+       Freigeben.
+  - **Vorschlag:** PEP vergleicht die Namensteile unabhängig von Reihenfolge,
+    Groß-/Kleinschreibung, Komma und Bindestrich („Anna Muster-Beispiel“ =
+    „Muster-Beispiel, Anna“) und schlägt den einen aktiven Mitarbeiter mit denselben
+    Teilen vor, sonst den einen, dessen Name alle Teile enthält (z. B. nur der
+    Vorname); passt es auf mehrere, gibt es keinen Vorschlag.
 - **Benutzer:** Stellvertretung hinzufügen, Rolle ändern, entfernen.
 - **Sicherung:** Sicherungsdatei herunterladen und in eine leere Filiale einspielen
   (siehe Abschnitt „Sicherung“ unten).
@@ -441,7 +465,9 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
 6. Parameter: Teiler 6 auf 0: Meldung, Feld springt zurück; spaet_grenze 18:30 gespeichert,
    18:15 Hinweis auf halbe Stunde.
 7. Schulferien anlegen und löschen.
-8. Urlaubstool: Umfrage-Haken an/aus; Zuordnung mit Vorschlag; „Vorschläge übernehmen“.
+8. Urlaubstool: Umfrage einer zweiten Leitung („von …“) einschalten; ohne eingeschaltete
+   Umfrage der Hinweis „Zuerst oben eine Umfrage einschalten …“; Vorschlag bei
+   „Vorname Nachname“; „Vorschläge übernehmen“; Kopfzeile „n von m zugeordnet“ zählt mit.
 9. Benutzer: „vize“ als Stellvertretung hinzufügen, Rolle ändern, entfernen; sich selbst
    entfernen: Meldung NICHT_SELBST.
 
@@ -635,8 +661,10 @@ lässt sich so nicht überschreiben.
    - **Urlaubstool-Umfragen** sucht PEP über Organisator, Titel und Jahr, die Teilnehmer
      über ihren Namen. Die Nummern (Ids) im Urlaubstool sind nach dessen eigenem
      Einspielen andere, darum nicht über die Nummer. Eingeschaltet wird eine Umfrage nur,
-     wenn sie der Leitung gehört, die einspielt (wie beim Einschalten von Hand), und keine
-     andere Filiale sie nutzt. Was nicht eindeutig gefunden wird, zählt als ausgelassen:
+     wenn ihr Organisator nach dem Einspielen Benutzer der Filiale ist (wie beim
+     Einschalten von Hand: die eigenen und die anderer Leitungen oder der Stellvertretung
+     aus der Datei) und keine andere Filiale sie nutzt. Was nicht eindeutig gefunden wird,
+     zählt als ausgelassen:
      danach unter Einstellungen → Urlaubstool die Umfrage einschalten und die Teilnehmer
      zuordnen. Genehmigte Urlaubstage bleiben in jedem Fall erhalten; nur wenn die Umfrage
      fehlt, erscheint der Wunsch dazu wieder als offen.
@@ -652,9 +680,11 @@ Einspielen bucht PEP keine automatischen Korrekturen.
 
 1. Neues Supabase-Projekt anlegen. Zuerst das **Urlaubstool** dort einrichten (wie in
    seiner Anleitung) und die Organisatoren mit **denselben Benutzernamen** wie vorher
-   anlegen. Die Umfragen aus den Sicherungen des Urlaubstools spielt **die Leitung ein,
-   die danach auch die PEP-Sicherung einspielt**, und zwar **mit unverändertem Titel**:
-   PEP findet sie über Organisator, Titel und Jahr wieder.
+   anlegen. Jede Umfrage aus den Sicherungen des Urlaubstools spielt **ihr bisheriger
+   Organisator** ein (derselbe Benutzername; wer einspielt, wird Organisator), und zwar
+   **mit unverändertem Titel**: PEP findet sie über Organisator, Titel und Jahr wieder.
+   Gehört eine Umfrage einer anderen Leitung oder der Stellvertretung, wird sie nur
+   verknüpft, wenn diese in der PEP-Sicherung als Benutzer der Filiale steht.
 2. Im SQL-Editor den Inhalt von `supabase/schema.sql` ausführen.
 3. Im SQL-Editor die erste Leitung festlegen:
    `select pep.start_leitung('<benutzername>');`

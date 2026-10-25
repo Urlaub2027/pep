@@ -1,1 +1,58 @@
-[]
+[
+ {
+  "name": "Attrappe, Lea",
+  "umfrage_id": 1,
+  "vorschlag_id": 12,
+  "umfrage_titel": "Urlaub 2026",
+  "mitarbeiter_id": 12,
+  "urlaub_mitarbeiter_id": 2
+ },
+ {
+  "name": "Platzhalter, Gustav",
+  "umfrage_id": 1,
+  "vorschlag_id": 7,
+  "umfrage_titel": "Urlaub 2026",
+  "mitarbeiter_id": 7,
+  "urlaub_mitarbeiter_id": 1
+ },
+ {
+  "name": "Anna Test",
+  "umfrage_id": 2,
+  "vorschlag_id": 1,
+  "umfrage_titel": "Urlaub 2026 Frühschicht",
+  "mitarbeiter_id": null,
+  "urlaub_mitarbeiter_id": 3
+ },
+ {
+  "name": "Ben Muster",
+  "umfrage_id": 2,
+  "vorschlag_id": 2,
+  "umfrage_titel": "Urlaub 2026 Frühschicht",
+  "mitarbeiter_id": null,
+  "urlaub_mitarbeiter_id": 4
+ },
+ {
+  "name": "Jana",
+  "umfrage_id": 2,
+  "vorschlag_id": 10,
+  "umfrage_titel": "Urlaub 2026 Frühschicht",
+  "mitarbeiter_id": null,
+  "urlaub_mitarbeiter_id": 5
+ },
+ {
+  "name": "Kai Modell",
+  "umfrage_id": 2,
+  "vorschlag_id": 11,
+  "umfrage_titel": "Urlaub 2026 Frühschicht",
+  "mitarbeiter_id": 11,
+  "urlaub_mitarbeiter_id": 6
+ },
+ {
+  "name": "Ohnetreffer, Zoe",
+  "umfrage_id": 2,
+  "vorschlag_id": null,
+  "umfrage_titel": "Urlaub 2026 Frühschicht",
+  "mitarbeiter_id": null,
+  "urlaub_mitarbeiter_id": 7
+ }
+]

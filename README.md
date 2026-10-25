@@ -113,7 +113,8 @@ Schritte und Grenzen: [ANLEITUNG.md](ANLEITUNG.md), Abschnitt „Sicherung“.
   mit seinen Werten. Urlaubstool-Verweise (Schaltung, Zuordnung, Ids im Wunsch einer
   Freigabe) über Organisator/Titel/Jahr bzw. Namen, weil das Urlaubstool beim eigenen
   Einspielen neue Ids vergibt; erlaubt sind nur Umfragen nach `pep.umfrage_erlaubt`
-  (dieselbe Regel wie beim Einschalten). Eine Datei einer neueren Stufe (unbekannte Tabelle
+  (dieselbe Regel wie beim Einschalten: Organisator ist PEP-Benutzer der Filiale; die
+  Benutzer der Datei werden darum vorher zugeordnet). Eine Datei einer neueren Stufe (unbekannte Tabelle
   mit Zeilen oder Spalte mit Werten) lehnt schon die Vorschau ab (`SICHERUNG_NEUER`);
   einer älteren fehlende Einstellungen ergänzt `pep.grundausstattung`.
 
@@ -158,10 +159,11 @@ Die Oberfläche lässt sich ohne Supabase ansehen, mit erfundenen Daten.
 Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funktionen.
 
 - **Lauf:** `node tests/browser/szenarien.mjs [filter]` startet den Testserver und Chrome,
-  spielt **55 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 2,5 min) und
+  spielt **56 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 2,5 min) und
   prüft jeweils Oberfläche und Datenbankstand. Die Szenarien 1–44 decken Stufe 1 ab,
   45–54 IST-Erfassung, Zeitkonto, die neuen Kacheln und Ausdrucke von Stufe 2, 55 die
-  Sicherung (herunterladen, in eine zweite, leere Filiale einspielen). Fotos,
+  Sicherung (herunterladen, in eine zweite, leere Filiale einspielen), 56 die
+  Urlaubstool-Umfrage einer zweiten Leitung samt Zuordnungsvorschlägen. Fotos,
   PDFs, die Excel-Dateien und `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
 - **Server:** `tests/browser/server.mjs` baut die Datenbank wie `tests/helfer.mjs` in
   PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026, Start der

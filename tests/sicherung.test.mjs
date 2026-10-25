@@ -607,6 +607,47 @@ test('nicht zugeordneter Wunsch wird markiert: gleiche Ids im neuen Projekt mach
   assert.equal(s.tabellen.urlaub_freigaben[0].wunsch.nicht_zugeordnet, true);
 });
 
+test('Umfrage einer anderen Leitung der Filiale wird beim Einspielen verknüpft (neues Projekt)', async () => {
+  // Quelle: chef und chefin leiten dieselbe Filiale; die Umfrage gehört chefin, chef hat sie eingeschaltet und zugeordnet
+  const db = await neueDatenbank();
+  await heuteSetzen(db, HEUTE);
+  const chef = await pepBenutzer(db, 'chef');
+  const fil = await filiale(db, chef);
+  const chefin = await pepBenutzer(db, 'chefin', 'leitung', fil);
+  const json = async (d, nutzer, sql, p = []) => (await als(d, 'authenticated', nutzer, sql, p))[0]?.r;
+  const ma = await json(db, chef, 'select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r',
+    [JSON.stringify({ name: 'Muster-Beispiel, Anna' })]);
+  const u = await umfrageAnlegen(db, chefin, { titel: 'Urlaub Chefin', jahr: 2027 });
+  const t = await umfrageMitarbeiter(db, u, 'Anna Muster-Beispiel');
+  await json(db, chef, 'select public.pep_urlaub_umfrage_schalten($1, true) as r', [u]);
+  await json(db, chef, 'select public.pep_urlaub_zuordnung_setzen($1, $2) as r', [t.id, ma]);
+  const datei = await sichern(db, chef);
+  assert.equal(datei.urlaub.umfragen[u].organisator, 'chefin');
+  // Ziel: neues Projekt. chefin gibt es dort im Urlaubstool, in PEP noch nicht; ihre Umfrage hat dort eine neue Id.
+  const z = await neueDatenbank();
+  await heuteSetzen(z, HEUTE);
+  const zchef = await pepBenutzer(z, 'chef');
+  const zfil = await filiale(z, zchef, { name: 'Netto Neu', nummer: '7777' });
+  const zchefin = await organisator(z, 'chefin');
+  await umfrageAnlegen(z, zchefin, { titel: 'Andere Umfrage', jahr: 2027 });
+  const zu = await umfrageAnlegen(z, zchefin, { titel: 'Urlaub Chefin', jahr: 2027 });
+  const zt = await umfrageMitarbeiter(z, zu, 'Anna Muster-Beispiel');
+  assert.notEqual(zu, u);
+  // chef spielt ein: chefin wird Leitung der Filiale, danach ist ihre Umfrage erlaubt und wird verknüpft
+  const r = await einspielen(z, zchef, datei, '2558');
+  assert.equal(r.eingespielt.benutzer, 1);
+  assert.equal(r.eingespielt.urlaub_umfragen, 1);
+  assert.equal(r.eingespielt.urlaub_zuordnung, 1);
+  assert.deepEqual(r.ausgelassen, {});
+  assert.deepEqual((await z.query('select umfrage_id from pep.urlaub_umfragen where filiale_id = $1', [zfil])).rows,
+    [{ umfrage_id: zu }]);
+  assert.deepEqual((await z.query(`select z.urlaub_mitarbeiter_id as t, m.name from pep.urlaub_zuordnung z
+      join pep.mitarbeiter m on m.id = z.mitarbeiter_id where z.filiale_id = $1`, [zfil])).rows,
+  [{ t: zt.id, name: 'Muster-Beispiel, Anna' }]);
+  assert.deepEqual((await z.query('select rolle from pep.benutzer where user_id = $1 and filiale_id = $2', [zchefin, zfil])).rows,
+    [{ rolle: 'leitung' }]);
+});
+
 // ------------------------------------------------------------ Größe
 
 // Bestand von `jahre` Jahren bis Sa 26.12.2026 direkt per SQL (die Funktionen dafür einzeln aufzurufen dauert in PGlite

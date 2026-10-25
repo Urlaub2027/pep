@@ -1,1 +1,26 @@
-[]
+[
+ {
+  "id": 2,
+  "jahr": 2026,
+  "aktiv": true,
+  "frist": "2026-10-26T16:42:25.155+01:00",
+  "titel": "Urlaub 2026 Frühschicht",
+  "eigene": false,
+  "abgaben": 0,
+  "bundesland": "BY",
+  "teilnehmer": 5,
+  "organisator": "Leiterin Süd"
+ },
+ {
+  "id": 1,
+  "jahr": 2026,
+  "aktiv": true,
+  "frist": "2026-10-26T16:42:24.344+01:00",
+  "titel": "Urlaub 2026",
+  "eigene": true,
+  "abgaben": 2,
+  "bundesland": "BY",
+  "teilnehmer": 2,
+  "organisator": "chef"
+ }
+]
