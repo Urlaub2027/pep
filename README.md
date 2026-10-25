@@ -97,8 +97,14 @@ Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funk
   `config.js` zeigt auf den Testserver und die CSP erlaubt `connect-src 'self'`.
   Allein gestartet (`node tests/browser/server.mjs 8124`) lässt sich unter
   `http://localhost:8124/browser/` von Hand testen: `chef` oder `vize`, Passwort `test`.
-- **Treiber:** `tests/browser/cdp.mjs` steuert Chrome über das DevTools-Protokoll,
-  ohne weitere Abhängigkeit (Node 22+).
+- **Treiber:** `tests/browser/cdp.mjs` steuert Chrome (ersatzweise Edge) über das
+  DevTools-Protokoll, ohne weitere Abhängigkeit (Node 22+).
+- **Grenzen:** Der Testserver führt alle RPCs streng nacheinander aus (eine
+  PGlite-Verbindung); Wettläufe zwischen gleichzeitigen Anfragen wie beim echten
+  PostgREST mit Verbindungs-Pool kommen also nicht vor. Den `apikey`-Header prüft er
+  nicht. Alle Szenarien eines Laufs teilen sich einen Datenbankstand, auch mit
+  `[filter]`: spätere Szenarien können auf Daten früherer aufbauen, ein gefilterter
+  Lauf kann deshalb anders ausgehen als der volle.
 
 ## Ausblick
 
