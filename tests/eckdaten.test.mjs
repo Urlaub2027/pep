@@ -203,7 +203,7 @@ test('fremde Filiale → MITARBEITER_NICHT_GEFUNDEN; ohne Datum → DATUM_UNGUEL
 test('Zeitkonto: Saldo aller Buchungen, Stand = zuletzt abgeschlossene Woche, Warnung nach derselben Regel wie der Reiter', async () => {
   // Eigene Datenbank: der Abschluss bucht für alle aktiven Mitarbeiter. heute = Mo 16.11.2026, KW 46 = 09.–15.11.
   const db = await neueDatenbank();
-  const g = await planGrundlage(db, { heute: '2026-11-16' });
+  const g = await planGrundlage(db, { heute: '2026-11-16', istAb: '2026-11-09' }); // erste Woche KW 46
   const eck = (maId, datum = '2026-11-16', nutzer = g.leitung) =>
     g.json(nutzer, 'select public.pep_eckdaten($1, $2::date) as r', [maId, datum]);
   const buchen = (maId, art, stunden, grund, datum) => g.json(g.leitung,

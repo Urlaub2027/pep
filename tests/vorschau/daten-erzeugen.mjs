@@ -189,6 +189,8 @@ await istMalen(ids[4], KW45[1], '12:00', '13:00', 'OG', 'Inventur länger'); // 
 await buchen(ids[4], 'manuell', -4, 'Überstunden ausgezahlt', TAGE[0]);
 schreib('pep_zeitkonto_woche', await q('select public.pep_zeitkonto_woche(2026, 46) as r'));
 schreib('pep_zeitkonto_woche_2026_45', await q('select public.pep_zeitkonto_woche(2026, 45) as r'));
+// KW 44 liegt vor dem Start der IST-Erfassung (ist_ab = 02.11.): Diff nur zur Ansicht, kein „Woche buchen“.
+schreib('pep_zeitkonto_woche_2026_44', await q('select public.pep_zeitkonto_woche(2026, 44) as r'));
 schreib('pep_zeitkonto_journal', await q('select public.pep_zeitkonto_journal($1, null, null) as r', [ids[4]]));
 
 // Startseite, Eckdaten und Einstellungen ganz zuletzt, damit sie das Zeitkonto zeigen (Stufe 2; „heute“ bleibt Do 12.11.):

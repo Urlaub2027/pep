@@ -1190,6 +1190,9 @@ begin
   end if;
 
   if p_schluessel = 'ist_ab' then
+    -- Gleiche Sperre (und Reihenfolge) wie pep_wochenabschluss: ein gleichzeitiger erster Abschluss wartet bzw. ist danach
+    -- hier sichtbar, sonst könnten Abschluss und Änderung des Starts aneinander vorbei laufen.
+    perform 1 from pep.filialen where id = v_b.filiale_id for no key update;
     if exists (select 1 from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id) then
       raise exception 'IST_AB_FEST';
     end if;
@@ -5323,6 +5326,10 @@ begin
   if p_datum > pep.heute() then
     raise exception 'ZUKUNFT';
   end if;
+  -- Auch beim Radieren (dann läuft pep.ist_zeile_pruefen nicht): vor dem Start der IST-Erfassung kein IST.
+  if p_datum < pep.ist_ab(v_b.filiale_id) then
+    raise exception 'IST_VOR_START';
+  end if;
   -- Zeile erst nach der Sperre lesen, sonst überschreibt ein gleichzeitiger Strich den anderen.
   perform 1 from pep.mitarbeiter where id = v_m.id for update;
   perform pep.ist_grund_setzen(v_m.id, p_datum, p_grund);
@@ -5588,7 +5595,8 @@ $$;
 -- NULL) alle Felder der Rechnung, dazu der Saldo nach G2 aus dem Journal, verglichen über Datumswerte (nie über
 -- jahr/kw): saldo_vorwoche = Buchungen vor dem Montag; saldo_aktuell = saldo_vorwoche + Buchungen der Woche + (Woche
 -- nicht abgeschlossen ? diff : 0 – beim Abschluss steckt diff in der Buchung „woche“). warnung am saldo_aktuell nach
--- pep.zeitkonto_warnung.
+-- pep.zeitkonto_warnung. vor_ist_start (Montag < ist_ab): die Woche wird nie gebucht, darum ohne diff im saldo_aktuell
+-- (diff bleibt zur Ansicht in der Zeile); ist_ab = Start der IST-Erfassung oder null.
 -- offene_tage = offene IST-Zeilen der Filiale in der Woche (pep.ist_zeilen). abgeschlossen = {am, von_name} oder null.
 create or replace function public.pep_zeitkonto_woche(p_jahr int, p_kw int)
 returns jsonb
@@ -5600,10 +5608,13 @@ declare
   v_b      pep.benutzer := pep.leitung_oder_stellvertretung();
   v_mo     date := pep.kw_montag(p_jahr, p_kw);
   v_a      pep.wochen_abschluesse;
+  v_ist_ab date := pep.ist_ab(v_b.filiale_id);
 begin
   select * into v_a from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id and a.montag = v_mo;
   return jsonb_build_object(
     'jahr', p_jahr, 'kw', p_kw, 'montag', to_char(v_mo, 'YYYY-MM-DD'),
+    'ist_ab', case when v_ist_ab > '-infinity'::date then to_char(v_ist_ab, 'YYYY-MM-DD') end,
+    'vor_ist_start', v_mo < v_ist_ab,
     'abgeschlossen', case when v_a.montag is null then null else jsonb_build_object(
                        'am', v_a.abgeschlossen_am,
                        'von_name', (select o.anzeigename from urlaub.organisatoren o
@@ -5618,7 +5629,8 @@ begin
                             'warnung', pep.zeitkonto_warnung(x.akt, x.ws, v_b.filiale_id))
                        order by x.aktiv desc, x.position, x.name, x.id)
         from (select m.id, m.name, m.aktiv, m.position, z.zk, (z.zk ->> 'wochenstunden')::numeric as ws, s.vor,
-                     s.vor + s.woche + case when v_a.montag is null then (z.zk ->> 'diff')::numeric else 0 end as akt
+                     s.vor + s.woche + case when v_a.montag is null and v_mo >= v_ist_ab
+                                            then (z.zk ->> 'diff')::numeric else 0 end as akt
                 from pep.mitarbeiter m
                 cross join lateral (select pep.zeitkonto_woche(m.id, v_mo) as zk) z
                 cross join lateral (
@@ -6034,7 +6046,7 @@ create constraint trigger zeitkonto_vormerkungen_buchen
 -- G4 (nur Leitung): schließt die ISO-Woche ab und bucht je aktivem Mitarbeiter mit Vertrag in der Woche
 -- (pep.wochenvertrag), der nicht vor dem Montag ausgetreten ist, eine Zeile woche mit diff (auch 0; ohne
 -- Wochenrechnung 0). Prüfungen: Woche vorbei (Sonntag < heute), nicht schon abgeschlossen, nicht vor dem Start der
--- IST-Erfassung (pep.ist_ab, VOR_IST_START), genau die Woche nach dem
+-- IST-Erfassung (pep.ist_ab, VOR_IST_START), beim ersten Abschluss genau die Woche ab ist_ab, sonst genau die Woche nach dem
 -- letzten Abschluss der Filiale (wenn es einen gibt), keine offenen IST-Zeilen (pep.ist_zeilen). Antwort {gebucht: n}.
 create or replace function public.pep_wochenabschluss(p_jahr int, p_kw int)
 returns jsonb
@@ -6069,6 +6081,11 @@ begin
   end if;
   select max(a.montag) into v_letzt from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id;
   if v_letzt is not null and v_mo <> v_letzt + 7 then
+    raise exception 'VORWOCHE_OFFEN';
+  end if;
+  -- Erster Abschluss: nur die Startwoche der IST-Erfassung. Sonst bliebe die Woche davor (ab ist_ab) für immer offen,
+  -- und ist_ab ließe sich nach dem Abschluss nicht mehr verschieben (IST_AB_FEST).
+  if v_letzt is null and pep.ist_ab(v_b.filiale_id) > '-infinity'::date and v_mo <> pep.ist_ab(v_b.filiale_id) then
     raise exception 'VORWOCHE_OFFEN';
   end if;
   if exists (select 1 from pep.ist_zeilen(v_b.filiale_id, v_mo, v_mo + 6, null) z where z.bestaetigt_am is null) then

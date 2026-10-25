@@ -4,7 +4,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   neueDatenbank, als, pepBenutzer, filiale, heuteSetzen, planGrundlage,
-  umfrageAnlegen, urlaubsfrageId, umfrageMitarbeiter, abgeben,
+  umfrageAnlegen, urlaubsfrageId, umfrageMitarbeiter, abgeben, istAbSetzen,
 } from './helfer.mjs';
 
 let db, t, anna, ben, cem, mini, wiebke, azubi, ohne;
@@ -284,6 +284,8 @@ test('zeitkonto_auffaellig: Warnung im Saldo der zuletzt abgeschlossenen Woche (
     await Z.buchen(Z.zk, 'start', -10, 'Übernahme', '2026-11-02');
     assert.deepEqual((await Z.startseite()).zeitkonto_auffaellig, { jahr: null, kw: null, montag: null, liste: [] });
 
+    // Start der IST-Erfassung auf KW 46 (der erste Abschluss muss die Startwoche sein; noch kein Abschluss, also änderbar).
+    await istAbSetzen(Z.db, Z.fil, '2026-11-09');
     // KW 46 abschließen (die offenen Tage wurden im vorigen Test bestätigt). diff: Anna −37,5 (ohne IST),
     // Nora −18,75 (Eintritt Do), Kurt −29,25 (KM Mo 6,25 + BS Di 2 zählen). Saldo: Anna 62,5 > 37,5 → plus;
     // Kurt −39,25 < −37,5 → minus; Nora −18,75 → keine Warnung; Ina inaktiv → keine Buchung, Saldo 0.
@@ -341,6 +343,20 @@ test('ist_ab: Tage vor dem Start der IST-Erfassung sind nicht offen (Kachel, Zei
     assert.deepEqual([w47.tage[0].ist_erlaubt, w47.tage[0].vor_ist_start], [true, false]);
     await assert.rejects(g.json(g.leitung, `select public.pep_ist_malen($1, '2026-11-13', '08:00', '12:00', $2, null) as r`,
       [leo, g.bereich.KA]), /IST_VOR_START/);
+    // Radieren (Bereich null) prüft den Start genauso
+    await assert.rejects(g.json(g.leitung, `select public.pep_ist_malen($1, '2026-11-13', '08:00', '12:00', null, null) as r`,
+      [leo]), /IST_VOR_START/);
+    // Reiter Zeitkonto: KW 46 liegt vor dem Start – diff sichtbar, aber nicht im Saldo aktuell (wird nie gebucht)
+    await g.json(g.leitung, `select public.pep_zeitkonto_buchen($1, 'start', 10, 'Übernahme', '2026-11-02') as r`, [leo]);
+    const vor = await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 46) as r');
+    assert.deepEqual([vor.vor_ist_start, vor.ist_ab, vor.abgeschlossen], [true, '2026-11-16', null]);
+    const leoVor = vor.mitarbeiter.find((m) => m.id === leo);
+    assert.deepEqual([leoVor.diff, leoVor.saldo_vorwoche, leoVor.saldo_aktuell, leoVor.warnung], [-37.5, 10, 10, null]);
+    // KW 47 (ab dem Start, laufend): diff zählt wie bisher vorläufig im Saldo aktuell
+    const ab = await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 47) as r');
+    assert.equal(ab.vor_ist_start, false);
+    const leoAb = ab.mitarbeiter.find((m) => m.id === leo);
+    assert.deepEqual([leoAb.saldo_vorwoche, leoAb.saldo_aktuell], [10, 10 + leoAb.diff]);
     await assert.rejects(g.json(g.leitung, 'select public.pep_wochenabschluss(2026, 46) as r'), /VOR_IST_START/);
     assert.deepEqual(await g.json(g.leitung, `select public.pep_ist_bestaetigen('2026-11-13', null) as r`), { bestaetigt: 0 });
 

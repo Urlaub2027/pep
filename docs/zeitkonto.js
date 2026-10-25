@@ -41,6 +41,10 @@ const vorzeichenKlasse = (n) => (Math.round(Number(n) * 100) > 0 ? 'plus' : Math
 const uhrzeitAus = (zeitstempel) => new Date(zeitstempel).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const datumAus = (zeitstempel) => new Date(zeitstempel).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 const laeuft = () => laufendeWoche(woche, heuteIso());
+// Woche vor dem Start der IST-Erfassung (pep_zeitkonto_woche.vor_ist_start): wird nie gebucht; Diff nur zur Ansicht,
+// „Saldo aktuell“ ohne Diff (Server). Abgeschlossene Wochen davor gibt es nicht (VOR_IST_START).
+const vorStart = () => Boolean(woche?.vor_ist_start) && !woche.abgeschlossen;
+const VOR_START = 'vor dem Start der IST-Erfassung: wird nicht gebucht, zählt nicht im Saldo';
 const VORLAEUFIG = 'vorläufig: Soll der ganzen Woche, IST erst bis heute';
 
 // ---------------------------------------------------------------- Laden
@@ -110,9 +114,10 @@ function abschlussTeil() {
   const laufend = laeuft();
   const offen = woche.offene_tage;
   const teile = [];
+  const vor = vorStart();
   if (darfBuchen()) {
     teile.push(element('button', {
-      type: 'button', class: 'knopf primaer', disabled: offen > 0 || laufend, onclick: (e) => wocheBuchen(e.currentTarget),
+      type: 'button', class: 'knopf primaer', disabled: offen > 0 || laufend || vor, onclick: (e) => wocheBuchen(e.currentTarget),
       title: 'Bucht je Mitarbeiter die Differenz dieser Woche ins Zeitkonto',
     }, 'Woche buchen'));
   } else {
@@ -123,7 +128,10 @@ function abschlussTeil() {
       type: 'button', class: 'zk-offen', onclick: () => zumErstenOffenenTag(), title: 'Zum ersten offenen Tag im IST',
     }, `${anzahl(offen, 'Tag', 'Tage')} im IST offen`));
   }
-  if (laufend) {
+  if (vor) {
+    teile.push(element('span', { class: 'hinweis' },
+      `Vor dem Start der IST-Erfassung (${datumDE(woche.ist_ab)}) – diese Woche wird nicht gebucht.`));
+  } else if (laufend) {
     teile.push(element('span', { class: 'hinweis' },
       `Die Woche läuft noch; abschließen geht ab ${datumDE(plusTage(sonntag, 1))}.`));
   } else if (offen > 0 && darfBuchen()) {
@@ -181,6 +189,13 @@ function saldoZelle(wert, warnung, klasse) {
 // Laufende Woche: Diff und Saldo aktuell grau und ohne Vorzeichenfarbe (vorläufig); die Warnung hängt dann am Saldo
 // Vorwoche, im Browser nach der Regel des Servers gerechnet. Sonst wie geliefert: Warnung am Saldo aktuell.
 function saldoZellen(m, laufend) {
+  if (vorStart()) { // grau wie vorläufig; die Warnung des Servers hängt am Saldo aktuell (ohne Diff)
+    const diff = zahlZelle(vorzeichen(m.diff), 'vorlaeufig');
+    diff.title = VOR_START;
+    const aktuell = saldoZelle(m.saldo_aktuell, m.warnung, 'vorlaeufig');
+    if (!aktuell.title) aktuell.title = VOR_START;
+    return [diff, zahlZelle(vorzeichen(m.saldo_vorwoche)), aktuell];
+  }
   if (laufend) {
     const diff = zahlZelle(vorzeichen(m.diff), 'vorlaeufig');
     diff.title = VORLAEUFIG;
@@ -220,24 +235,30 @@ function zeichneTabelle() {
   }
   const s = wochenSumme(liste);
   const laufend = laeuft();
+  const vor = vorStart();
+  const grau = laufend || vor;
   const kopf = element('tr', {}, element('th', { scope: 'col' }, 'Mitarbeiter'),
     SPALTEN.map(([titel, hinweis], i) => element('th', {
       scope: 'col', title: hinweis, class: i > 0 && i < SPALTEN.length - 1 ? 'zahl' : '',
-    }, titel, laufend && (titel === 'Diff' || titel === 'Saldo aktuell')
-      ? element('small', { class: 'zk-vorlaeufig-marke' }, 'vorläufig') : null)));
+    }, titel, grau && (titel === 'Diff' || titel === 'Saldo aktuell')
+      ? element('small', { class: 'zk-vorlaeufig-marke' },
+        !vor ? 'vorläufig' : titel === 'Diff' ? 'nicht gebucht' : 'ohne Diff') : null)));
   const fuss = element('tr', {}, element('th', { scope: 'row' }, 'Summe'), element('td'),
     zahlZelle(stundenDE(s.soll)), zahlZelle(stundenDE(s.ist)), zahlZelle(stundenDE(s.abwesend)),
-    zahlZelle(stundenDE(s.feiertag)), zahlZelle(vorzeichen(s.diff), laufend ? 'vorlaeufig' : vorzeichenKlasse(s.diff)),
+    zahlZelle(stundenDE(s.feiertag)), zahlZelle(vorzeichen(s.diff), grau ? 'vorlaeufig' : vorzeichenKlasse(s.diff)),
     element('td'), element('td'), element('td'), element('td'));
   rahmen.tabelle.replaceChildren(
     element('div', { class: 'tabelle-scroll' },
       element('table', { class: 'zk-tabelle' },
         element('thead', {}, kopf), element('tbody', {}, liste.map((m) => zeile(m, laufend))), element('tfoot', {}, fuss))),
-    element('p', { class: 'hinweis zk-fuss' }, 'Klick auf einen Namen öffnet das Journal. ', laufend
-      ? 'Die Woche läuft noch: Diff und Saldo aktuell sind vorläufig (Soll der ganzen Woche, IST erst bis heute). '
-        + '⚠ = Saldo Vorwoche über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).'
-      : '⚠ = Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).',
-    woche.abgeschlossen || laufend ? '' : ' Solange die Woche nicht gebucht ist, enthält „Saldo aktuell“ die Diff.'));
+    element('p', { class: 'hinweis zk-fuss' }, 'Klick auf einen Namen öffnet das Journal. ', vor
+      ? 'Die Woche liegt vor dem Start der IST-Erfassung: Die Diff steht nur zur Ansicht da, sie wird nicht gebucht '
+        + 'und zählt nicht im Saldo aktuell. ⚠ = Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).'
+      : laufend
+        ? 'Die Woche läuft noch: Diff und Saldo aktuell sind vorläufig (Soll der ganzen Woche, IST erst bis heute). '
+          + '⚠ = Saldo Vorwoche über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).'
+        : '⚠ = Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).',
+    woche.abgeschlossen || grau ? '' : ' Solange die Woche nicht gebucht ist, enthält „Saldo aktuell“ die Diff.'));
 }
 
 // ---------------------------------------------------------------- Woche buchen

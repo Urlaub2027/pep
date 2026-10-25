@@ -16,9 +16,10 @@ const wirft = (versprechen, c) => assert.rejects(versprechen, (e) => e.message.i
 // Tag i (0 = Montag) der Woche ab montag, als "YYYY-MM-DD".
 const tag = (montag, i) => new Date(Date.parse(`${montag}T00:00:00Z`) + i * 864e5).toISOString().slice(0, 10);
 
-async function aufbau(heute = HEUTE) {
+// istAb = Start der IST-Erfassung = erste abschließbare Woche (der erste Abschluss muss genau diese Woche sein).
+async function aufbau(heute = HEUTE, istAb = KW46) {
   const db = await neueDatenbank();
-  const g = await planGrundlage(db, { heute });
+  const g = await planGrundlage(db, { heute, istAb });
   const { leitung, bereich, code, json } = g;
   const istSetzen = (maId, datum, bloecke, grund = null) =>
     json(leitung, 'select public.pep_ist_zeile_setzen($1, $2::date, $3::jsonb, $4) as r',
@@ -84,7 +85,7 @@ before(async () => {
   A.fremdMa = await A.json(A.chef2, `select public.pep_mitarbeiter_speichern(null, '{"name":"Fremd, Frieda"}') as r`);
   A.azubi = await pepBenutzer(A.db, 'azubi', 'mitarbeiter', A.fil);
 
-  B = await aufbau();
+  B = await aufbau(HEUTE, KW45);
   B.uwe = await B.ma('Urlaub, Uwe');
   B.vera = await B.ma('Vertrag, Vera');
   B.zora = await B.ma('Ausgleich, Zora');
@@ -95,7 +96,7 @@ before(async () => {
   B.walter = await B.ma('Weg, Walter');
   await B.speichern(B.walter, { austritt: '2026-10-30' }); // ausgetreten vor KW 45, aber noch aktiv
 
-  C = await aufbau('2027-01-11');
+  C = await aufbau('2027-01-11', '2026-12-21'); // erste Woche KW 52/2026
   C.fritz = await C.ma('Feier, Fritz');
   C.tina = await C.ma('Teil, Tina', { stunden: 20, art: 'teilzeit' });
   C.otto = await C.json(C.leitung, `select public.pep_mitarbeiter_speichern(null, '{"name":"Ohne, Otto"}') as r`);
@@ -145,7 +146,7 @@ test('Abschluss KW 46: nicht vorbei, IST offen, dann je aktivem Mitarbeiter eine
   await heuteSetzen(db, '2026-12-07');
   try {
     await wirft(abschluss(2026, 48), 'VORWOCHE_OFFEN');
-    await wirft(abschluss(2026, 45), 'VORWOCHE_OFFEN');
+    await wirft(abschluss(2026, 45), 'VOR_IST_START'); // vor der Startwoche KW 46 (vor ist_ab: VORWOCHE_OFFEN)
   } finally {
     await heuteSetzen(db, HEUTE);
   }
@@ -456,4 +457,14 @@ test('Feiertagsteiler geändert: Korrektur in jeder abgeschlossenen Woche mit Fe
   await setzen('feiertag_teiler', '6');
   assert.deepEqual((await korrekturen(fritz)).slice(-3).map((k) => k.stunden), [-2.5, -1.25, -1.25]);
   assert.equal(await saldoStimmt(fritz), -87.5);
+});
+
+test('Erster Abschluss nur in der Startwoche (ist_ab): KW 45 vor KW 44 → VORWOCHE_OFFEN, danach der Reihe nach', async () => {
+  // Eigene Datenbank ohne Mitarbeiter (nichts offen): ist_ab = Mo 26.10.2026 (KW 44), heute 16.11.
+  const D = await aufbau(HEUTE, '2026-10-26');
+  await wirft(D.abschluss(2026, 45), 'VORWOCHE_OFFEN');
+  await wirft(D.abschluss(2026, 43), 'VOR_IST_START');
+  assert.deepEqual(await D.abschluss(2026, 44), { gebucht: 0 });
+  assert.deepEqual(await D.abschluss(2026, 45), { gebucht: 0 });
+  await wirft(D.abschluss(2026, 44), 'WOCHE_GEBUCHT');
 });

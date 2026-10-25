@@ -1,6 +1,7 @@
 {
  "kw": 46,
  "jahr": 2026,
+ "ist_ab": "2026-11-02",
  "montag": "2026-11-09",
  "mitarbeiter": [
   {
@@ -271,5 +272,6 @@
   }
  ],
  "offene_tage": 24,
- "abgeschlossen": null
+ "abgeschlossen": null,
+ "vor_ist_start": false
 }
