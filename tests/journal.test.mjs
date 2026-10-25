@@ -92,6 +92,8 @@ before(async () => {
   await B.abwesend(B.zora, 'ZA', KW46);
   B.sam = await B.ma('Spaet, Sam');
   await B.speichern(B.sam, { eintritt: '2026-11-16' }); // Vertrag seit 01.01., beschäftigt aber erst nach KW 46
+  B.walter = await B.ma('Weg, Walter');
+  await B.speichern(B.walter, { austritt: '2026-10-30' }); // ausgetreten vor KW 45, aber noch aktiv
 
   C = await aufbau('2027-01-11');
   C.fritz = await C.ma('Feier, Fritz');
@@ -279,13 +281,14 @@ test('Führung ohne eingetragene Grenze: grenze = größer von 42 und Vertragsst
 // Datenbank B
 // ---------------------------------------------------------------------------------------------------------------
 
-test('Abschluss KW 45 und KW 46 hintereinander: ohne IST je −37,5, ZA ohne Gutschrift; mit Vertrag, aber noch nicht eingetreten → 0', async () => {
-  const { wocheBestaetigen, abschluss, zeilen, uwe, zora, sam } = B;
+test('Abschluss KW 45 und KW 46 hintereinander: ohne IST je −37,5, ZA ohne Gutschrift; noch nicht eingetreten → 0, ausgetreten → keine Zeile', async () => {
+  const { wocheBestaetigen, abschluss, zeilen, uwe, zora, sam, walter } = B;
   await wocheBestaetigen(KW45);
   await wocheBestaetigen(KW46);
   assert.deepEqual(await abschluss(2026, 45), { gebucht: 5 });
   assert.deepEqual(await abschluss(2026, 46), { gebucht: 5 });
   assert.deepEqual((await zeilen(sam)).map((z) => [z.art, z.datum, z.stunden]), [['woche', KW45, 0], ['woche', KW46, 0]]);
+  assert.deepEqual(await zeilen(walter), [], 'Austritt vor dem Montag: keine Zeile woche');
   assert.deepEqual(await zeilen(uwe), [
     { art: 'woche', datum: KW45, stunden: -37.5, saldo_nach: -37.5, grund: null },
     { art: 'woche', datum: KW46, stunden: -37.5, saldo_nach: -75, grund: null }]);

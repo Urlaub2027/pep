@@ -5926,9 +5926,9 @@ create constraint trigger zeitkonto_vormerkungen_buchen
 -- ---------------------------------------------------------------------------
 
 -- G4 (nur Leitung): schließt die ISO-Woche ab und bucht je aktivem Mitarbeiter mit Vertrag in der Woche
--- (pep.wochenvertrag) eine Zeile woche mit diff (auch 0; ohne Wochenrechnung 0). Prüfungen: Woche vorbei
--- (Sonntag < heute), nicht schon abgeschlossen, genau die Woche nach dem letzten Abschluss der Filiale (wenn es einen
--- gibt), keine offenen IST-Zeilen (pep.ist_zeilen). Antwort {gebucht: n}.
+-- (pep.wochenvertrag), der nicht vor dem Montag ausgetreten ist, eine Zeile woche mit diff (auch 0; ohne
+-- Wochenrechnung 0). Prüfungen: Woche vorbei (Sonntag < heute), nicht schon abgeschlossen, genau die Woche nach dem
+-- letzten Abschluss der Filiale (wenn es einen gibt), keine offenen IST-Zeilen (pep.ist_zeilen). Antwort {gebucht: n}.
 create or replace function public.pep_wochenabschluss(p_jahr int, p_kw int)
 returns jsonb
 language plpgsql
@@ -5971,10 +5971,12 @@ begin
   perform pep.protokolliere(v_b.filiale_id, 'abschliessen', 'wochen_abschluesse', to_char(v_mo, 'YYYY-MM-DD'),
     null, to_jsonb(v_a));
   -- Jeder Aktive mit Vertrag in der Woche bekommt eine Zeile, auch 0 (etwa Eintritt erst nach der Woche): Nur Wochen
-  -- mit Zeile woche werden später nachgebucht (pep.zeitkonto_abgleichen).
+  -- mit Zeile woche werden später nachgebucht (pep.zeitkonto_abgleichen). Ausnahme: Austritt vor dem Montag – sonst
+  -- bekäme jeder Ausgeschiedene, der noch aktiv ist, für immer jede Woche eine Nullzeile.
   for v_m in select m.id, coalesce((pep.zeitkonto_woche(m.id, v_mo) ->> 'diff')::numeric, 0) as diff
                from pep.mitarbeiter m
-              where m.filiale_id = v_b.filiale_id and m.aktiv and (pep.wochenvertrag(m.id, v_mo)).id is not null
+              where m.filiale_id = v_b.filiale_id and m.aktiv and (m.austritt is null or m.austritt >= v_mo)
+                and (pep.wochenvertrag(m.id, v_mo)).id is not null
               order by m.id loop
     perform pep.zeitkonto_buchen(v_b.filiale_id, v_m.id, v_mo, 'woche', v_m.diff, null);
     v_n := v_n + 1;
