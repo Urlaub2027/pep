@@ -83,6 +83,23 @@ Die Oberfläche lässt sich ohne Supabase ansehen, mit erfundenen Daten.
   es die Seite als PDF (`ansicht=druck`, Parameter `art=woche|tag|tage|monat|resturlaub`).
   PNG- und PDF-Dateien in `tests/vorschau/` sind gitignored.
 
+## Browser-Test
+
+Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funktionen.
+
+- **Lauf:** `node tests/browser/szenarien.mjs [filter]` startet den Testserver und Chrome,
+  spielt alle Szenarien der Stufe 1 durch (Maus und Touch, Tablet 1024×768) und prüft
+  jeweils Oberfläche und Datenbankstand. Fotos, PDFs, die Excel-Datei und
+  `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
+- **Server:** `tests/browser/server.mjs` baut die Datenbank wie `tests/helfer.mjs` in
+  PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026) und bildet
+  PostgREST (`/rest/v1/rpc/…`) und die Anmeldung nach. `docs/` läuft unverändert, nur
+  `config.js` zeigt auf den Testserver und die CSP erlaubt `connect-src 'self'`.
+  Allein gestartet (`node tests/browser/server.mjs 8124`) lässt sich unter
+  `http://localhost:8124/browser/` von Hand testen: `chef` oder `vize`, Passwort `test`.
+- **Treiber:** `tests/browser/cdp.mjs` steuert Chrome über das DevTools-Protokoll,
+  ohne weitere Abhängigkeit (Node 22+).
+
 ## Ausblick
 
 Nächste Stufen: Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), IST-Erfassung
