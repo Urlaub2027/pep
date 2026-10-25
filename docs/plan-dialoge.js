@@ -340,13 +340,13 @@ export async function ersatzDialog(kontext, mitarbeiterId, datum) {
       bloecke.pauseText ? element('span', { class: 'pd-pause' }, bloecke.pauseText) : null),
     antwort.kandidaten.length
       ? element('div', { class: 'pd-kandidaten' }, antwort.kandidaten.map(zeile))
-      : element('p', { class: 'warnung' }, 'Niemand kann einspringen, ohne eine Sperre, die Ruhezeit oder die '
-        + 'Höchstarbeitszeit zu verletzen. Die Blöcke bleiben unbesetzt.'),
+      : element('p', { class: 'warnung' }, 'Niemand kann einspringen, ohne eine Sperre zu verletzen oder Ruhezeit '
+        + 'bzw. Höchstarbeitszeit neu oder stärker zu verletzen. Die Blöcke bleiben unbesetzt.'),
     element('p', { class: 'hinweis' },
       'Ein Klick auf einen Namen übernimmt alle unbesetzten Blöcke des Tages. Reihenfolge: die meisten offenen '
       + 'Wochenstunden zuerst, dann weniger Samstage und Spätschichten. Nicht aufgeführt ist, wer zu der Zeit schon '
-      + 'eingeplant oder abwesend ist, die Kompetenz nicht hat oder gegen eine Pflicht-Vorgabe, die Ruhezeit oder die '
-      + 'Höchstarbeitszeit verstoßen würde.'),
+      + 'eingeplant oder abwesend ist, die Kompetenz nicht hat, gegen eine Pflicht-Vorgabe verstoßen würde oder durch '
+      + 'die Übernahme einen neuen oder schärferen Verstoß gegen Ruhezeit oder Höchstarbeitszeit bekäme.'),
   ], []);
   d.classList.add('pd-breit');
   // showModal fokussiert den ersten Kandidaten; Enter würde ihn sofort einsetzen. Deshalb steht der Fokus auf „Abbrechen“.

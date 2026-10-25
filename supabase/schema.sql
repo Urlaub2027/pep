@@ -4162,8 +4162,9 @@ $$;
 -- Wer kann die unbesetzten Blöcke von p_mitarbeiter_id am Tag übernehmen?
 -- Kandidat: jeder andere aktive Mitarbeiter der Filiale, der zu diesen Zeiten nichts geplant hat, für den
 -- pep.zeile_pruefen (dieselben Sperren wie beim Malen: beschäftigt, Vertrag, Kompetenz, Abwesenheit,
--- Pflicht-Vorgabe …) mit seiner Zeile plus den unbesetzten Blöcken nicht wirft und für den danach weder
--- ruhezeit noch hoechstarbeitszeit verletzt wäre.
+-- Pflicht-Vorgabe …) mit seiner Zeile plus den unbesetzten Blöcken nicht wirft und dem die Übernahme keine
+-- neue oder verschärfte ruhezeit- oder hoechstarbeitszeit-Warnung bringt. Eine schon vorher bestehende
+-- Warnung mit unverändertem Text schließt nicht aus (Entscheidung nach Stufe 1).
 -- Die Regeln rechnet pep.pruefung, keine Kopie davon: Die unbesetzten Blöcke werden in einem Unterblock für
 -- alle Kandidaten zugleich eingefügt, pep.pruefung des Tages gelesen und der Unterblock mit einer absichtlichen
 -- Ausnahme (SQLSTATE PEP01) zurückgerollt. Gemeinsam geht das, weil ruhezeit, hoechstarbeitszeit,
@@ -4251,9 +4252,15 @@ begin
                         '[]'::jsonb) as hinweise
           from pep.mitarbeiter m
          where m.id = any (v_ok)
+           -- Nur neue oder verschärfte Verstöße schließen aus: eine Warnung nach der Übernahme, die es vorher
+           -- mit gleicher Art und gleichem Text nicht gab (andere Stunden oder andere Uhrzeit = verschärft).
            and not exists (select 1 from jsonb_array_elements(v_nachher) e
                             where (e ->> 'mitarbeiter_id')::bigint = m.id
-                              and e ->> 'art' in ('ruhezeit', 'hoechstarbeitszeit'))) k), '[]'::jsonb));
+                              and e ->> 'art' in ('ruhezeit', 'hoechstarbeitszeit')
+                              and not exists (select 1 from jsonb_array_elements(v_vorher) v
+                                               where (v ->> 'mitarbeiter_id')::bigint = m.id
+                                                 and v ->> 'art' = e ->> 'art' and v ->> 'text' = e ->> 'text'))) k),
+    '[]'::jsonb));
 end;
 $$;
 
@@ -4641,8 +4648,8 @@ $$;
 -- ---------------------------------------------------------------------------
 
 -- Was die Startseite zählt (Leitung und Stellvertretung), Stichtag pep.heute():
--- abwesend    laufende ISO-Woche (Mo–So), je Mitarbeiter und Code ein Eintrag vom ersten bis zum letzten Tag (alle
---             Codes); anzahl = Personen.
+-- abwesend    laufende ISO-Woche (Mo–So), je Mitarbeiter und Code ein Eintrag vom ersten bis zum letzten Tag; nur
+--             Codes mit sperrt = true außer dem Feiertag FT (betrifft alle); anzahl = Personen.
 -- luecke      sechs Wochen ab der laufenden (pep.woche_kennzahlen wie pep_vorausplanung), nur Überhang < 0;
 --             summe = Summe dieser Überhänge (also ≤ 0).
 -- verstoesse  heute bis heute + 6, geöffnete Tage. Gezählt werden die Einträge aus pep.pruefung nach Schwere, aber
@@ -4686,6 +4693,7 @@ begin
             join pep.mitarbeiter m on m.id = a.mitarbeiter_id
             join pep.abwesenheitscodes c on c.id = a.code_id
            where a.filiale_id = v_f and a.datum between v_mo and v_mo + 6
+             and c.sperrt and c.code <> 'FT'
            group by a.mitarbeiter_id, m.name, c.code) x;
 
   select jsonb_build_object(

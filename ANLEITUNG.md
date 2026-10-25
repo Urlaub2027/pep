@@ -76,9 +76,11 @@ Zahl und hat einen Knopf, der zur passenden Stelle springt. Eine Kachel ohne Bef
 hat einen grünen Rand und zeigt „alles im grünen Bereich“.
 
 - **Abwesend diese Woche:** wie viele Personen in der laufenden Kalenderwoche
-  (Montag bis Sonntag) mindestens einen Abwesenheitstag haben, gleich mit welchem
-  Code. Darunter je Person und Code ein Eintrag, z. B. „KM 03.11.–05.11.“.
-  Sprung: Abwesenheiten.
+  (Montag bis Sonntag) mindestens einen Abwesenheitstag haben, an dem sie nicht
+  eingeplant werden können: alle Codes mit „sperrt“ (Urlaub, Krank, Berufsschule,
+  andere Filiale, Schulung, auch selbst angelegte wie „Fortbildung“). Nicht gezählt
+  werden der Feiertag FT (er betrifft alle) und Codes, die nicht sperren. Darunter je
+  Person und Code ein Eintrag, z. B. „KM 03.11.–05.11.“. Sprung: Abwesenheiten.
 - **Stunden-Lücke:** die Summe aller negativen Überhänge der nächsten sechs Wochen
   (ab der laufenden). Darunter die Wochen mit Lücke. Wochen ohne Planumsatz haben
   keinen Überhang und zählen nicht. Sprung: Vorausplanung.
@@ -198,9 +200,11 @@ gehört in den Reiter Abwesenheiten.
 
 **Ersatz:** zeigt, wer die unbesetzten Blöcke des Tages übernehmen kann – zuerst
 die mit den meisten offenen Wochenstunden, dann weniger Samstage und Spätschichten.
-Nicht aufgeführt ist, wer schon eingeplant oder abwesend ist, die Kompetenz nicht hat
-oder gegen eine Pflicht-Vorgabe, die Ruhezeit oder die Höchstarbeitszeit verstoßen
-würde. Ein Klick auf einen Namen übernimmt alle unbesetzten Blöcke des Tages.
+Nicht aufgeführt ist, wer schon eingeplant oder abwesend ist, die Kompetenz nicht hat,
+gegen eine Pflicht-Vorgabe verstoßen würde oder durch die Übernahme einen neuen oder
+schärferen Verstoß gegen Ruhezeit oder Höchstarbeitszeit bekäme. Ein Verstoß, der schon
+vorher bestand und durch die Übernahme nicht schlimmer wird, schließt nicht aus.
+Ein Klick auf einen Namen übernimmt alle unbesetzten Blöcke des Tages.
 
 **Kopieren:** Quelle ist der gewählte Tag oder die angezeigte Woche. Ziel für einen Tag:
 ein anderer Tag oder alle gleichen Wochentage bis zu einem Datum (z. B. „alle Montage
@@ -376,7 +380,8 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
 
 **Startseite**
 1. Nach dem Anmelden erscheint die Startseite mit vier Kacheln.
-2. Jede Zahl mit dem Reiter vergleichen: Abwesende der Woche im Reiter Abwesenheiten,
+2. Jede Zahl mit dem Reiter vergleichen: Abwesende der Woche im Reiter Abwesenheiten
+   (ohne Feiertag FT und ohne nicht sperrende Codes),
    Lücke in der Vorausplanung (Summe der roten Überhänge), Warnungen in der
    Regelprüfung der Tage (Wochenregeln dort an jedem Arbeitstag, hier einmal).
 3. Jeder Knopf springt richtig: Abwesenheiten (Monat), Vorausplanung (laufende Woche),
@@ -394,8 +399,6 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
   (unbesetzt) und prüft dabei die Pflicht-Vorgaben gegen diese Zeit nicht. Wird die
   Abwesenheit später gelöscht, kann ein Block einer Pflicht-Vorgabe widersprechen,
   bis jemand ihn ändert.
-- Die Ersatzsuche lässt jeden aus, der danach an dem Tag irgendeine Ruhezeit- oder
-  Höchstarbeitszeit-Warnung hätte – auch eine, die schon vorher bestand.
 - Freie Samstage im Jahr zählen erst ab dem Eintritt (bzw. ab 01.01.).
 - Eine Wiederholung bei den Abwesenheiten lässt sich nur löschen, nicht ändern.
 - Der Reiter für die Rolle „Mitarbeiter“ fehlt noch.

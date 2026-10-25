@@ -167,3 +167,45 @@ test('Rechte: Stellvertretung liest dasselbe; Rolle mitarbeiter → NUR_LEITUNG;
   await assert.rejects(startseite(azubi), /NUR_LEITUNG/);
   await assert.rejects(startseite(ohne), /KEINE_FILIALE/);
 });
+
+test('abwesend zählt nur sperrende Codes ohne Feiertag: U, KM, BS, AF, T, eigener Code ja; FT und nicht sperrende nein', async () => {
+  // Eigene Woche KW 49 (30.11.–06.12.2026), damit der Bestand der anderen Tests unberührt bleibt.
+  await heuteSetzen(db, '2026-11-30');
+  const code = async (daten) => t.json(t.leitung, 'select public.pep_code_speichern(null, $1::jsonb) as r', [JSON.stringify(daten)]);
+  const fb = await code({ code: 'FB', name: 'Fortbildung', farbe: '#123456', stundenregel: 'teiler', sperrt: true });
+  const inf = await code({ code: 'IN', name: 'Info', farbe: '#654321', stundenregel: 'keine', sperrt: false });
+  const setzen = (m, codeId, datum, stunden = null) => t.json(t.leitung,
+    'select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, $4::numeric, null, null, null) as r',
+    [m, codeId, datum, stunden]);
+  const fred = await t.ma('Test, Fred');
+  const ida = await t.ma('Test, Ida');
+  const theo = await t.ma('Test, Theo');
+  const alf = await t.ma('Test, Alf');
+  await setzen(anna, t.code.U, '2026-11-30');
+  await setzen(ben, t.code.KM, '2026-12-01');
+  await setzen(cem, t.code.BS, '2026-12-02', 8);
+  await setzen(mini, t.code.NV, '2026-12-03');
+  await setzen(wiebke, t.code.FT, '2026-12-04');
+  await setzen(fred, fb, '2026-12-05');
+  await setzen(ida, inf, '2026-11-30');
+  await setzen(theo, t.code.T, '2026-12-01', 4);
+  await setzen(alf, t.code.AF, '2026-12-02', 8);
+
+  // Erwartung aus dem tatsächlichen sperrt-Wert der Codes, nicht aus einer Annahme über das Startset.
+  const codes = (await t.json(t.leitung, 'select public.pep_einstellungen() as r')).codes;
+  const sperrt = Object.fromEntries(codes.map((c) => [c.code, c.sperrt]));
+  assert.equal(sperrt.FB, true);
+  assert.equal(sperrt.IN, false);
+  const alle = [[anna, 'U'], [ben, 'KM'], [cem, 'BS'], [mini, 'NV'], [wiebke, 'FT'], [fred, 'FB'], [ida, 'IN'],
+    [theo, 'T'], [alf, 'AF']];
+  const erwartet = alle.filter(([, c]) => sperrt[c] && c !== 'FT');
+
+  const s = await startseite();
+  const liste = s.abwesend.liste.map((a) => [a.mitarbeiter_id, a.code]).sort((x, y) => x[0] - y[0]);
+  assert.deepEqual(liste, [...erwartet].sort((x, y) => x[0] - y[0]));
+  assert.equal(s.abwesend.anzahl, erwartet.length);
+  const gezaehlt = s.abwesend.liste.map((a) => a.code);
+  for (const c of ['U', 'KM', 'BS', 'AF', 'T', 'FB']) assert.ok(gezaehlt.includes(c), c);
+  for (const c of ['FT', 'IN']) assert.ok(!gezaehlt.includes(c), c);
+  await heuteSetzen(db, '2026-11-02');
+});
