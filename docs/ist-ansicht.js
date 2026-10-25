@@ -3,7 +3,7 @@
 // Import von app.js und einsatzplan.js: kein Importzyklus, und die reinen Hilfen laufen in node (tests/ist-ansicht.test.mjs).
 // Eingabe `woche` = Antwort von pep_ist_woche: bloecke = IST bzw. Vorschlag (vorschlag: true, negative id), dazu
 // plan_bloecke (Plan-Segmente) und status [{mitarbeiter_id, datum, bestaetigt}] je IST-Zeile bis heute.
-import { element } from './hilfe.js';
+import { element, datumDE } from './hilfe.js';
 import { minuten, uhrzeit, halbstunden } from './zeit.js';
 import { tagesStunden, tagKurz, kurz, rund } from './plan-raster.js';
 import { dialog } from './dialog.js';
@@ -143,11 +143,16 @@ export function tagBestaetigenDialog({ offen, datum, heute, weiter }) {
   return d;
 }
 
-// Statt des Rasters an einem künftigen Tag: Hinweis und Sprung in den Plan.
-export function zukunftKarte(t, zumPlan) {
+// Statt des Rasters an einem künftigen Tag oder einem Tag vor dem Start der IST-Erfassung (t.vor_ist_start,
+// istAb = woche.ist_ab): Hinweis und Sprung in den Plan.
+export function zukunftKarte(t, zumPlan, istAb = null) {
+  const text = t.vor_ist_start
+    ? `Die IST-Erfassung beginnt am ${istAb ? datumDE(istAb) : '(siehe Einstellungen)'}. Tage davor gibt es nur im Plan; `
+      + 'sie gelten nicht als offen und werden nicht abgeschlossen.'
+    : 'Arbeitszeiten lassen sich erst ab dem Tag selbst erfassen. Künftige Tage gibt es nur im Plan.';
   return element('div', { class: 'karte ep-geschlossen' },
-    element('h2', {}, `${tagKurz(t.datum)}${t.datum.slice(0, 4)}: noch kein IST`),
-    element('p', {}, 'Arbeitszeiten lassen sich erst ab dem Tag selbst erfassen. Künftige Tage gibt es nur im Plan.'),
+    element('h2', {}, `${tagKurz(t.datum)}${t.datum.slice(0, 4)}: ${t.vor_ist_start ? 'vor dem Start der IST-Erfassung' : 'noch kein IST'}`),
+    element('p', {}, text),
     element('button', { type: 'button', class: 'knopf', onclick: zumPlan }, 'Plan zeigen'));
 }
 
@@ -206,7 +211,9 @@ export function offeneBox(woche, d, waehleTag) {
   return element('section', { class: 'karte ep-box' },
     element('h3', {}, `Offen in KW ${woche.kw}`, gesamt ? element('small', {}, ` ${anzahl(gesamt, 'Zeile', 'Zeilen')}`) : null),
     eintraege.length ? element('ul', { class: 'ep-regeln' }, eintraege)
-      : element('p', { class: 'hinweis' }, 'Alle Zeilen bis heute sind bestätigt.'),
+      : element('p', { class: 'hinweis' }, woche.tage.every((t) => t.vor_ist_start)
+        ? 'Die Woche liegt vor dem Start der IST-Erfassung – hier ist nichts offen.'
+        : 'Alle Zeilen bis heute sind bestätigt.'),
     element('p', { class: 'hinweis ep-fuss' }, 'Offen = noch nicht bestätigt. Abschließen lässt sich eine Woche erst, wenn nichts mehr offen ist.'));
 }
 

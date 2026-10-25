@@ -68,8 +68,23 @@ test('Stufe-1-Datenbank mit Planblöcken → neues Schema zweimal: Daten bleiben
   await db.exec(SCHEMA);
 
   for (const t of Object.keys(vorher)) assert.deepEqual(await lesen(t), vorher[t], t);
-  // Plan-Antwort unverändert (pep_einsatzplan_woche läuft jetzt über pep.woche_antwort)
-  assert.deepEqual(await planWoche(), wocheVorher);
+  // Plan-Antwort unverändert (pep_einsatzplan_woche läuft jetzt über pep.woche_antwort), bis auf das neue Feld ist_ab:
+  // die bestehende Filiale bekommt beim Einspielen den Montag der laufenden Woche als Start der IST-Erfassung.
+  const { ist_ab: istAb, ...wocheNachher } = await planWoche();
+  assert.deepEqual(wocheNachher, wocheVorher);
+  assert.equal(istAb, '2026-11-02');
+  const istAbWert = async () => (await db.query(
+    "select wert #>> '{}' as w from pep.einstellungen where filiale_id = $1 and schluessel = 'ist_ab'", [fil])).rows[0].w;
+  // Ein von der Leitung geänderter Start übersteht weitere Schema-Läufe, auch in einer späteren Woche.
+  await json(`select public.pep_einstellung_setzen('ist_ab', '"2026-10-26"'::jsonb) as r`);
+  await heuteSetzen(db, '2026-11-18');
+  try {
+    await db.exec(SCHEMA);
+    await db.exec(SCHEMA);
+    assert.equal(await istAbWert(), '2026-10-26');
+  } finally {
+    await heuteSetzen(db, '2026-11-02');
+  }
   const gutschrift = async () => Object.fromEntries((await db.query(
     'select code, gutschrift from pep.abwesenheitscodes where filiale_id = $1', [fil])).rows.map((r) => [r.code, r.gutschrift]));
   const g = await gutschrift();

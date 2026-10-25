@@ -22,7 +22,7 @@ before(async () => {
   stellv = await pepBenutzer(db, 'vize', 'stellvertretung', fil);
 });
 
-test('Grundausstattung: 7 Rahmen, So geschlossen, 9 Codes, 18 Einstellungen', async () => {
+test('Grundausstattung: 7 Rahmen, So geschlossen, 9 Codes, 19 Einstellungen', async () => {
   const e = await alle();
   assert.equal(e.rahmen.length, 7);
   assert.deepEqual(e.rahmen.map((r) => r.wochentag), [1, 2, 3, 4, 5, 6, 7]);
@@ -33,7 +33,7 @@ test('Grundausstattung: 7 Rahmen, So geschlossen, 9 Codes, 18 Einstellungen', as
   assert.deepEqual(e.codes.map((c) => c.code), ['U', 'KM', 'BS', 'ZA', 'AF', 'BV', 'FT', 'NV', 'T']);
   assert.equal(e.codes.find((c) => c.code === 'BS').stundenregel, 'tatsaechlich');
   assert.equal(e.codes.find((c) => c.code === 'NV').stundenregel, 'keine');
-  assert.equal(Object.keys(e.werte).length, 18);
+  assert.equal(Object.keys(e.werte).length, 19);
   assert.equal(e.werte.abwesenheit_teiler, 6);
   assert.equal(e.werte.spaet_grenze, '18:00');
   assert.equal(e.werte.kassierleistung_eur_halbe_h, 900);
@@ -260,6 +260,8 @@ test('Code-Gutschrift (Stufe 2): lesen, beim Anlegen Standard true, beim Ändern
   assert.equal(await gutschrift(ng), false);
   await codeSpeichern(ng, { gutschrift: true });
   assert.equal(await gutschrift(ng), true);
+  await codeSpeichern(ng, { gutschrift: null }); // null = nicht angegeben: bleibt
+  assert.equal(await gutschrift(ng), true);
   await codeSpeichern(ng, { gutschrift: false, sperrt: false });
   const ngNeu = (await alle()).codes.find((c) => c.id === ng);
   assert.deepEqual([ngNeu.gutschrift, ngNeu.sperrt, ngNeu.name], [false, false, 'Ohne Gutschrift neu']);
@@ -267,8 +269,35 @@ test('Code-Gutschrift (Stufe 2): lesen, beim Anlegen Standard true, beim Ändern
   assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).codes.find((c) => c.id === ng).gutschrift, false);
   await wirft(json(stellv, 'select public.pep_code_speichern($1, $2::jsonb) as r', [ng, '{"gutschrift":true}']), 'NUR_LEITUNG');
 
-  // Nach dem ersten Wochenabschluss (Filiale ohne Mitarbeiter: eine vergangene Woche geht sofort)
+  // Nach dem ersten Wochenabschluss (Filiale ohne Mitarbeiter: eine vergangene Woche geht sofort; vorher den Start
+  // der IST-Erfassung auf diese Woche legen, Standard wäre der Montag von heute)
+  await aufruf(leitung, `select public.pep_einstellung_setzen('ist_ab', '"2026-03-02"'::jsonb)`);
   await json(leitung, 'select public.pep_wochenabschluss(2026, 10) as r');
   assert.equal((await alle()).abschluss_vorhanden, true);
   assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).abschluss_vorhanden, true);
+});
+
+test('IST-Erfassung ab (ist_ab): Standard Montag von heute, nur Montage, nur Leitung, nach Abschluss höchstens die Woche danach', async () => {
+  // Diese Filiale entstand in before() ohne festes heute: Standard = Montag der Woche von pep.heute() (= current_date).
+  const montag = (await db.query(
+    "select to_char(pep.heute() - (extract(isodow from pep.heute())::int - 1), 'YYYY-MM-DD') as m")).rows[0].m;
+  const f2 = await filiale(db, await pepBenutzer(db, 'chefIstAb'), { name: 'Netto Startfiliale', nummer: '9010' });
+  assert.equal((await db.query("select wert #>> '{}' as w from pep.einstellungen where filiale_id = $1 and schluessel = 'ist_ab'",
+    [f2])).rows[0].w, montag);
+  const setze = (nutzer, wert) =>
+    aufruf(nutzer, 'select public.pep_einstellung_setzen($1, $2::jsonb)', ['ist_ab', JSON.stringify(wert)]);
+  await wirft(setze(leitung, '2026-03-03'), 'KEIN_MONTAG');          // Dienstag
+  await wirft(setze(leitung, '2026-03-08'), 'KEIN_MONTAG');          // Sonntag
+  await wirft(setze(leitung, '2026-02-30'), 'WERT_UNGUELTIG');
+  await wirft(setze(leitung, 'quatsch'), 'WERT_UNGUELTIG');
+  await wirft(setze(leitung, 20260302), 'WERT_UNGUELTIG');
+  await wirft(setze(stellv, '2026-03-02'), 'NUR_LEITUNG');
+  // Zuletzt abgeschlossen: KW 10 (Mo 02.03., vorheriger Test). Höchstens die Woche danach, früher geht.
+  await wirft(setze(leitung, '2026-03-16'), 'IST_AB_NACH_ABSCHLUSS');
+  await setze(leitung, '2026-03-09');
+  assert.equal((await alle()).werte.ist_ab, '2026-03-09');
+  await setze(leitung, '2026-01-05');
+  assert.equal((await alle()).werte.ist_ab, '2026-01-05');
+  // Die Stellvertretung liest den Wert mit
+  assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).werte.ist_ab, '2026-01-05');
 });

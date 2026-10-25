@@ -76,6 +76,12 @@ export async function filiale(db, userId, { name = 'Netto Aschaffenburg', nummer
   return r[0].r.id;
 }
 
+// Setzt den Start der IST-Erfassung (Einstellung ist_ab) direkt, ohne Protokoll und ohne Prüfung.
+export async function istAbSetzen(db, filialeId, datum) {
+  await db.query("update pep.einstellungen set wert = to_jsonb($2::text) where filiale_id = $1 and schluessel = 'ist_ab'",
+    [filialeId, datum]);
+}
+
 // Fixiert pep.heute() für Tests (Datum "YYYY-MM-DD"); null hebt die Fixierung auf.
 export async function heuteSetzen(db, datum) {
   await db.query("select set_config('pep.heute', $1, false)", [datum ?? '']);
@@ -112,10 +118,13 @@ export const abgeben = (db, code, antworten) =>
 // Stichtag heute (Standard Mo 02.11.2026, Testwoche KW 46 = 09.–15.11.2026).
 // bereich und code bilden Kürzel → Id ab. ma() legt Mitarbeiter mit Vertrag und Kompetenzen an,
 // malen() ruft pep_plan_malen (kuerzel null = radieren) und liefert die Tag-Antwort.
-export async function planGrundlage(db, { heute = '2026-11-02' } = {}) {
+// istAb: Start der IST-Erfassung (Einstellung ist_ab). Standard der Datenbank wäre der Montag von heute; die Tests
+// erfassen und schließen aber vergangene Wochen, darum hier ein früher Montag (null = Standard der Datenbank lassen).
+export async function planGrundlage(db, { heute = '2026-11-02', istAb = '2026-01-05' } = {}) {
   await heuteSetzen(db, heute);
   const leitung = await pepBenutzer(db, 'chef');
   const fil = await filiale(db, leitung);
+  if (istAb) await istAbSetzen(db, fil, istAb);
   const stellv = await pepBenutzer(db, 'vize', 'stellvertretung', fil);
   const json = async (nutzer, sql, params = []) => (await als(db, 'authenticated', nutzer, sql, params))[0].r;
   const e = await json(leitung, 'select public.pep_einstellungen() as r');

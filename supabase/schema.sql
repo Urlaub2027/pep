@@ -305,7 +305,11 @@ begin
     (p_filiale_id, 'wochen_toleranz_h',          '0'),
     (p_filiale_id, 'zeitkonto_warnfaktor',       '1'),
     (p_filiale_id, 'stundenleistung_eur_h',      '200'),
-    (p_filiale_id, 'kassierleistung_eur_halbe_h','900')
+    (p_filiale_id, 'kassierleistung_eur_halbe_h','900'),
+    -- Stufe 2: Start der IST-Erfassung (Montag). Vorher gibt es keine offenen IST-Tage und keinen Wochenabschluss.
+    -- Standard: Montag der Woche, in der die Filiale angelegt bzw. das Schema eingespielt wird; ein gesetzter Wert
+    -- bleibt (on conflict do nothing).
+    (p_filiale_id, 'ist_ab', to_jsonb(to_char(pep.heute() - (extract(isodow from pep.heute())::int - 1), 'YYYY-MM-DD')))
   on conflict (filiale_id, schluessel) do nothing;
 end;
 $$;
@@ -918,6 +922,16 @@ begin
 end;
 $$;
 
+-- Start der IST-Erfassung der Filiale (Einstellung ist_ab, immer ein Montag); ohne Eintrag -infinity (keine Grenze).
+create or replace function pep.ist_ab(p_filiale_id bigint)
+returns date
+language sql stable
+set search_path = ''
+as $$
+  select coalesce((select (e.wert #>> '{}')::date from pep.einstellungen e
+                    where e.filiale_id = p_filiale_id and e.schluessel = 'ist_ab'), '-infinity'::date)
+$$;
+
 -- Name des gesetzlichen Feiertags am Datum (Bundesland der Filiale) oder null.
 create or replace function pep.feiertag(p_filiale_id bigint, p_datum date)
 returns text
@@ -1150,7 +1164,10 @@ end;
 $$;
 
 -- Nur die bekannten Schlüssel; Zahlen müssen > 0 sein (wochen_toleranz_h: >= 0),
--- Uhrzeiten "HH:MM" mit Minute 00 oder 30.
+-- Uhrzeiten "HH:MM" mit Minute 00 oder 30. ist_ab (Stufe 2): Datum "YYYY-MM-DD", ein Montag (KEIN_MONTAG); gibt es
+-- schon einen Wochenabschluss, höchstens die Woche danach (IST_AB_NACH_ABSCHLUSS) – sonst ließe sich keine Woche mehr
+-- abschließen (die nächste läge vor dem Start, VOR_IST_START, und jede spätere außer der Reihe, VORWOCHE_OFFEN).
+-- Kein Nachbuchen: ist_ab ändert diff keiner Woche (nur, welche Tage offen sind und welche Wochen abschließbar).
 create or replace function public.pep_einstellung_setzen(p_schluessel text, p_wert jsonb)
 returns void
 language plpgsql
@@ -1161,16 +1178,33 @@ declare
   v_b    pep.benutzer := pep.leitung();
   v_typ  text := coalesce(jsonb_typeof(p_wert), '');
   v_alt  jsonb;
+  v_datum date;
 begin
   if p_schluessel is null or p_schluessel not in (
        'abwesenheit_teiler', 'feiertag_teiler', 'pause_ab_6h_min', 'pause_ab_9h_min', 'ruhezeit_h',
        'ruhezeit_u18_h', 'max_tag_h', 'max_tag_u18_h', 'max_woche_u18_h', 'spaet_grenze',
        'u18_fruehestens', 'u18_spaetestens', 'freie_samstage_monat', 'freie_samstage_jahr',
-       'wochen_toleranz_h', 'zeitkonto_warnfaktor', 'stundenleistung_eur_h', 'kassierleistung_eur_halbe_h') then
+       'wochen_toleranz_h', 'zeitkonto_warnfaktor', 'stundenleistung_eur_h', 'kassierleistung_eur_halbe_h',
+       'ist_ab') then
     raise exception 'EINSTELLUNG_UNBEKANNT';
   end if;
 
-  if p_schluessel in ('spaet_grenze', 'u18_fruehestens', 'u18_spaetestens') then
+  if p_schluessel = 'ist_ab' then
+    if v_typ <> 'string' or (p_wert #>> '{}') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
+      raise exception 'WERT_UNGUELTIG';
+    end if;
+    begin
+      v_datum := (p_wert #>> '{}')::date; -- etwa 2026-02-30
+    exception when others then
+      raise exception 'WERT_UNGUELTIG';
+    end;
+    if extract(isodow from v_datum) <> 1 then
+      raise exception 'KEIN_MONTAG';
+    end if;
+    if v_datum > (select max(a.montag) + 7 from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id) then
+      raise exception 'IST_AB_NACH_ABSCHLUSS';
+    end if;
+  elsif p_schluessel in ('spaet_grenze', 'u18_fruehestens', 'u18_spaetestens') then
     if v_typ <> 'string' or (p_wert #>> '{}') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
       raise exception 'WERT_UNGUELTIG';
     end if;
@@ -3038,6 +3072,8 @@ begin
     'kw', p_kw,
     'montag', to_char(v_mo, 'YYYY-MM-DD'),
     'heute', to_char(pep.heute(), 'YYYY-MM-DD'),
+    -- Stufe 2: Start der IST-Erfassung (null ohne Einstellung); davor nur Plan, kein IST.
+    'ist_ab', case when pep.ist_ab(v_f) > '-infinity'::date then to_char(pep.ist_ab(v_f), 'YYYY-MM-DD') end,
     'tage', (
       select jsonb_agg(jsonb_build_object(
                'datum', to_char(d.tag, 'YYYY-MM-DD'),
@@ -3049,7 +3085,9 @@ begin
                'rahmen_bis', to_char(s.rahmen_bis, 'HH24:MI'),
                'feiertag', s.feiertag,
                'vergangen', d.tag < pep.heute())
-             || case when p_ist then jsonb_build_object('ist_erlaubt', d.tag <= pep.heute()) else '{}'::jsonb end
+             || case when p_ist then jsonb_build_object('ist_erlaubt', d.tag <= pep.heute() and d.tag >= pep.ist_ab(v_f),
+                                                        'vor_ist_start', d.tag < pep.ist_ab(v_f))
+                     else '{}'::jsonb end
              order by d.tag)
         from (select v_mo + i as tag from generate_series(0, 6) i) d
         cross join lateral pep.tag_status(v_f, d.tag) s),
@@ -5006,6 +5044,7 @@ $$;
 -- der Filiale). Eine Zeile gehört dazu, wenn der Tag geöffnet ist, der Mitarbeiter beschäftigt ist (pep.ist_beschaeftigt)
 -- und keine ganztägige sperrende Abwesenheit hat – oder wenn es IST-Blöcke oder eine Bestätigung gibt (etwa Inventur am
 -- Sonntag). bestaetigt_am null = offen. Einzige Stelle, die „offene IST-Zeile“ festlegt (Status, Vorschlag, Bestätigen).
+-- Tage vor dem Start der IST-Erfassung (pep.ist_ab) haben keine Zeile: nie offen, nicht bestätigbar, kein IST_OFFEN.
 create or replace function pep.ist_zeilen(p_filiale_id bigint, p_von date, p_bis date, p_mitarbeiter_ids bigint[])
 returns table (mitarbeiter_id bigint, datum date, bestaetigt_am timestamptz)
 language sql stable
@@ -5013,7 +5052,8 @@ set search_path = ''
 as $$
   with tage as (
     select d::date as tag, s.geoeffnet
-      from generate_series(p_von::timestamp, least(p_bis, pep.heute())::timestamp, interval '1 day') d
+      from generate_series(greatest(p_von, pep.ist_ab(p_filiale_id))::timestamp, least(p_bis, pep.heute())::timestamp,
+                           interval '1 day') d
       cross join lateral pep.tag_status(p_filiale_id, d::date) s
   )
   select m.id, t.tag, it.bestaetigt_am
@@ -5056,6 +5096,7 @@ as $$
              or exists (select 1 from pep.ist_bloecke b where b.mitarbeiter_id = p_mitarbeiter_id and b.datum = p_datum)
              or exists (select 1 from pep.ist_leer l where l.mitarbeiter_id = p_mitarbeiter_id and l.datum = p_datum)
              or p_datum > pep.heute()
+             or p_datum < (select pep.ist_ab(m.filiale_id) from pep.mitarbeiter m where m.id = p_mitarbeiter_id)
              or not pep.ist_beschaeftigt(p_mitarbeiter_id, p_datum)
              or not coalesce((select s.geoeffnet from pep.mitarbeiter m
                                 cross join lateral pep.tag_status(m.filiale_id, p_datum) s
@@ -5095,6 +5136,9 @@ begin
   end if;
   if p_datum > pep.heute() then
     raise exception 'ZUKUNFT';
+  end if;
+  if p_datum < pep.ist_ab(p_filiale_id) then
+    raise exception 'IST_VOR_START';
   end if;
   select * into v_m from pep.mitarbeiter where id = p_mitarbeiter_id and filiale_id = p_filiale_id;
   if not found then
@@ -5989,7 +6033,8 @@ create constraint trigger zeitkonto_vormerkungen_buchen
 
 -- G4 (nur Leitung): schließt die ISO-Woche ab und bucht je aktivem Mitarbeiter mit Vertrag in der Woche
 -- (pep.wochenvertrag), der nicht vor dem Montag ausgetreten ist, eine Zeile woche mit diff (auch 0; ohne
--- Wochenrechnung 0). Prüfungen: Woche vorbei (Sonntag < heute), nicht schon abgeschlossen, genau die Woche nach dem
+-- Wochenrechnung 0). Prüfungen: Woche vorbei (Sonntag < heute), nicht schon abgeschlossen, nicht vor dem Start der
+-- IST-Erfassung (pep.ist_ab, VOR_IST_START), genau die Woche nach dem
 -- letzten Abschluss der Filiale (wenn es einen gibt), keine offenen IST-Zeilen (pep.ist_zeilen). Antwort {gebucht: n}.
 create or replace function public.pep_wochenabschluss(p_jahr int, p_kw int)
 returns jsonb
@@ -6018,6 +6063,9 @@ begin
              pep.abwesenheitscodes, pep.einstellungen in share mode;
   if exists (select 1 from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id and a.montag = v_mo) then
     raise exception 'WOCHE_GEBUCHT';
+  end if;
+  if v_mo < pep.ist_ab(v_b.filiale_id) then
+    raise exception 'VOR_IST_START';
   end if;
   select max(a.montag) into v_letzt from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id;
   if v_letzt is not null and v_mo <> v_letzt + 7 then

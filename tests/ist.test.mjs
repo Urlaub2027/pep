@@ -3,7 +3,7 @@
 // Planblöcke für vergangene Tage entstehen mit heute = 02.11. (Plan-Malen lehnt vergangene Tage ab).
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { neueDatenbank, als, pepBenutzer, filiale, planGrundlage, heuteSetzen } from './helfer.mjs';
+import { neueDatenbank, als, pepBenutzer, filiale, planGrundlage, heuteSetzen, istAbSetzen } from './helfer.mjs';
 
 const HEUTE = '2026-11-16';
 
@@ -71,7 +71,7 @@ let chef2, fremdMa, fremdBereich, azubiNutzer;
 before(async () => {
   t = await aufbau();
   chef2 = await pepBenutzer(t.db, 'chef2');
-  await filiale(t.db, chef2, { name: 'Netto Zweitfiliale', nummer: '9999' });
+  await istAbSetzen(t.db, await filiale(t.db, chef2, { name: 'Netto Zweitfiliale', nummer: '9999' }), '2026-01-05');
   fremdMa = await t.json(chef2, `select public.pep_mitarbeiter_speichern(null, '{"name":"Fremd, Frieda"}') as r`);
   await als(t.db, 'authenticated', chef2, `select public.pep_vertrag_speichern($1, '{"vertragsart":"vollzeit","wochenstunden":37.5,"gueltig_ab":"2026-01-01"}')`, [fremdMa]);
   fremdBereich = (await t.json(chef2, 'select public.pep_bereiche() as r')).find((b) => b.kuerzel === 'KA').id;

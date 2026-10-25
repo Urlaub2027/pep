@@ -192,13 +192,9 @@ schreib('pep_zeitkonto_woche_2026_45', await q('select public.pep_zeitkonto_woch
 schreib('pep_zeitkonto_journal', await q('select public.pep_zeitkonto_journal($1, null, null) as r', [ids[4]]));
 
 // Startseite, Eckdaten und Einstellungen ganz zuletzt, damit sie das Zeitkonto zeigen (Stufe 2; „heute“ bleibt Do 12.11.):
-// Kachel „Zeitkonto auffällig“ (KW 45 abgeschlossen, Ben und Anna über dem Warnwert), Kachel „IST offen“ (Oktober
-// bestätigt bis auf Fr 30.10., dazu der gemischte Mi 11.11.), Zeitkonto-Zeile der Eckdaten und der Hinweis an den Codes
-// (abschluss_vorhanden). Das Bestätigen im Oktober berührt keine abgeschlossene Woche und keine Datei oben.
-for (let d = new Date('2026-10-01T00:00:00Z'); d < new Date('2026-11-01T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) {
-  const iso = d.toISOString().slice(0, 10);
-  if (iso !== '2026-10-30') await bestaetigen(iso);
-}
+// Kachel „Zeitkonto auffällig“ (KW 45 abgeschlossen, Ben und Anna über dem Warnwert), Kachel „IST offen“ (der
+// gemischte Mi 11.11.; Tage vor dem Start der IST-Erfassung ist_ab = Mo 02.11., dem Montag beim Anlegen, zählen nicht),
+// Zeitkonto-Zeile der Eckdaten und der Hinweis an den Codes (abschluss_vorhanden).
 schreib('pep_startseite', await q('select public.pep_startseite() as r'));
 // Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
 schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));

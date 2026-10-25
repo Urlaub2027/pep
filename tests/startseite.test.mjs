@@ -313,3 +313,44 @@ test('zeitkonto_auffaellig: Warnung im Saldo der zuletzt abgeschlossenen Woche (
     await heuteSetzen(Z.db, '2026-11-16');
   }
 });
+
+test('ist_ab: Tage vor dem Start der IST-Erfassung sind nicht offen (Kachel, Zeitkonto), nicht erfassbar, Abschluss → VOR_IST_START', async () => {
+  // Eigene Datenbank mit dem Standard der Datenbank: ist_ab = Montag von heute = 16.11.2026.
+  const sdb = await neueDatenbank();
+  const g = await planGrundlage(sdb, { heute: '2026-11-16', istAb: null });
+  try {
+    const leo = await g.ma('Start, Leo'); // Vertrag seit 01.01.2026
+    await heuteSetzen(sdb, '2026-11-10');
+    await g.malen(g.leitung, leo, '2026-11-13', '08:00', '12:00', 'KA'); // Plan, aus dem sonst der Vorschlag käme
+    await heuteSetzen(sdb, '2026-11-16');
+    assert.equal((await g.json(g.leitung, 'select public.pep_einstellungen() as r')).werte.ist_ab, '2026-11-16');
+
+    const s = await g.json(g.leitung, 'select public.pep_startseite() as r');
+    assert.deepEqual(s.ist_offen, { tage: 0, zeilen: 0, erster: null });
+    const zk = await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 46) as r');
+    assert.equal(zk.offene_tage, 0);
+    assert.equal(zk.mitarbeiter.find((m) => m.id === leo).offene_tage, 0);
+    // IST-Ansicht KW 46: kein Tag erfassbar, alle vor dem Start, kein Status, kein Vorschlag
+    const w = await g.json(g.leitung, 'select public.pep_ist_woche(2026, 46) as r');
+    assert.equal(w.ist_ab, '2026-11-16');
+    assert.ok(w.tage.every((t) => t.ist_erlaubt === false && t.vor_ist_start === true));
+    assert.deepEqual(w.status, []);
+    assert.deepEqual(w.bloecke.filter((b) => b.mitarbeiter_id === leo), []);
+    // KW 47: Montag erfassbar, nicht vor dem Start
+    const w47 = await g.json(g.leitung, 'select public.pep_ist_woche(2026, 47) as r');
+    assert.deepEqual([w47.tage[0].ist_erlaubt, w47.tage[0].vor_ist_start], [true, false]);
+    await assert.rejects(g.json(g.leitung, `select public.pep_ist_malen($1, '2026-11-13', '08:00', '12:00', $2, null) as r`,
+      [leo, g.bereich.KA]), /IST_VOR_START/);
+    await assert.rejects(g.json(g.leitung, 'select public.pep_wochenabschluss(2026, 46) as r'), /VOR_IST_START/);
+    assert.deepEqual(await g.json(g.leitung, `select public.pep_ist_bestaetigen('2026-11-13', null) as r`), { bestaetigt: 0 });
+
+    // Start eine Woche früher: KW 46 ist jetzt offen (Mo–Sa), der Abschluss scheitert an den offenen Tagen
+    await als(sdb, 'authenticated', g.leitung, `select public.pep_einstellung_setzen('ist_ab', '"2026-11-09"'::jsonb)`);
+    assert.deepEqual((await g.json(g.leitung, 'select public.pep_startseite() as r')).ist_offen,
+      { tage: 6, zeilen: 6, erster: '2026-11-09' });
+    assert.equal((await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 46) as r')).offene_tage, 6);
+    await assert.rejects(g.json(g.leitung, 'select public.pep_wochenabschluss(2026, 46) as r'), /IST_OFFEN/);
+  } finally {
+    await heuteSetzen(sdb, '2026-11-16');
+  }
+});

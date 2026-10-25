@@ -367,15 +367,16 @@ const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'A
 const LAGE = { frueh: 'früh', spaet: 'spät', lang: 'lang', mitte: 'mitte' };
 const h = (n) => `${stundenDE(n)} h`;
 
-// Zeitkonto-Zeile (pep_eckdaten.zeitkonto): „Zeitkonto: +2,50 h (Stand KW 46)“, ⚠ bei Warnung. Klick schließt den
+// Zeitkonto-Zeile (pep_eckdaten.zeitkonto): „Zeitkonto: +2,50 h (aktuell · zuletzt gebucht KW 46)“, ⚠ bei Warnung. Klick schließt den
 // Dialog und öffnet den Reiter Zeitkonto mit dem Journal des Mitarbeiters – in der zuletzt abgeschlossenen Woche, ohne
 // Abschluss in der Vorwoche (wie der Reiter selbst). zeitkonto.js wird erst beim Klick geladen: ein statischer Import
 // schlösse den Kreis zeitkonto.js → einsatzplan.js → plan-dialoge.js.
 function zeitkontoZeile(z, mitarbeiterId, datum) {
   const stand = z.stand_montag ? isoWoche(z.stand_montag) : null;
   const ziel = stand ?? isoWoche(plusTage(heuteDatum(new URLSearchParams(location.search).get('heute')), -7));
-  const standText = !stand ? 'noch keine Woche abgeschlossen'
-    : `Stand KW ${stand.kw}${stand.jahr !== isoWoche(datum).jahr ? `/${stand.jahr}` : ''}`;
+  // Der Saldo sind alle Buchungen (auch nach dem letzten Abschluss), darum „aktuell“; die KW nennt den letzten Abschluss.
+  const standText = !stand ? 'aktuell · noch keine Woche abgeschlossen'
+    : `aktuell · zuletzt gebucht KW ${stand.kw}${stand.jahr !== isoWoche(datum).jahr ? `/${stand.jahr}` : ''}`;
   const warnung = z.warnung === 'plus' || z.warnung === 'minus';
   const knopf = element('button', {
     type: 'button', class: `pd-eck-zk${warnung ? ' warnung' : ''}`,

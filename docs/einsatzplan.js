@@ -206,7 +206,8 @@ function tagesReiter(t) {
   return element('button', {
     type: 'button', class: klassen.filter(Boolean).join(' '), 'aria-pressed': String(t.datum === datum),
     title: [datumDE(t.datum), t.feiertag, t.vergangen ? 'vergangen' : null,
-      istAnsicht() && !t.ist_erlaubt ? 'künftig: öffnet den Plan' : null].filter(Boolean).join(' · '),
+      istAnsicht() && !t.ist_erlaubt ? `${t.vor_ist_start ? 'vor dem Start der IST-Erfassung' : 'künftig'}: öffnet den Plan` : null]
+      .filter(Boolean).join(' · '),
     onclick: () => waehleTag(t.datum),
   }, element('span', {}, `${WOCHENTAGE[t.wochentag - 1]} ${t.datum.slice(8)}.${t.datum.slice(5, 7)}.`), element('small', {}, zeit));
 }
@@ -219,10 +220,18 @@ function farbfeld(farbe, klasse = '') {
 
 function pinselLeiste() {
   if (istAnsicht()) {
-    if (!tag()?.ist_erlaubt) return element('p', { class: 'hinweis' }, 'IST gibt es erst ab dem Tag selbst.');
+    if (!tag()?.ist_erlaubt) {
+      return element('p', { class: 'hinweis' },
+        tag()?.vor_ist_start ? 'Vor dem Start der IST-Erfassung gibt es kein IST.' : 'IST gibt es erst ab dem Tag selbst.');
+    }
   } else {
     if (!tag()?.geoeffnet) return element('p', { class: 'hinweis' }, 'An diesem Tag ist geschlossen.');
     if (tag().vergangen) {
+      // Vor dem Start der IST-Erfassung (woche.ist_ab) gibt es kein IST: kein Knopf „IST erfassen“.
+      if (woche.ist_ab && datum < woche.ist_ab) {
+        return element('p', { class: 'hinweis-gelb' }, 'Vergangene Tage sind schreibgeschützt. Die IST-Erfassung beginnt erst am ',
+          datumDE(woche.ist_ab), '.', darfZeichnen() ? ' Kommentare bleiben änderbar.' : '');
+      }
       return element('p', { class: 'hinweis-gelb' }, VERGANGEN_TEXT, darfZeichnen() ? ' Kommentare bleiben änderbar. ' : ' ',
         darfZeichnen() ? element('button', { type: 'button', class: 'knopf', onclick: () => wechsleModus('ist') }, 'IST erfassen') : null);
     }
@@ -429,7 +438,7 @@ function zeichneRaster() {
   const ist = istAnsicht();
   if (ist && t && !t.ist_erlaubt) {
     rahmen.raster.classList.remove('malt');
-    rahmen.raster.replaceChildren(zukunftKarte(t, () => wechsleModus('plan')));
+    rahmen.raster.replaceChildren(zukunftKarte(t, () => wechsleModus('plan'), woche.ist_ab));
     rahmen.sp = [];
     return;
   }

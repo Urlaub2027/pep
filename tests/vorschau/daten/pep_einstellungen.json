@@ -101,6 +101,7 @@
   }
  ],
  "werte": {
+  "ist_ab": "2026-11-02",
   "max_tag_h": 10,
   "ruhezeit_h": 11,
   "spaet_grenze": "18:00",
@@ -187,7 +188,7 @@
  "benutzer": [
   {
    "rolle": "leitung",
-   "user_id": "1990999e-cb44-4304-a9c2-c54af7b8f08c",
+   "user_id": "83c9238b-e698-49d7-ba21-3a15efb564cc",
    "anzeigename": "chef",
    "benutzername": "chef"
   }

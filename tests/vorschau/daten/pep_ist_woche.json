@@ -12,7 +12,8 @@
    "rahmen_von": "06:00",
    "ist_erlaubt": true,
    "oeffnung_bis": "20:00",
-   "oeffnung_von": "07:00"
+   "oeffnung_von": "07:00",
+   "vor_ist_start": false
   },
   {
    "datum": "2026-11-10",
@@ -24,7 +25,8 @@
    "rahmen_von": "06:00",
    "ist_erlaubt": true,
    "oeffnung_bis": "20:00",
-   "oeffnung_von": "07:00"
+   "oeffnung_von": "07:00",
+   "vor_ist_start": false
   },
   {
    "datum": "2026-11-11",
@@ -36,7 +38,8 @@
    "rahmen_von": "06:00",
    "ist_erlaubt": true,
    "oeffnung_bis": "20:00",
-   "oeffnung_von": "07:00"
+   "oeffnung_von": "07:00",
+   "vor_ist_start": false
   },
   {
    "datum": "2026-11-12",
@@ -48,7 +51,8 @@
    "rahmen_von": "06:00",
    "ist_erlaubt": true,
    "oeffnung_bis": "20:00",
-   "oeffnung_von": "07:00"
+   "oeffnung_von": "07:00",
+   "vor_ist_start": false
   },
   {
    "datum": "2026-11-13",
@@ -60,7 +64,8 @@
    "rahmen_von": "06:00",
    "ist_erlaubt": false,
    "oeffnung_bis": "20:00",
-   "oeffnung_von": "07:00"
+   "oeffnung_von": "07:00",
+   "vor_ist_start": false
   },
   {
    "datum": "2026-11-14",
@@ -72,7 +77,8 @@
    "rahmen_von": "06:00",
    "ist_erlaubt": false,
    "oeffnung_bis": "20:00",
-   "oeffnung_von": "07:00"
+   "oeffnung_von": "07:00",
+   "vor_ist_start": false
   },
   {
    "datum": "2026-11-15",
@@ -84,155 +90,157 @@
    "rahmen_von": null,
    "ist_erlaubt": false,
    "oeffnung_bis": null,
-   "oeffnung_von": null
+   "oeffnung_von": null,
+   "vor_ist_start": false
   }
  ],
  "heute": "2026-11-12",
  "modus": "ist",
+ "ist_ab": "2026-11-02",
  "montag": "2026-11-09",
  "status": [
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 2
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 3
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 5
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 6
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 7
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 8
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 9
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 10
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 11
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 12
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 13
   },
   {
    "datum": "2026-11-09",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.88+01:00",
    "mitarbeiter_id": 14
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 2
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 3
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 4
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 5
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 6
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 7
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 8
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 9
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 10
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 12
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 13
   },
   {
    "datum": "2026-11-10",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.892+01:00",
    "mitarbeiter_id": 14
   },
   {
@@ -298,7 +306,7 @@
   {
    "datum": "2026-11-11",
    "bestaetigt": true,
-   "bestaetigt_am": "2026-10-25T11:43:53.914+01:00",
+   "bestaetigt_am": "2026-10-25T13:25:59.916+01:00",
    "mitarbeiter_id": 12
   },
   {

@@ -268,6 +268,23 @@ function zeichneParameter() {
   boxen.parameter.replaceChildren(abschnitt('Regelparameter', ...zeilen));
 }
 
+// ---------------------------------------------------------------- IST-Erfassung (Stufe 2)
+
+// Start der IST-Erfassung (Einstellung ist_ab, ein Montag): davor keine offenen Tage und kein Wochenabschluss.
+function zeichneIst() {
+  const ab = eingabe('date', daten.werte.ist_ab ?? '', { required: true });
+  ab.addEventListener('change', async () => {
+    if (!ab.value) { ab.value = daten.werte.ist_ab ?? ''; return; }
+    const ok = await speichere(
+      () => aufruf('pep_einstellung_setzen', { p_schluessel: 'ist_ab', p_wert: ab.value }), 'ist');
+    if (ok === undefined && ab.isConnected) ab.value = daten.werte.ist_ab ?? ''; // Fehler: gespeicherter Wert
+  });
+  boxen.ist.replaceChildren(abschnitt('IST-Erfassung',
+    element('div', { class: 'zeile' }, feld('IST-Erfassung ab (Montag)', ab),
+      element('small', { class: 'hinweis erklaerung' },
+        'Tage davor gelten nicht als offen und werden nicht abgeschlossen. Startsalden zum Sonntag davor im Journal eintragen.'))));
+}
+
 // ---------------------------------------------------------------- Schulferien
 
 function zeichneSchulferien() {
@@ -350,7 +367,7 @@ function zeichneBenutzer() {
 // Reihenfolge = Reihenfolge auf der Seite
 const ZEICHNER = {
   rahmen: zeichneRahmen, abweichungen: zeichneAbweichungen, bereiche: zeichneBereiche, codes: zeichneCodes,
-  parameter: zeichneParameter, schulferien: zeichneSchulferien, urlaub: zeichneUrlaub, benutzer: zeichneBenutzer,
+  parameter: zeichneParameter, ist: zeichneIst, schulferien: zeichneSchulferien, urlaub: zeichneUrlaub, benutzer: zeichneBenutzer,
 };
 
 reiter.einstellungen = { zeigen };

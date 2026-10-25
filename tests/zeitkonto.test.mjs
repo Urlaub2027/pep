@@ -5,7 +5,7 @@
 // Journal und Abschluss (Task 4) gibt es hier nur als Tabellen: die Saldo-Tests schreiben Zeilen direkt hinein.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { neueDatenbank, als, pepBenutzer, filiale, planGrundlage, heuteSetzen } from './helfer.mjs';
+import { neueDatenbank, als, pepBenutzer, filiale, planGrundlage, heuteSetzen, istAbSetzen } from './helfer.mjs';
 
 const HEUTE = '2026-11-16';
 const KW46 = '2026-11-09';
@@ -49,7 +49,7 @@ before(async () => {
   t = { db, ...g, istSetzen, bestaetigen, woche, abwesend, zk, zkWoche, abweichung, abweichungLoeschen };
 
   chef2 = await pepBenutzer(db, 'chef2');
-  await filiale(db, chef2, { name: 'Netto Zweitfiliale', nummer: '9999' });
+  await istAbSetzen(db, await filiale(db, chef2, { name: 'Netto Zweitfiliale', nummer: '9999' }), '2026-01-05');
   fremdMa = await json(chef2, `select public.pep_mitarbeiter_speichern(null, '{"name":"Fremd, Frieda"}') as r`);
   await als(db, 'authenticated', chef2, `select public.pep_vertrag_speichern($1, '{"vertragsart":"vollzeit","wochenstunden":37.5,"gueltig_ab":"2026-01-01"}')`, [fremdMa]);
   azubiNutzer = await pepBenutzer(db, 'azubi', 'mitarbeiter', g.fil);
