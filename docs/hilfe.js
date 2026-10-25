@@ -36,6 +36,7 @@ const FEHLER = {
   ART_FEST: 'Die Art dieses Eintrags ist fest vorgegeben und lässt sich nicht ändern.',
   ART_UNGUELTIG: 'Die Art ist ungültig.',
   AUSSERHALB_RAHMEN: 'Das liegt außerhalb der Planungszeit dieses Tages.',
+  AUSSERHALB_ZEITRAHMEN: 'Arbeitszeiten lassen sich nur zwischen 04:00 und 24:00 Uhr erfassen.',
   BENUTZER_NICHT_GEFUNDEN: 'Diesen Benutzer gibt es nicht (mehr).',
   BEREICH_NICHT_GEFUNDEN: 'Diesen Bereich gibt es nicht (mehr).',
   BEREICH_NICHT_MALBAR: 'Das ist eine Funktion (z. B. VP), kein Bereich – sie wird nur als Kompetenz vergeben.',
@@ -50,6 +51,7 @@ const FEHLER = {
   FREIGABE_NICHT_GEFUNDEN: 'Diese Freigabe gibt es nicht (mehr).',
   FREIGABE_VORHANDEN: 'Diese Freigabe gibt es schon.',
   GESCHLOSSEN: 'An diesem Tag ist die Filiale geschlossen.',
+  GRUND_FEHLT: 'Dieser Tag ist schon bestätigt. Bitte einen Grund für die Änderung angeben.',
   HALBE_STUNDE: 'Uhrzeiten nur in halben Stunden (:00 oder :30).',
   KEINE_FILIALE: 'Es ist noch keine Filiale angelegt.',
   KEIN_VERTRAG: 'Für dieses Datum gibt es keinen Vertrag.',
@@ -92,6 +94,7 @@ const FEHLER = {
   ZEITEN_UNGUELTIG: 'Die Zeiten sind ungültig. „Bis“ muss nach „von“ liegen.',
   ZEITRAUM_UNGUELTIG: 'Der Zeitraum ist ungültig. „Bis“ darf nicht vor „von“ liegen.',
   ZEITRAUM_ZU_LANG: 'Der Zeitraum ist zu lang.',
+  ZUKUNFT: 'Arbeitszeiten (IST) lassen sich erst ab dem Tag selbst erfassen, nicht für künftige Tage.',
   ZU_VIELE_ZIELE: 'Zu viele Ziele auf einmal (höchstens 60 Tage oder 12 Wochen).',
 };
 

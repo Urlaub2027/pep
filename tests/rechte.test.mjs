@@ -54,13 +54,14 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
   'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
-  'pep_startseite'];
+  'pep_startseite', 'pep_ist_woche'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
   'pep_plan_malen', 'pep_plan_zeile_setzen', 'pep_kommentar_setzen',
   'pep_tag_kopieren', 'pep_woche_kopieren', 'pep_vorlage_speichern', 'pep_vorlage_laden', 'pep_vorlage_loeschen',
-  'pep_schnell_abwesend', 'pep_ersatz_uebernehmen', 'pep_woche_speichern'];
+  'pep_schnell_abwesend', 'pep_ersatz_uebernehmen', 'pep_woche_speichern',
+  'pep_ist_malen', 'pep_ist_zeile_setzen', 'pep_ist_bestaetigen'];
 // Legt für die Leitung ohne Filiale die Filiale an – das ist gewollt und in basis.test.mjs geprüft.
 const OHNE_FILIALE_ERLAUBT = ['pep_filiale_anlegen'];
 
@@ -108,6 +109,11 @@ const aufrufe = () => ({
   pep_ersatz_uebernehmen: `select public.pep_ersatz_uebernehmen(${ma}, '2027-05-03', ${jo})`,
   // Schreibt Planumsatz und Vorgabe der Woche (und ein Protokoll): ohne Rechtecheck wäre das sichtbar.
   pep_woche_speichern: `select public.pep_woche_speichern(2027, 18, '{"planumsatz":61000,"stundenvorgabe_manuell":240}')`,
+  // IST an einem vergangenen Montag (Ida hat seit 01.01.2026 Vertrag): ohne Rechtecheck entstünden IST-Blöcke
+  // bzw. ein ist_tage-Eintrag.
+  pep_ist_malen: `select public.pep_ist_malen(${ma}, '2026-03-02', '08:00', '12:00', 2, null)`,
+  pep_ist_zeile_setzen: `select public.pep_ist_zeile_setzen(${ma}, '2026-03-02', '[{"von":"08:00","bis":"12:00","bereich_id":2}]', null)`,
+  pep_ist_bestaetigen: `select public.pep_ist_bestaetigen('2026-03-02', array[${ma}]::bigint[])`,
 });
 
 const zaehlen = async () => {
@@ -166,6 +172,14 @@ test('pep_resturlaub: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale �
 // Die Startseite zählt Abwesende, Lücken, Verstöße und Wünsche der Filiale: nur Leitung und Stellvertretung mit Filiale.
 test('pep_startseite: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
   const sql = 'select public.pep_startseite()';
+  await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/);
+  await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/);
+  for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);
+});
+
+// Die IST-Woche zeigt Arbeitszeiten aller Mitarbeiter: nur Leitung und Stellvertretung mit Filiale.
+test('pep_ist_woche: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
+  const sql = 'select public.pep_ist_woche(2026, 10)';
   await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/);
   await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/);
   for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);
