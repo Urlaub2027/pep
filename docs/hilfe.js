@@ -51,6 +51,7 @@ const FEHLER = {
   FREIGABE_NICHT_GEFUNDEN: 'Diese Freigabe gibt es nicht (mehr).',
   FREIGABE_VORHANDEN: 'Diese Freigabe gibt es schon.',
   GESCHLOSSEN: 'An diesem Tag ist die Filiale geschlossen.',
+  GRENZE_UNTER_VERTRAG: 'Die Grenze für Mehrarbeit darf nicht unter den Vertragsstunden liegen.',
   GRUND_FEHLT: 'Dieser Tag ist schon bestätigt. Bitte einen Grund für die Änderung angeben.',
   HALBE_STUNDE: 'Uhrzeiten nur in halben Stunden (:00 oder :30).',
   KEINE_FILIALE: 'Es ist noch keine Filiale angelegt.',

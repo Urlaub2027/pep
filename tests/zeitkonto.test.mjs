@@ -141,6 +141,62 @@ test('Feiertag am Samstag (26.12.2026) gibt Gutschrift; geöffneter Feiertag nic
   }
 });
 
+test('Feiertag hat Vorrang vor Abwesenheit: U bei geöffnetem Feiertag, danach wieder geschlossen → nicht doppelt', async () => {
+  await heuteSetzen(t.db, '2027-01-11');
+  try {
+    // geöffnet → U 04.–09.01. (6 × 6,25) → Öffnung gelöscht
+    const u = await t.ma('Doppel, Dora');
+    await t.abweichung('2027-01-06', true);
+    await t.abwesend(u, 'U', '2027-01-04', '2027-01-09');
+    let z = zahlen(await t.zk(u, '2027-01-04'));
+    assert.deepEqual([z.abwesend, z.feiertag, z.diff], [37.5, 0, 0], 'solange geöffnet: Urlaub zählt');
+    await t.abweichungLoeschen('2027-01-06');
+    z = zahlen(await t.zk(u, '2027-01-04'));
+    assert.deepEqual([z.soll, z.abwesend, z.feiertag, z.summe, z.diff], [37.5, 31.25, 6.25, 37.5, 0]);
+    // dasselbe mit „geschlossen“ als Abweichung statt Löschen
+    await t.abweichung('2027-01-06', false);
+    z = zahlen(await t.zk(u, '2027-01-04'));
+    assert.deepEqual([z.abwesend, z.feiertag, z.diff], [31.25, 6.25, 0]);
+    await t.abweichungLoeschen('2027-01-06');
+
+    // FT an einem als geöffnet eingestellten Feiertag zählt genau einmal – geöffnet wie geschlossen
+    const ft = await t.ma('Doppel, Fiona');
+    await t.abweichung('2027-01-06', true);
+    await t.abwesend(ft, 'FT', '2027-01-06');
+    z = zahlen(await t.zk(ft, '2027-01-04'));
+    assert.deepEqual([z.abwesend, z.feiertag, z.summe], [6.25, 0, 6.25]);
+    await t.abweichungLoeschen('2027-01-06');
+    z = zahlen(await t.zk(ft, '2027-01-04'));
+    assert.deepEqual([z.abwesend, z.feiertag, z.summe], [0, 6.25, 6.25]);
+  } finally {
+    await heuteSetzen(t.db, HEUTE);
+  }
+});
+
+test('Geschlossener Nicht-Feiertag (Heiligabend): Urlaub behält die Gutschrift', async () => {
+  await heuteSetzen(t.db, '2027-01-11');
+  try {
+    const h = await t.ma('Heilig, Hanna');
+    await t.abwesend(h, 'U', '2026-12-24');
+    await t.abweichung('2026-12-24', false);
+    const z = zahlen(await t.zk(h, '2026-12-21'));
+    assert.deepEqual([z.soll, z.abwesend, z.feiertag, z.summe], [37.5, 6.25, 12.5, 18.75]);
+    await t.abweichungLoeschen('2026-12-24');
+  } finally {
+    await heuteSetzen(t.db, HEUTE);
+  }
+});
+
+test('Abwesenheit zählt nur an beschäftigten Tagen: Austritt Mi, Urlaub Mo und Do → nur Mo', async () => {
+  const a = await t.ma('Austritt, Ali');
+  await t.abwesend(a, 'U', TAGE[0]);
+  await t.abwesend(a, 'U', TAGE[3]);
+  assert.equal(zahlen(await t.zk(a)).abwesend, 12.5);
+  await t.db.query("update pep.mitarbeiter set austritt = '2026-11-11' where id = $1", [a]);
+  const z = zahlen(await t.zk(a));
+  assert.deepEqual([z.soll, z.abwesend, z.diff], [18.75, 6.25, -12.5]);
+});
+
 test('Eintritt Mi 11.11.2026 → 4 beschäftigte Tage, soll 25,0 (Führung: grenze 28); Austritt Fr → soll 31,25', async () => {
   const e = await t.ma('Neu, Nora');
   await t.db.query("update pep.mitarbeiter set eintritt = '2026-11-11' where id = $1", [e]);
@@ -287,7 +343,8 @@ test('pep_zeitkonto_woche: fremde Filiale, Rolle mitarbeiter → NUR_LEITUNG, St
   assert.deepEqual(await t.zkWoche(2026, 46, t.stellv), eigen);
 });
 
-// Läuft zuletzt: schreibt Journal- und Abschlusszeilen direkt (Buchungsfunktionen kommen mit Task 4).
+// Schreibt Journal- und Abschlusszeilen direkt (Buchungsfunktionen kommen mit Task 4); darum nach allen Tests, die
+// pep_zeitkonto_woche ohne Buchungen erwarten. Danach läuft nur noch der Tabellen-Test.
 test('Saldo aus dem Journal: Vorwoche über Datum (auch KW 53), abgeschlossene Woche ohne erneutes diff, Warnung minus', async () => {
   const k = await t.ma('Konto, Kai'); // KW 46 ohne IST: diff −37,5
   const anna = (await t.zkWoche(2026, 46)).mitarbeiter.find((m) => m.name === 'Voll, Anna').id;

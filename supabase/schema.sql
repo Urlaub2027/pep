@@ -605,10 +605,15 @@ begin
   if v_ab is null then
     raise exception 'DATUM_UNGUELTIG';
   end if;
+  -- Führung: Standard 42, bei mehr Vertragsstunden die Vertragsstunden (sonst schlüge der Standard selbst fehl).
   v_grenze := case when p_daten ? 'zeitkonto_grenze' and p_daten ->> 'zeitkonto_grenze' is not null
                    then (p_daten ->> 'zeitkonto_grenze')::numeric
-                   when v_art = 'fuehrung' then 42
+                   when v_art = 'fuehrung' then greatest(42, v_std)
                    else null end;
+  -- Unter den Vertragsstunden zählte Arbeit zwischen Grenze und Soll im Zeitkonto als Plus (G1).
+  if v_art = 'fuehrung' and v_grenze < v_std then
+    raise exception 'GRENZE_UNTER_VERTRAG';
+  end if;
 
   if v_id is not null then
     select * into v_alt from pep.vertraege where id = v_id and mitarbeiter_id = v_m.id;
@@ -5356,13 +5361,34 @@ alter table pep.wochen_abschluesse  enable row level security;
 -- Zeitkonto-Rechnung
 -- ---------------------------------------------------------------------------
 
+-- Die Tage Mo–So einer Woche, an denen der Mitarbeiter beschäftigt ist (Vertrag mit gueltig_ab ≤ Tag, eintritt ≤ Tag,
+-- austritt leer oder ≥ Tag), mit feiertag = dieser Tag bekommt die Feiertagsgutschrift (Mo–Sa, gesetzlicher Feiertag,
+-- Filiale geschlossen). Einzige Stelle für soll-Tage, Feiertagsgutschrift und die Tage, deren Abwesenheit zählt.
+create or replace function pep.zeitkonto_tage(p_mitarbeiter_id bigint, p_montag date)
+returns table (tag date, feiertag boolean)
+language sql stable
+set search_path = ''
+as $$
+  select t.tag,
+         extract(isodow from t.tag) <= 6 and pep.feiertag(m.filiale_id, t.tag) is not null
+           and not (select x.geoeffnet from pep.tag_status(m.filiale_id, t.tag) x)
+    from pep.mitarbeiter m
+    cross join lateral (select p_montag + i as tag from generate_series(0, 6) i) t
+   where m.id = p_mitarbeiter_id
+     and (m.eintritt is null or m.eintritt <= t.tag) and (m.austritt is null or m.austritt >= t.tag)
+     and exists (select 1 from pep.vertraege v where v.mitarbeiter_id = p_mitarbeiter_id and v.gueltig_ab <= t.tag)
+   order by t.tag
+$$;
+
 -- G1: Wochenrechnung eines Mitarbeiters (p_montag = Montag der ISO-Woche, Tage Mo–So). NULL ohne Vertrag in der Woche
 -- (pep.wochenvertrag) und wenn der Mitarbeiter in der Woche gar nicht beschäftigt ist (Eintritt nach Sonntag, Austritt
 -- vor Montag) – sonst bekäme jeder Ausgetretene bis in alle Zukunft Wochenzeilen.
 -- beschäftigte Tage = Mo–Sa mit Vertrag (gueltig_ab ≤ Tag), eintritt ≤ Tag, austritt leer oder ≥ Tag. Das Merkmal aktiv
 -- zählt hier nicht: es trägt kein Datum, eine spätere Änderung würde vergangene Wochen umschreiben.
 -- ist = nur bestätigte Tage (pep.ist_tage), Arbeitszeit ohne Pause und ohne unbesetzte Abschnitte (pep.arbeitsstunden);
--- abwesend = Abwesenheitsstunden der Woche mit Code gutschrift; feiertag = geschlossene gesetzliche Feiertage an
+-- abwesend = Abwesenheitsstunden mit Code gutschrift an beschäftigten Tagen (Mo–So) ohne Feiertagsgutschrift – die
+-- Feiertagsgutschrift hat Vorrang, sonst zählte ein Feiertag doppelt (etwa U eingetragen, solange der Feiertag als
+-- geöffnet eingestellt war, oder FT); feiertag = geschlossene gesetzliche Feiertage an
 -- beschäftigten Tagen × round(wochenstunden / feiertag_teiler, 2); Führung: Plus erst über der grenze, Minus erst
 -- unter dem soll; spaet = bestätigte IST-Arbeitszeit ab spaet_grenze; offene_tage = offene Zeilen aus pep.ist_zeilen.
 -- grenze nur bei Vertragsart fuehrung, sonst null.
@@ -5395,12 +5421,15 @@ begin
     return null;
   end if;
 
-  select count(*)::int, (count(*) filter (where pep.feiertag(v_m.filiale_id, t.tag) is not null and not s.geoeffnet))::int
-    into v_tage, v_ftage
-    from (select p_montag + i as tag from generate_series(0, 5) i) t
-    cross join lateral (select x.geoeffnet from pep.tag_status(v_m.filiale_id, t.tag) x) s
-   where (v_m.eintritt is null or v_m.eintritt <= t.tag) and (v_m.austritt is null or v_m.austritt >= t.tag)
-     and exists (select 1 from pep.vertraege v where v.mitarbeiter_id = p_mitarbeiter_id and v.gueltig_ab <= t.tag);
+  select (count(*) filter (where extract(isodow from t.tag) <= 6))::int, (count(*) filter (where t.feiertag))::int,
+         coalesce(sum(a.stunden) filter (where not t.feiertag), 0)
+    into v_tage, v_ftage, v_abw
+    from pep.zeitkonto_tage(p_mitarbeiter_id, p_montag) t
+    left join lateral (
+      select sum(ab.stunden) as stunden
+        from pep.abwesenheiten ab
+        join pep.abwesenheitscodes c on c.id = ab.code_id
+       where ab.mitarbeiter_id = p_mitarbeiter_id and ab.datum = t.tag and c.gutschrift) a on true;
 
   v_soll := round(v_v.wochenstunden * v_tage / 6, 2);
   v_ft := v_ftage * round(v_v.wochenstunden
@@ -5410,11 +5439,6 @@ begin
     into v_ist
     from pep.ist_tage it
    where it.mitarbeiter_id = p_mitarbeiter_id and it.datum between p_montag and v_so;
-
-  select coalesce(sum(a.stunden), 0) into v_abw
-    from pep.abwesenheiten a
-    join pep.abwesenheitscodes c on c.id = a.code_id
-   where a.mitarbeiter_id = p_mitarbeiter_id and a.datum between p_montag and v_so and c.gutschrift;
 
   -- Halbstunden mit Beginn ≥ Grenze: alle Zeiten liegen auf halben Stunden, also Anteil nach der Grenze.
   select round(coalesce(sum(extract(epoch from x.bis - greatest(x.von, g.grenze)) / 3600), 0), 2) into v_spaet

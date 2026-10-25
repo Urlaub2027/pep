@@ -123,6 +123,26 @@ test('fuehrung bekommt zeitkonto_grenze 42, STUNDEN_UNGUELTIG bei 0 und 61, VERT
   await wirft(vertrag(m, { gueltig_ab: '2026-03-01', vertragsart: 'beamter', wochenstunden: 20 }), 'VERTRAGSART_UNGUELTIG');
 });
 
+test('Führung: Zeitkonto-Grenze nicht unter den Vertragsstunden (GRENZE_UNTER_VERTRAG)', async () => {
+  const m = await neuerMitarbeiter('Grenze, Gerd');
+  const grenze = async (id) =>
+    (await db.query('select zeitkonto_grenze::text g from pep.vertraege where id = $1', [id])).rows[0].g;
+  await wirft(vertrag(m, { gueltig_ab: '2026-01-01', vertragsart: 'fuehrung', wochenstunden: 40, zeitkonto_grenze: 39.5 }),
+    'GRENZE_UNTER_VERTRAG');
+  const v = await vertrag(m, { gueltig_ab: '2026-01-01', vertragsart: 'fuehrung', wochenstunden: 42, zeitkonto_grenze: 42 });
+  assert.equal(await grenze(v), '42.00', 'Grenze = Vertragsstunden ist erlaubt');
+  // Ändern auf weniger als die Vertragsstunden scheitert ebenso
+  await wirft(vertrag(m, { id: v, gueltig_ab: '2026-01-01', vertragsart: 'fuehrung', wochenstunden: 42, zeitkonto_grenze: 41 }),
+    'GRENZE_UNTER_VERTRAG');
+  assert.equal(await grenze(v), '42.00');
+  // Ohne Angabe: 42, bei mehr Vertragsstunden die Vertragsstunden
+  const w = await vertrag(m, { gueltig_ab: '2026-02-01', vertragsart: 'fuehrung', wochenstunden: 45 });
+  assert.equal(await grenze(w), '45.00');
+  // Andere Vertragsarten nutzen die Grenze nicht und prüfen sie nicht
+  const x = await vertrag(m, { gueltig_ab: '2026-03-01', vertragsart: 'teilzeit', wochenstunden: 30, zeitkonto_grenze: 20 });
+  assert.equal(await grenze(x), '20.00');
+});
+
 test('Kompetenz setzen/entfernen, Pause ist nicht wählbar: BEREICH_NICHT_GEFUNDEN', async () => {
   const m = await neuerMitarbeiter('Kompetent, Karl');
   const b = await bereiche();
