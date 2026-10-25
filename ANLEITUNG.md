@@ -72,11 +72,14 @@ Danach die Seite im Browser neu laden (Strg+F5), damit die neuen Dateien kommen.
    Ab diesem Tag gibt es IST, offene Tage und Wochenabschlüsse; davor nur den Plan.
    Wer früher oder später anfangen will, ändert das Datum **vor dem ersten
    „Woche buchen“**. Nach dem ersten Abschluss ist das Feld gesperrt.
+   Achtung beim Vorverlegen: Jeder vergangene Tag ab dem neuen Datum gilt dann als
+   „offen“; diese Wochen müssen alle der Reihe nach bestätigt und gebucht werden.
 2. **Startsalden eintragen.** Den Stand des Zeitkontos aus der bisherigen
    Zeiterfassung (tegut) je Mitarbeiter im Reiter Zeitkonto eintragen: Namen
    anklicken → Journal → „Startsaldo“. Als Datum den **Sonntag vor der Startwoche**
    nehmen (ist die Startwoche angezeigt, ist das Feld so vorbelegt; ein früheres
-   Datum geht auch, eines in der Startwoche nicht). Dann steht der Startsaldo in der
+   Datum geht auch; ein Datum in der Startwoche wird zwar gebucht, erscheint dann
+   aber nicht als „Saldo Vorwoche“). Dann steht der Startsaldo in der
    Startwoche als „Saldo Vorwoche“. Das geht nur als erste
    Buchung eines Mitarbeiters, also **vor dem ersten Abschluss**. Danach geht nur
    noch „Korrektur von Hand“.
