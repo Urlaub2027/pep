@@ -31,6 +31,9 @@ Ziele:
 - Hilfe in der Anwendung **[dtn, 25.10.2026]**: ein „?“-Knopf je Seite öffnet eine kurze Erklärung (Wozu, So geht's,
   Gut zu wissen), Texte aus der ANLEITUNG verdichtet, einmaliger Tipp beim ersten Besuch.
 
+- Betrieb **[dtn, 25.10.2026]**: ein Weckruf (GitHub-Workflow alle zwei Tage) verhindert das Pausieren des
+  Free-Projekts; eine Sicherungsdatei aller Filialdaten lässt sich herunterladen und in eine leere Filiale einspielen.
+
 Nicht-Ziele (spätere Stufen): Bedarfsplanung Kasse/Lieferzeiten, halbautomatischer Vorschlag, Mitarbeiter-App,
 mehrere Filialen, Umwandlung von Zeitzuschlag in Spätzuschlag (Netto-Regel offen **[Filialleiter]**), Lohnexport,
 Buchung beim Aushändigen eines Ausdrucks (Handoff-Idee, zu unklar).

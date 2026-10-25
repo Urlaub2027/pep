@@ -227,3 +227,42 @@ Verhalten: runder Knopf „?“ (mit `aria-label="Hilfe zu dieser Seite"`) recht
 - [ ] **Step 2–3:** FAIL, umsetzen (Texte gegen den tatsächlichen Stand aller Reiter prüfen, auch IST und Zeitkonto aus Task 5–8).
 - [ ] **Step 4:** Browser-Szenario: auf jedem Reiter „?“ öffnen, Überschrift passt zur Ansicht, Escape schließt; Tablet einmal; Tipp erscheint nur beim ersten Besuch. Fotos der Leiste am PC und Tablet ansehen. `npm test` und Browser-Test grün.
 - [ ] **Step 5: Commit** `Hilfe-Knopf mit Erklärung je Seite`.
+
+---
+
+**Reihenfolge der Ausführung:** 1–9, dann 11, 12, zuletzt 10 (die Hilfetexte beschreiben auch Sicherung und Weckruf).
+
+### Task 11: Weckruf gegen das Pausieren
+
+Auftrag dtn 25.10.2026. Supabase pausiert Free-Projekte nach etwa 7 Tagen mit wenig Aktivität; ein paar Anfragen am Tag genügen (Supabase-Doku „Project Pausing“). Ein Projekt deckt PEP und Urlaubstool ab.
+
+**Files:** Modify `supabase/schema.sql` (`public.pep_lebenszeichen() → boolean`, `select true`, `security definer`, `set search_path = ''`, **als einzige PEP-Funktion** auch für `anon` ausführbar), `tests/rechte.test.mjs` (Ausnahme nur für `pep_lebenszeichen` in der anon-Prüfung, mit Kommentar); Create `.github/workflows/weckruf.yml`; Modify `README.md`, `ANLEITUNG.md`.
+
+- [ ] **Step 1: Failing test:** `pep_lebenszeichen()` als `anon` liefert `true`; der Funktionsquelltext liest keine Tabelle; jede andere `public.pep_*`-Funktion bleibt für `anon` gesperrt.
+- [ ] **Step 2–3:** FAIL, umsetzen.
+- [ ] **Step 4: Workflow** `.github/workflows/weckruf.yml`: Auslöser `schedule` mit `cron: '17 5 */2 * *'` und `workflow_dispatch`; ein Schritt liest Supabase-URL und öffentlichen Schlüssel aus `docs/config.js` (eine Quelle, kein Secret nötig, der Schlüssel ist ohnehin öffentlich) und ruft `POST <url>/rest/v1/rpc/pep_lebenszeichen` mit `apikey`-Header und Body `{}` per `curl -fsS` auf; ein Fehler lässt den Lauf scheitern (GitHub schickt dann eine E-Mail). Lokale Probe gegen den Browser-Testserver; im Bericht Befehl und Ausgabe nennen. Den Workflow nicht selbst auf GitHub auslösen.
+- [ ] **Step 5: Doku.** README und ANLEITUNG, Abschnitt „Pausieren verhindern und Projekt wiederherstellen“: Weckruf alle zwei Tage; GitHub schaltet zeitgesteuerte Workflows nach 60 Tagen ohne Repo-Aktivität ab, dann im Reiter Actions wieder einschalten; pausiert das Projekt doch: Supabase-Dashboard, Projekt, „Restore project“, Daten bleiben, innerhalb von 90 Tagen; `pep_lebenszeichen` muss vor dem ersten Lauf in Supabase eingespielt sein.
+- [ ] **Step 6:** `npm test` grün. **Commit** `Weckruf: Lebenszeichen-Funktion und GitHub-Workflow gegen das Pausieren`.
+
+---
+
+### Task 12: Sicherung herunterladen und einspielen
+
+Auftrag dtn 25.10.2026: Der Free-Tarif hat keine Sicherungen; die PEP bekommt eine eigene Sicherungsdatei und ein Einspielen.
+
+**Files:** Modify `supabase/schema.sql` (Abschnitt „Sicherung“), `tests/rechte.test.mjs`, `docs/hilfe.js`, `docs/einstellungen.js`, `docs/start.js`, `ANLEITUNG.md`, `README.md`; Create `docs/sicherung.js`, `tests/sicherung.test.mjs`; Browser-Szenario in `tests/browser/szenarien.mjs`.
+
+**Interfaces:**
+- Tabelle `pep.sicherungen` (id, filiale_id, erstellt_am, erstellt_von, anzahl jsonb).
+- `public.pep_sicherung() → jsonb` (nur Leitung; schreibt einen Eintrag in `pep.sicherungen` und ins Protokoll): `{ format: 'pep-sicherung', version: 1, erstellt_am, filiale: {name, nummer, bundesland}, benutzer: [{benutzername, rolle}], tabellen: { <tabelle>: [Zeilen] }, anzahl: { <tabelle>: n }, pruefsumme }` mit allen filialbezogenen Tabellen des Schemas `pep` (ohne `pep.sicherungen`); `pruefsumme` = `md5` über den Text von `tabellen` in fester Schlüsselreihenfolge. Ein Test stellt sicher, dass jede Tabelle des Schemas `pep` in der Sicherung vorkommt oder ausdrücklich ausgenommen ist, damit neue Tabellen späterer Stufen auffallen.
+- `public.pep_sicherung_pruefen(p_daten jsonb) → jsonb` (nur Leitung, schreibt nichts): `{ gueltig, filiale, anzahl, ziel_leer }`; Fehler `SICHERUNG_UNGUELTIG` (Format, Version, Prüfsumme).
+- `public.pep_sicherung_einspielen(p_daten jsonb, p_bestaetigung text) → jsonb` (nur Leitung): nur wenn die eigene Filiale leer ist (keine Mitarbeiter, Abwesenheiten, Blöcke, Buchungen; die Grundausstattung zählt nicht), sonst `FILIALE_NICHT_LEER`; `p_bestaetigung` muss der Filialnummer aus der Datei entsprechen, sonst `BESTAETIGUNG_FALSCH`. Ersetzt die Grundausstattung (Bereiche, Codes, Rahmen, Einstellungen) durch die der Datei, vergibt neue Ids und schlüsselt alle Verweise um, übernimmt Benutzer nur, wenn der Benutzername im Urlaubstool existiert; Verweise auf Urlaubstool-Umfragen und -Teilnehmer, die es nicht gibt, werden ausgelassen und gezählt. Das Journal wird mit seinen Werten übernommen; die Nachbuch-Trigger aus Task 4 laufen dabei nicht (Weiche über `set_config('pep.einspielen', '1', true)`). Ergebnis `{ eingespielt: {tabelle: n}, ausgelassen: {…} }`; ein Protokolleintrag `sicherung_eingespielt`.
+- `pep_startseite()` bekommt `letzte_sicherung` (Datum oder null).
+
+Oberfläche: Einstellungen, Abschnitt „Sicherung“: Knopf „Sicherung herunterladen“ (Datei `PEP-Sicherung-<nummer>-<JJJJ-MM-TT>.json`, Blob und `a.download` wie die Excel-Datei), Hinweis „Die Datei enthält Personaldaten. Auf dem PC oder USB-Stick aufbewahren, nicht per E-Mail verschicken.“; „Sicherung einspielen“: Datei wählen, Vorschau über `pep_sicherung_pruefen` (Filiale, Anzahlen, ob das Ziel leer ist), Filialnummer zur Bestätigung eintippen, einspielen. Startseite: Hinweis „Letzte Sicherung vor n Tagen“ bzw. „Noch keine Sicherung“, gelb ab 8 Tagen.
+
+- [ ] **Step 1: Failing tests** `tests/sicherung.test.mjs`: Rundlauf (volle Filiale mit Stammdaten, Plan, Abwesenheiten, IST, abgeschlossenen Wochen und Journal sichern, in einer zweiten Datenbank mit frisch angelegter Filiale einspielen, erneut sichern: inhaltlich gleich bis auf Ids, Zeitstempel und Prüfsumme; Saldo je Mitarbeiter gleich); manipulierte Datei → `SICHERUNG_UNGUELTIG`; nicht leere Filiale → `FILIALE_NICHT_LEER` und nichts geändert; falsche Bestätigung → `BESTAETIGUNG_FALSCH`; beim Einspielen entsteht keine automatische Korrektur; Stellvertretung → `NUR_LEITUNG`; Vollständigkeit aller `pep`-Tabellen; Größe der Sicherung eines simulierten Jahres mit 18 Mitarbeitern messen und im Bericht nennen.
+- [ ] **Step 2–3:** FAIL, umsetzen.
+- [ ] **Step 4:** Browser-Szenario: Sicherung herunterladen (Blob abgreifen, gültiges JSON mit Prüfsumme), auf einer zweiten, leeren Filiale des Testservers einspielen, Mitarbeiterliste erscheint. `npm test` und Browser-Test grün.
+- [ ] **Step 5: Doku:** ANLEITUNG „Sicherung“: wöchentlich herunterladen, wo aufbewahren, Einspielen nach Datenverlust in ein neues Projekt (Schema einspielen, `pep.start_leitung`, Filiale anlegen, Sicherung einspielen). Hinweis: Das Urlaubstool hat seine eigene Sicherung je Umfrage.
+- [ ] **Step 6: Commit** `Sicherung: Datei herunterladen und in leere Filiale einspielen`.
