@@ -266,3 +266,29 @@ Oberfläche: Einstellungen, Abschnitt „Sicherung“: Knopf „Sicherung herunt
 - [ ] **Step 4:** Browser-Szenario: Sicherung herunterladen (Blob abgreifen, gültiges JSON mit Prüfsumme), auf einer zweiten, leeren Filiale des Testservers einspielen, Mitarbeiterliste erscheint. `npm test` und Browser-Test grün.
 - [ ] **Step 5: Doku:** ANLEITUNG „Sicherung“: wöchentlich herunterladen, wo aufbewahren, Einspielen nach Datenverlust in ein neues Projekt (Schema einspielen, `pep.start_leitung`, Filiale anlegen, Sicherung einspielen). Hinweis: Das Urlaubstool hat seine eigene Sicherung je Umfrage.
 - [ ] **Step 6: Commit** `Sicherung: Datei herunterladen und in leere Filiale einspielen`.
+
+---
+
+**Nachtrag 25.10.2026:** Reihenfolge jetzt 1–9, 11, 12, 13, zuletzt 10.
+
+### Task 13: Urlaubstool-Umfragen aller Leitungen und bessere Teilnehmer-Zuordnung
+
+Auftrag dtn 25.10.2026: Den Merkposten vom 24.10. einbauen — jede Leitung der Filiale darf auch die Urlaubstool-Umfragen der anderen Leitungen in der PEP einschalten. Dazu die Frage einer Leitung: „Ich kann meine Umfrage in der PEP auswählen, aber wie verbinde ich die Urlaube mit den Mitarbeitern?“ Die Zuordnung gibt es seit Stufe 0 (Einstellungen → Urlaubstool → „Teilnehmer zuordnen“), der Namensvorschlag greift aber nur bei exakt gleicher Schreibweise; PEP-Namen sind „Nachname, Vorname“, im Urlaubstool tragen sich Leute meist als „Vorname Nachname“ ein.
+
+**Files:** Modify `supabase/schema.sql` (Abschnitt „Urlaubstool-Anbindung: Funktionen“, `pep.umfrage_erlaubt` aus Task 12), `docs/einstellungen.js`, `docs/style.css` (falls nötig), `tests/urlaub.test.mjs` (oder die bestehende Testdatei der Urlaubstool-Anbindung), `tests/sicherung.test.mjs` (eine Ergänzung), `ANLEITUNG.md`, Browser-Szenario in `tests/browser/szenarien.mjs`.
+
+**Verhalten:**
+
+1. **Sichtbare Umfragen** (`public.pep_urlaub_umfragen`): Umfragen mit Urlaubswochen-Frage, deren Organisator ein PEP-Benutzer **dieser Filiale** ist (Rolle leitung oder stellvertretung, Tabelle `pep.benutzer`), dazu wie bisher die eigenen und die schon eingeschalteten. Neues Feld je Umfrage `organisator` (Anzeigename aus `urlaub.organisatoren`) und `eigene` (boolean).
+2. **Einschalten** (`public.pep_urlaub_umfrage_schalten`): jede Leitung der Filiale darf jede in 1. sichtbare Umfrage einschalten (bisher nur der Eigentümer). Ausschalten unverändert. Die Erlaubnis-Regel steht in **einer** internen Funktion `pep.umfrage_erlaubt(filiale_id, umfrage_id)`, die auch die Sicherung (Task 12) nutzt — dort gilt sie damit ebenfalls für Umfragen anderer Leitungen der Filiale. Eine Umfrage kann weiterhin nur in **einer** Filiale eingeschaltet sein (Primärschlüssel umfrage_id).
+3. **Zuordnungsvorschlag** (`public.pep_urlaub_zuordnung`, Feld `vorschlag_id`): Namen normalisieren (Kleinschreibung, `urlaub.trim_alles`, Kommas und mehrfache Leerzeichen entfernen, Bindestriche als Trenner) und als **Menge von Namensteilen** vergleichen. Vorschlag, wenn genau ein aktiver Mitarbeiter der Filiale (a) dieselbe Menge hat, sonst (b) genau einer, dessen Menge alle Teile des Teilnehmernamens enthält (Teilmenge, mindestens ein Teil mit ≥ 2 Zeichen). Mehrdeutig → kein Vorschlag. Die Regel steht in einer internen Funktion (z. B. `pep.namensteile(text) → text[]`), nicht kopiert. Schon zugeordnete Mitarbeiter werden nicht ausgeschlossen (zwei Umfragen dürfen auf denselben Mitarbeiter zeigen).
+4. **Oberfläche Einstellungen → Urlaubstool:**
+   - Umfragezeile zeigt „von <Organisator>“ (bei eigenen „eigene Umfrage“).
+   - Abschnitt „Teilnehmer zuordnen“: Kopfzeile „n von m zugeordnet“; nicht zugeordnete Zeilen zuerst, dann zugeordnete; „Vorschläge übernehmen (k)“ wie bisher.
+   - Ist keine Umfrage eingeschaltet: Hinweis „Zuerst oben eine Umfrage einschalten – dann erscheinen hier ihre Teilnehmer.“
+   - Kurze Erklärung über der Liste: „Jeder Teilnehmer der Umfrage wird einem PEP-Mitarbeiter zugeordnet; erst dann erscheinen seine Wünsche unter Abwesenheiten zum Freigeben.“
+5. **Doku** ANLEITUNG: Abschnitt Urlaubstool aktualisieren (alle Leitungen der Filiale, Schritt-für-Schritt Zuordnung, Vorschlagsregel in einem Satz). Die bisherige Aussage „Die Umfrage muss der PEP-Leitung der Filiale selbst gehören“ ersetzen.
+
+- [ ] **Step 1: Failing tests:** Umfrage einer anderen Leitung derselben Filiale sichtbar und einschaltbar; Umfrage eines Organisators ohne PEP-Benutzer dieser Filiale (oder einer fremden Filiale) unsichtbar und `UMFRAGE_NICHT_GEFUNDEN`; Stellvertretung darf nicht schalten (`NUR_LEITUNG`); Vorschlag: „Vorname Nachname“ ↔ „Nachname, Vorname“ → Vorschlag; nur Vorname, eindeutig → Vorschlag; nur Vorname, zweimal vorhanden → kein Vorschlag; Doppelname mit Bindestrich; inaktive Mitarbeiter nie; Sicherung: Umfrage einer anderen Leitung der Filiale wird beim Einspielen verknüpft.
+- [ ] **Step 2–4:** FAIL, umsetzen, Foto Einstellungen → Urlaubstool, Browser-Szenario (Umfrage einer zweiten Leitung einschalten, Vorschlag übernehmen, Kopfzeile zählt), `npm test` und Browser-Test grün.
+- [ ] **Step 5: Commit** `Urlaubstool: Umfragen aller Leitungen, Zuordnung unabhängig von der Namensreihenfolge`.
