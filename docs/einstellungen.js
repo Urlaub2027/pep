@@ -1,5 +1,6 @@
 // Reiter „Einstellungen“ (nur Filialleitung): Zeiten, abweichende Tage, Bereiche, Codes, Regelparameter,
 // Schulferien, Urlaubstool, Benutzer, Sicherung. Jede Zeile speichert für sich und lädt danach ihren Abschnitt neu.
+// Die Abschnitte sind auf fünf Unterreiter verteilt (TEILE); alle bleiben im DOM, nur der gewählte Teil ist sichtbar.
 import {
   $, meldung, fehlerText, element, datumDE, WOCHENTAGE,
   zahl, uhrzeit, feld, eingabe as eingabeBasis, auswahlfeld as auswahlBasis,
@@ -49,6 +50,19 @@ let mitarbeiter = [];
 const boxen = {}; // Abschnittsname → Container
 let zurSicherung = false; // nach dem Laden zum Abschnitt „Sicherung“ springen (Hinweis auf der Startseite)
 
+// Unterreiter: Schlüssel, Beschriftung, Abschnitte (Namen aus ZEICHNER). Der gewählte Teil wird im Browser gemerkt.
+const TEILE = [
+  ['zeiten', 'Filiale & Zeiten', ['rahmen', 'abweichungen', 'schulferien']],
+  ['bereiche', 'Bereiche & Codes', ['bereiche', 'codes']],
+  ['regeln', 'Regeln & Zeitkonto', ['parameter', 'ist']],
+  ['urlaub', 'Urlaubstool', ['urlaub']],
+  ['benutzer', 'Benutzer & Sicherung', ['benutzer', 'sicherung']],
+];
+const TEIL_SCHLUESSEL = 'pep-einstellungen-teil';
+let teil = (() => { try { return localStorage.getItem(TEIL_SCHLUESSEL); } catch { return null; } })();
+if (!TEILE.some(([k]) => k === teil)) teil = TEILE[0][0];
+let teilLeiste = null;
+
 const darfSchreiben = () => ich?.rolle === 'leitung';
 const eingabe = (typ, wert, attrs = {}) => eingabeBasis(typ, wert, { disabled: !darfSchreiben(), ...attrs });
 const auswahlfeld = (optionen, wert) => auswahlBasis(optionen, wert, { disabled: !darfSchreiben() });
@@ -78,8 +92,15 @@ const speichereUrlaub = (aktion) => fuehreAus(aktion, async () => { await ladeUr
 async function zeigen() {
   meldung('');
   if (!boxen.rahmen) {
-    for (const name of Object.keys(ZEICHNER)) boxen[name] = element('div', {});
-    $('ansicht-einstellungen').replaceChildren(...Object.values(boxen));
+    for (const [schluessel, , namen] of TEILE) {
+      for (const name of namen) boxen[name] = element('div', { 'data-abschnitt': name, 'data-teil': schluessel });
+    }
+    teilLeiste = element('div', { class: 'chip-gruppe einst-teile', role: 'group', 'aria-label': 'Bereich der Einstellungen' },
+      ...TEILE.map(([schluessel, text]) => element('button', {
+        type: 'button', class: 'chip', 'data-teil': schluessel, onclick: () => waehleTeil(schluessel),
+      }, text)));
+    $('ansicht-einstellungen').replaceChildren(teilLeiste, ...TEILE.flatMap(([, , namen]) => namen.map((n) => boxen[n])));
+    zeigeTeil();
   }
   try {
     await Promise.all([ladeDaten(), ladeUrlaub(), aufruf('pep_feiertage', { p_jahr: jahr }).then((f) => { feiertage = f; })]);
@@ -88,8 +109,20 @@ async function zeigen() {
     return;
   }
   Object.values(ZEICHNER).forEach((zeichne) => zeichne());
-  if (zurSicherung) boxen.sicherung.scrollIntoView({ block: 'start' });
+  if (zurSicherung) { waehleTeil('benutzer'); boxen.sicherung.scrollIntoView({ block: 'start' }); }
   zurSicherung = false;
+}
+
+// Zeigt nur die Abschnitte des gewählten Unterreiters; der Knopf des Teils ist gedrückt.
+function zeigeTeil() {
+  for (const k of teilLeiste.querySelectorAll('[data-teil]')) k.setAttribute('aria-pressed', String(k.dataset.teil === teil));
+  for (const box of Object.values(boxen)) box.hidden = box.dataset.teil !== teil;
+}
+
+function waehleTeil(schluessel) {
+  teil = schluessel;
+  try { localStorage.setItem(TEIL_SCHLUESSEL, teil); } catch { /* nur für diese Sitzung */ }
+  if (teilLeiste) zeigeTeil();
 }
 
 // Reiter öffnen und zum Abschnitt „Sicherung“ springen (Startseite).
@@ -422,7 +455,7 @@ function zeichneSicherungAbschnitt() {
   });
 }
 
-// Reihenfolge = Reihenfolge auf der Seite
+// Alle Abschnitte; Reihenfolge und Zuordnung zu den Unterreitern stehen in TEILE.
 const ZEICHNER = {
   rahmen: zeichneRahmen, abweichungen: zeichneAbweichungen, bereiche: zeichneBereiche, codes: zeichneCodes,
   parameter: zeichneParameter, ist: zeichneIst, schulferien: zeichneSchulferien, urlaub: zeichneUrlaub, benutzer: zeichneBenutzer,

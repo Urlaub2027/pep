@@ -291,6 +291,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .chip-gruppe { display: flex; flex-wrap: wrap; gap: 6px; }
 
+/* Unterreiter der Einstellungen (über den Abschnitten) */
+.einst-teile { margin-bottom: var(--a3); }
+
 .farbfeld {
   display: inline-block;
   flex: none;
