@@ -132,6 +132,17 @@ export function istKnopfLeiste({ woche, datum, erweitert, gesperrt, darfBestaeti
   ];
 }
 
+// Rückfrage vor „Tag bestätigen“ (nur der Sammelknopf; ✓ je Zeile fragt nicht). weiter() läuft nach „Bestätigen“.
+export function tagBestaetigenDialog({ offen, datum, heute, weiter }) {
+  const d = dialog('Tag bestätigen', [
+    element('p', {}, `${tagKurz(datum)}: ${anzahl(offen, 'offene Zeile', 'offene Zeilen')} bestätigen? `
+      + 'Zeilen ohne IST übernehmen den Plan-Vorschlag. Das lässt sich nicht zurücknehmen.'),
+    datum === heute ? element('p', { class: 'hinweis-gelb' }, 'Heute wird noch gearbeitet – erst nach Feierabend bestätigen.') : null,
+  ], [{ text: 'Bestätigen', aktion: () => {}, danach: weiter }]);
+  d.querySelector('.dialog-knoepfe .knopf:last-child')?.focus(); // Enter soll nicht versehentlich alles bestätigen
+  return d;
+}
+
 // Statt des Rasters an einem künftigen Tag: Hinweis und Sprung in den Plan.
 export function zukunftKarte(t, zumPlan) {
   return element('div', { class: 'karte ep-geschlossen' },

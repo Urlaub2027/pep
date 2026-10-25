@@ -11,7 +11,7 @@ import {
 } from './plan-raster.js';
 import {
   istSpalten, istZellKlassen, zeilenStatus, istAbweichung, statusZelle, abweichungsZelle, istTagBox, offeneBox,
-  tagesReiterText, grundDialog, istKnopfLeiste, zukunftKarte, GRUND_ABGESCHLOSSEN,
+  tagesReiterText, grundDialog, istKnopfLeiste, zukunftKarte, tagBestaetigenDialog, GRUND_ABGESCHLOSSEN,
 } from './ist-ansicht.js';
 import { kopierenDialog, vorlagenDialog, krankDialog, ersatzDialog, eckdatenDialog } from './plan-dialoge.js';
 import { druckAuswahlPlan } from './druck.js';
@@ -284,7 +284,11 @@ function zeichneKopf() {
 // IST-Knöpfe: Zeitrahmen 04:00–24:00 ein/aus und „Tag bestätigen“ (alle offenen Zeilen des Tages).
 const istKnoepfe = () => istKnopfLeiste({
   woche, datum, erweitert, gesperrt: bestaetigtGerade, darfBestaetigen: darfZeichnen() && tag()?.ist_erlaubt,
-  umschalten: () => { erweitert = !erweitert; zeichneAlles(); }, bestaetigen: () => bestaetige(null),
+  umschalten: () => { erweitert = !erweitert; zeichneAlles(); },
+  bestaetigen: () => tagBestaetigenDialog({
+    offen: (woche.status ?? []).filter((s) => s.datum === datum && !s.bestaetigt).length,
+    datum, heute: woche.heute, weiter: () => bestaetige(null),
+  }),
 });
 
 // ---------------------------------------------------------------- Raster
@@ -451,7 +455,7 @@ function zeichneRaster() {
     stunden.map((s) => element('th', {
       colspan: s.breite, class: ['ep-stunde', oeffnung && s.von >= oeffnung.von && s.von < oeffnung.bis ? 'offen' : ''].filter(Boolean).join(' '),
     }, s.von)),
-    ist ? [element('th', { class: 'ist-status' }, 'Status'), element('th', { class: 'zahl', title: 'IST − Plan in Stunden' }, 'Abw.')]
+    ist ? [element('th', { class: 'ist-status' }, 'Status'), element('th', { class: 'zahl ist-abw', title: 'IST − Plan in Stunden' }, 'Abw.')]
       : element('th', { class: 'ep-kom' }, 'Kommentar'));
   const tabelle = element('table', { class: `raster ep-tabelle${ist ? ' ist-tabelle' : ''}` },
     element('colgroup', {}, element('col', { class: 'ep-name-spalte' }), element('col', { class: 'ep-std-spalte' }),
@@ -574,19 +578,32 @@ async function beiPointerAuf(e) {
   if (!zug || e.pointerId !== zug.pointerId) return;
   zug.ende = indexBei(e.clientX);
   const { mitarbeiter, start, ende } = zug;
-  raeumeAuf();
   const { von, bis } = strich(rahmen.sp, start, ende);
   const s = { mitarbeiter, datum, von, bis, ist: istAnsicht(), grund: null };
   const bereichId = pinsel === 'radieren' ? null : Number(pinsel);
   const zeiger = { x: e.clientX, y: e.clientY };
-  if (s.ist) { // bestätigte Zeile: erst der Grund; Abbrechen = kein Strich
-    s.grund = await grundFuer(mitarbeiter, s.datum);
-    if (s.grund === undefined) return;
-  }
   // Zeile beim Loslassen: Schnappschuss, falls bis zum Senden keine Antwort der Zeile kommt (voriger Strich abgelehnt).
-  // Bis dahin kann die Seite schon eine andere Woche zeigen, dann fehlt die Zeile in `woche`. Im IST ist das auf einer
-  // offenen Zeile der angezeigte Vorschlag (Rückgängig setzt ihn wieder, nicht []: [] hieße „ausdrücklich leer“).
+  // Synchron, vor jedem await (auch vor dem Grund-Dialog): danach kann schon eine andere Woche oder der Plan geladen
+  // sein. Im IST ist das auf einer offenen Zeile der angezeigte Vorschlag (Rückgängig setzt ihn wieder, nicht []:
+  // [] hieße „ausdrücklich leer“).
   const vorherBeimZiehen = gespeicherteZeile(mitarbeiter, s.datum);
+  // IST: die Markierung bleibt stehen, bis ein Grund-Dialog geschlossen ist.
+  const markierte = s.ist ? zug.zellen.filter((td) => td.classList.contains('markiert')) : [];
+  if (s.ist) zug.zellen = [];
+  raeumeAuf();
+  if (s.ist) { // bestätigte Zeile: erst der Grund; Abbrechen = kein Strich
+    try {
+      s.grund = await grundFuer(mitarbeiter, s.datum);
+    } finally {
+      markierte.forEach((td) => td.classList.remove('markiert'));
+    }
+    if (s.grund === undefined) return;
+    // Während des Dialogs gewechselt (Plan, andere Woche): der Strich gehört zu einem Raster, das es nicht mehr gibt.
+    if (!inWoche(s.datum, true)) {
+      meldung('Der Strich wurde nicht gespeichert: Woche oder Modus haben inzwischen gewechselt.');
+      return;
+    }
+  }
   wartend.push(s);
   zeigeWartende();
   await einreihen(zeilenSchluessel(s.ist, mitarbeiter, s.datum), () => sendeStrich(s, bereichId, zeiger, vorherBeimZiehen));
@@ -697,17 +714,29 @@ async function rueckgaengig() {
   const eintrag = stapel.holen();
   rahmen.rueckgaengig.disabled = stapel.leer();
   if (!eintrag) return;
-  // IST: Rückgängig schickt denselben Grund wie der Strich. Wurde die Zeile erst danach bestätigt, fehlt er: fragen.
+  // Misslingt Rückgängig (Fehler oder abgebrochener Grund), bleibt der Eintrag auf dem Stapel.
+  const zurueck = () => { stapel.merken(eintrag); rahmen.rueckgaengig.disabled = stapel.leer(); };
+  // IST: Rückgängig schickt denselben Grund wie der Strich. Wurde die Zeile erst danach bestätigt, fehlt er: fragen –
+  // vorab, wenn die Woche geladen ist; sonst (Plan oder andere Woche geladen) erst, wenn der Server GRUND_FEHLT meldet.
   let grund = eintrag.grund ?? null;
   if (eintrag.ist && grund == null && inWoche(eintrag.datum, true)) {
     grund = await grundFuer(eintrag.mitarbeiterId, eintrag.datum);
-    if (grund === undefined) { stapel.merken(eintrag); rahmen.rueckgaengig.disabled = stapel.leer(); return; }
+    if (grund === undefined) { zurueck(); return; }
   }
   const schluessel = zeilenSchluessel(eintrag.ist, eintrag.mitarbeiterId, eintrag.datum);
   await einreihen(schluessel, async () => {
     const parameter = { p_mitarbeiter_id: eintrag.mitarbeiterId, p_datum: eintrag.datum, p_bloecke: eintrag.bloecke };
-    const antwort = eintrag.ist ? await aufruf('pep_ist_zeile_setzen', { ...parameter, p_grund: grund })
-      : await aufruf('pep_plan_zeile_setzen', parameter);
+    const setzen = () => (eintrag.ist ? aufruf('pep_ist_zeile_setzen', { ...parameter, p_grund: grund })
+      : aufruf('pep_plan_zeile_setzen', parameter));
+    let antwort;
+    try {
+      antwort = await setzen();
+    } catch (fehler) {
+      if (!(eintrag.ist && grund == null && fehler.message === 'GRUND_FEHLT')) { zurueck(); throw fehler; }
+      grund = await grundDialog({ name: nameVon(eintrag.mitarbeiterId) || 'Mitarbeiter', datum: eintrag.datum, hinweis: abschlussHinweis(eintrag.datum) });
+      if (grund == null) { zurueck(); return; }
+      try { antwort = await setzen(); } catch (f) { zurueck(); throw f; }
+    }
     if (!antwort) return;
     stand.set(schluessel, zeileAus(antwort.bloecke ?? [], eintrag.mitarbeiterId, eintrag.datum));
     if (inWoche(eintrag.datum, Boolean(eintrag.ist))) {

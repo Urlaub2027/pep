@@ -682,6 +682,11 @@ th { background: var(--hell); font-weight: 600; }
 .ist-ok-knopf:hover { color: #fff; background: var(--ok); border-color: var(--ok); }
 .ep-tabelle td.ist-abw { padding: 0 var(--a1); font-weight: 600; }
 .ep-tabelle td.ist-abw.plus { color: var(--ok); }
+/* Status, ✓ und Abw. kleben rechts (wie der Name links), damit ✓ am Tablet ohne Querscrollen erreichbar bleibt */
+.ist-tabelle .ist-status, .ist-tabelle .ist-abw { position: sticky; z-index: 2; background: var(--flaeche); }
+.ist-tabelle .ist-status { right: 52px; box-shadow: inset 1px 0 0 var(--linie-stark); }
+.ist-tabelle .ist-abw { right: 0; }
+.ist-tabelle thead th.ist-status, .ist-tabelle thead th.ist-abw { z-index: 4; background: var(--hell); }
 .ep-modus .chip { min-width: 52px; justify-content: center; }
 .ep-tag.ist-zukunft { color: var(--text-2); border-style: dashed; }
 .ist-offen-tag span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
