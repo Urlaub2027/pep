@@ -1394,7 +1394,7 @@
    "id": 5,
    "art": "bereich",
    "name": "MoPro",
-   "farbe": "#F5F5F5",
+   "farbe": "#F7C6DA",
    "kuerzel": "MO",
    "bedeutung": null,
    "kompetenz_noetig": false
@@ -1955,6 +1955,7 @@
   "vorgabe_quelle": "planumsatz",
   "stundenleistung": 200,
   "vertragsstunden": 426.5,
+  "stundenleistung_eigen": null,
   "stundenvorgabe_manuell": null
  },
  "kommentare": [
