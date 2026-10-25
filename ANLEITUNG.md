@@ -3,6 +3,8 @@
 Für die Filialleitung und für dtn (Einrichtung). PEP läuft als statische Seite
 (GitHub Pages) auf der Supabase-Datenbank des Urlaubstools.
 
+Auf jeder Seite erklärt der runde „?“-Knopf oben rechts die Seite.
+
 - **Stufe 0** (Grundgerüst): Mitarbeiter, Einstellungen, Abwesenheitskalender.
 - **Stufe 1:** Einsatzplan mit Regelprüfung, Kopieren und Vorlagen,
   Krankmeldung mit Ersatzsuche, Eckdaten, Vorausplanung, Ausdrucke und Startseite.

@@ -1,23 +1,30 @@
 // PEP: Anmeldung, Navigation, Filiale anlegen.
 import { $, meldung, fehlerText } from './hilfe.js';
 import * as sitzung from './sitzung.js';
+import { richteHilfeEin, ansichtGezeigt } from './hilfe-leiste.js';
 
 const ANSICHTEN = ['login', 'filiale', 'start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'zeitkonto', 'mitarbeiter', 'einstellungen'];
 
 export let ich = null;
+let aktiveAnsicht = null;
 // Reiter-Module tragen sich beim Import ein: reiter.<name> = { zeigen() }.
 // Sie werden in main.js importiert, nicht hier (sonst Importzyklus).
 export const reiter = {};
 
 export function zeigeAnsicht(name) {
+  aktiveAnsicht = name;
   for (const a of ANSICHTEN) $(`ansicht-${a}`).hidden = a !== name;
   for (const k of document.querySelectorAll('[data-ziel]')) {
     k.classList.toggle('aktiv', k.dataset.ziel === name);
   }
   meldung('');
   window.scrollTo(0, 0);
+  ansichtGezeigt(name); // Hilfe-Tipp beim ersten Besuch
   (async () => reiter[name]?.zeigen?.())().catch(fehlerAnzeigen); // auch synchrone Fehler landen in der Meldung
 }
+
+// Schlüssel der Hilfetexte für die aktive Ansicht; ein Reiter kann ihn verfeinern (Einsatzplan im Modus IST).
+export const hilfeAnsicht = () => reiter[aktiveAnsicht]?.hilfe?.() ?? aktiveAnsicht;
 
 // Ruft eine pep_-Funktion auf. Abgelaufene Anmeldung oder fehlende Rechte → Login.
 export async function aufruf(funktion, parameter = {}) {
@@ -126,6 +133,7 @@ export function start() {
   $('login-form').addEventListener('submit', login);
   $('filiale-form').addEventListener('submit', filialeAnlegen);
   $('abmelden').addEventListener('click', () => abmelden());
+  richteHilfeEin($('hilfe-knopf'), hilfeAnsicht);
   for (const k of document.querySelectorAll('[data-ziel]')) {
     k.addEventListener('click', () => zeigeAnsicht(k.dataset.ziel));
   }

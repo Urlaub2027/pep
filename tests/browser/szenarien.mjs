@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url';
 import { starteServer, PASSWORT } from './server.mjs';
 import { starteChrome } from './cdp.mjs';
 import { HEUTE, TAGE, IST_AB, HEUTE_IST } from './daten.mjs';
+import { HILFE } from '../../docs/hilfe-texte.js';
 
 const FOTOS = fileURLToPath(new URL('./fotos/', import.meta.url)); // mit abschließendem Trenner
 rmSync(FOTOS, { recursive: true, force: true });
@@ -2252,6 +2253,100 @@ await szenario('Urlaubstool: Umfrage einer zweiten Leitung einschalten, Vorschl�
   gleich((await zeilenTitel())[0], 'Ohnetreffer, Zoe', 'der nicht zugeordnete steht oben');
   pruefe(!(await texte('[data-t="urlaubbox"] button')).some((t) => t.startsWith('Vorschläge übernehmen')), 'kein Knopf „Vorschläge übernehmen“ mehr');
   gleich((await meldungen()).toast, 'Gespeichert.', 'Toast');
+});
+
+// Hilfe (Task 10): „?“ auf jedem Reiter öffnet die Leiste mit den Texten der Ansicht; Escape und Klick daneben schließen,
+// der Fokus kehrt zum Knopf zurück; im Modus IST eigene Texte; am Tablet bildschirmfüllend; Tipp nur beim ersten Besuch.
+await szenario('Hilfe: „?“ auf jedem Reiter, Escape, Klick daneben, IST, Tablet, Tipp nur beim ersten Besuch', async () => {
+  const hilfeOffen = () => c.werte(() => {
+    const d = document.querySelector('dialog.hilfe-leiste[open]');
+    if (!d) return null;
+    return { ansicht: d.dataset.ansicht, titel: d.querySelector('h2')?.textContent,
+      abschnitte: [...d.querySelectorAll('h3')].map((h) => h.textContent), schritte: d.querySelectorAll('ol li').length,
+      wissen: d.querySelectorAll('ul li').length, knoepfe: [...d.querySelectorAll('button')].map((k) => k.textContent) };
+  });
+  const oeffne = async () => {
+    await c.klick('#hilfe-knopf');
+    return c.warteAuf(() => document.querySelector('dialog.hilfe-leiste[open] h2')?.textContent ?? null, { text: 'Hilfe-Leiste offen' });
+  };
+  const zu = () => c.warteAuf(() => !document.querySelector('dialog.hilfe-leiste'), { text: 'Hilfe-Leiste zu' });
+  const fokusAufKnopf = () => c.werte(() => document.activeElement?.id === 'hilfe-knopf');
+
+  // Tipp: Merker löschen und die Seite neu laden (anmelden), dann erscheint er je Ansicht genau einmal
+  await alsBenutzer('chef');
+  await c.werte(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('pep-hilfe-tipp-')) localStorage.removeItem(k); });
+  await anmelden('chef');
+  gleich(await text('.hilfe-tipp'), 'Tipp: Das ? erklärt diese Seite', 'Tipp beim ersten Besuch der Startseite');
+  gleich(await c.werte(() => getComputedStyle(document.querySelector('.hilfe-tipp')).pointerEvents), 'none', 'Tipp fängt keine Klicks ab');
+  gleich(await c.werte(() => localStorage.getItem('pep-hilfe-tipp-start')), '1', 'Tipp gemerkt (localStorage)');
+  await c.foto(`${FOTOS}hilfe-tipp.png`);
+  await reiter('abwesenheiten');
+  pruefe(await sichtbar('.hilfe-tipp'), 'Tipp beim ersten Besuch der Abwesenheiten');
+  await reiter('start');
+  gleich(await anzahl('.hilfe-tipp'), 0, 'kein Tipp beim zweiten Besuch der Startseite');
+  await reiter('abwesenheiten');
+  gleich(await anzahl('.hilfe-tipp'), 0, 'kein Tipp beim zweiten Besuch der Abwesenheiten');
+
+  // Jeder Reiter am PC: Überschrift und Abschnitte passen, Escape schließt, Fokus zurück auf „?“
+  gleich(await c.werte(() => document.getElementById('hilfe-knopf').getAttribute('aria-label')), 'Hilfe zu dieser Seite', 'aria-label');
+  for (const r of ['start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'zeitkonto', 'mitarbeiter', 'einstellungen']) {
+    await reiter(r);
+    await oeffne();
+    const h = await hilfeOffen();
+    gleich(h, { ansicht: r, titel: HILFE[r].titel, abschnitte: ['Wozu dient diese Seite', "So geht's", 'Gut zu wissen'],
+      schritte: HILFE[r].schritte.length, wissen: HILFE[r].gut_zu_wissen.length, knoepfe: ['Schließen'] }, `Hilfe ${r}`);
+    const breite = await c.werte(() => Math.round(document.querySelector('dialog.hilfe-leiste[open]').getBoundingClientRect().width));
+    pruefe(breite > 300 && breite < 500, `${r}: Leiste am PC schmal (rechts)`, breite);
+    await c.foto(`${FOTOS}hilfe-pc-${r}.png`);
+    await c.taste('Escape');
+    await zu();
+    pruefe(await fokusAufKnopf(), `${r}: nach Escape Fokus auf „?“`);
+  }
+
+  // Tab bleibt in der Leiste und erreicht „Schließen“; Klick daneben schließt
+  await oeffne();
+  await c.taste('Tab');
+  gleich(await c.werte(() => [document.activeElement?.textContent, Boolean(document.activeElement?.closest('dialog.hilfe-leiste'))]),
+    ['Schließen', true], 'Tab erreicht „Schließen“ in der Leiste');
+  await c.maus('mouseMoved', 200, 450, { button: 'none' });
+  await c.maus('mousePressed', 200, 450, { buttons: 1 });
+  await c.maus('mouseReleased', 200, 450, { buttons: 0 });
+  await zu();
+  pruefe(await fokusAufKnopf(), 'nach Klick daneben Fokus auf „?“');
+
+  // Einsatzplan im Modus IST: eigene Texte
+  await reiter('einsatzplan');
+  await c.klick('#ansicht-einsatzplan [data-modus="ist"]');
+  await ruhe();
+  pruefe(await sichtbar('#ansicht-einsatzplan .ist-tabelle'), 'IST-Modus aktiv');
+  gleich(await oeffne(), HILFE.einsatzplan_ist.titel, 'Hilfe im Modus IST');
+  gleich((await hilfeOffen()).ansicht, 'einsatzplan_ist', 'Ansicht einsatzplan_ist');
+  await c.foto(`${FOTOS}hilfe-pc-einsatzplan-ist.png`);
+  await c.taste('Escape');
+  await zu();
+  await c.klick('#ansicht-einsatzplan [data-modus="plan"]');
+  await ruhe();
+  gleich(await oeffne(), HILFE.einsatzplan.titel, 'zurück im Plan: Plan-Hilfe');
+  await c.taste('Escape');
+  await zu();
+
+  // Tablet: Leiste füllt den Bildschirm, „Schließen“ per Finger
+  await c.tablet(true);
+  await pause(300);
+  await reiter('zeitkonto');
+  await oeffne();
+  const masse = await c.werte(() => {
+    const r = document.querySelector('dialog.hilfe-leiste[open]').getBoundingClientRect();
+    return { links: Math.round(r.left), breite: Math.round(r.width), hoehe: Math.round(r.height), fenster: [innerWidth, innerHeight] };
+  });
+  gleich([masse.links, masse.breite, masse.hoehe], [0, masse.fenster[0], masse.fenster[1]], 'Tablet: Leiste bildschirmfüllend');
+  await c.foto(`${FOTOS}hilfe-tablet-zeitkonto.png`);
+  await c.klick({ text: 'Schließen', in: 'dialog.hilfe-leiste[open]', sel: 'button', genau: true });
+  await zu();
+  const quer = await c.werte(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  pruefe(quer <= 0, 'Tablet: Reiterleiste mit „?“ scrollt nicht quer', `${quer}px Überstand`);
+  await c.tablet(false);
+  await pause(300);
 });
 
 // ================================================================ Ende

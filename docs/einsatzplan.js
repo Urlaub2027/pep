@@ -908,4 +908,5 @@ function zeichneSeite() {
   rahmen.seite.replaceChildren(...(tag()?.geoeffnet ? [regelBox(), wochenBox(), abteilungsBox()] : [wochenBox()]));
 }
 
-reiter.einsatzplan = { zeigen };
+// Hilfe („?“): im Modus IST eigene Texte. Vor dem ersten Laden zählt der gewünschte Modus.
+reiter.einsatzplan = { zeigen, hilfe: () => ((woche?.modus ?? modus) === 'ist' ? 'einsatzplan_ist' : 'einsatzplan') };

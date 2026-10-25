@@ -97,6 +97,100 @@ h3 { font-size: 1rem; }
 .reiter-knopf.rechts { margin-left: auto; color: var(--text-2); }
 .reiter-knopf[hidden] { display: none; }
 
+/* ---------------------------------------------------------------- Hilfe: „?“-Knopf, Tipp und Leiste (hilfe-leiste.js) */
+
+.hilfe-knopf {
+  align-self: center;
+  width: 36px;
+  height: 36px;
+  margin-left: var(--a2);
+  padding: 0;
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--schwarz);
+  background: var(--netto-gelb);
+  border: 2px solid var(--schwarz);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color var(--dauer);
+  -webkit-tap-highlight-color: transparent; /* die Leiste ist die Rückmeldung; sonst bleibt am Tablet ein Kasten stehen */
+}
+.hilfe-knopf:hover { background: #f5dc00; }
+@media (pointer: coarse) { .hilfe-knopf { width: 44px; height: 44px; } }
+/* Tipp beim ersten Besuch: unter dem Knopf, fängt keine Klicks ab und verschwindet von selbst */
+.hilfe-tipp {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: var(--a4);
+  margin: 0;
+  padding: var(--a2) var(--a3);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--schwarz);
+  border-radius: 6px;
+  box-shadow: var(--schatten-2);
+  pointer-events: none;
+  animation: hilfe-tipp-ein 200ms ease-out;
+}
+.hilfe-tipp::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 14px;
+  border: 6px solid transparent;
+  border-top: 0;
+  border-bottom-color: var(--schwarz);
+}
+@keyframes hilfe-tipp-ein { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Leiste von rechts; am Tablet (bis 1200 px, wie die Kacheln) bildschirmfüllend */
+.hilfe-leiste {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: 440px;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 0;
+  border-left: 6px solid var(--netto-gelb);
+  box-shadow: var(--schatten-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  animation: hilfe-leiste-ein 180ms ease-out;
+}
+.hilfe-leiste[open] { display: flex; flex-direction: column; }
+.hilfe-leiste::backdrop { background: rgba(0, 0, 0, 0.3); }
+@keyframes hilfe-leiste-ein { from { transform: translateX(40px); opacity: 0; } }
+.hilfe-inhalt { flex: 1 0 auto; padding: var(--a4) var(--a5) var(--a2); font-size: 0.95rem; line-height: 1.35; }
+.hilfe-inhalt h2 { margin: 0 0 var(--a3); font-size: 1.35rem; }
+.hilfe-inhalt h2:focus { outline: none; }
+.hilfe-inhalt h3 { margin: 14px 0 var(--a1); font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
+.hilfe-inhalt p { margin: 0; }
+.hilfe-inhalt ol, .hilfe-inhalt ul { margin: 0; padding-left: 1.4em; }
+.hilfe-inhalt li { margin: 0 0 6px; }
+.hilfe-schritte li::marker { font-weight: 800; }
+.hilfe-knoepfe {
+  position: sticky;
+  bottom: 0;
+  padding: var(--a2) var(--a5) var(--a3);
+  background: var(--flaeche);
+  border-top: 1px solid var(--linie);
+}
+@media (max-width: 1200px) {
+  .hilfe-leiste { width: 100%; border-left: 0; border-top: 6px solid var(--netto-gelb); }
+  .hilfe-inhalt, .hilfe-knoepfe { width: 100%; max-width: 720px; margin: 0 auto; }
+  .hilfe-inhalt { padding-top: var(--a5); font-size: 1.05rem; line-height: 1.4; }
+  .hilfe-inhalt li { margin-bottom: var(--a2); }
+}
+@media print { .hilfe-knopf, .hilfe-tipp { display: none; } }
+
 main { max-width: 1600px; margin: 0 auto; padding: var(--a4); }
 section[hidden] { display: none; }
 
