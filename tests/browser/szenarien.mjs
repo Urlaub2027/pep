@@ -2506,6 +2506,26 @@ await szenario('Einstellungen: Korrektur-Hinweis beim Teiler, nicht sperrender C
   await c.werte(() => document.querySelector('#ansicht-einstellungen .code-doppelt').scrollIntoView({ block: 'center' }));
 });
 
+// Kürzel-Legende im Einsatzplan: zugeklappt am Ende der Pinselzeile, aufgeklappt alle Bereiche mit Namen; der Zustand
+// bleibt beim Neuzeichnen; der Tooltip eines Blocks nennt Kürzel, Namen und Uhrzeit.
+await szenario('Einsatzplan: Kürzel-Legende aufklappen, Tooltip mit Name und Uhrzeit', async () => {
+  await epTag(MI);
+  const offen = () => c.werte(() => document.querySelector('#ansicht-einsatzplan details.ep-legende')?.open ?? null);
+  gleich(await offen(), false, 'Legende zugeklappt');
+  await c.klick({ text: 'Kürzel', in: '#ansicht-einsatzplan', sel: 'summary', genau: true });
+  gleich(await offen(), true, 'Legende aufgeklappt');
+  const eintraege = await texte('#ansicht-einsatzplan .ep-legende li');
+  const bereiche = (await sql("select kuerzel || ' ' || name as x from pep.bereiche where filiale_id = $1 and aktiv and art in ('bereich', 'pause')", [B.fil])).map((r) => r.x);
+  pruefe(bereiche.length > 3 && bereiche.every((b) => eintraege.includes(b)), 'Alle malbaren Bereiche mit Name', { eintraege, bereiche });
+  await c.foto(`${FOTOS}kuerzel-legende.png`);
+  await epTag(DO); // neu gezeichnet: bleibt offen
+  gleich(await offen(), true, 'Legende bleibt offen');
+  const titel = await c.werte(() => document.querySelector('#ansicht-einsatzplan td.ep-z.belegt.ep-start')?.title ?? '');
+  pruefe(/^\d\d:\d\d · \S+ .+ \d\d:\d\d–\d\d:\d\d/.test(titel), 'Tooltip: Uhrzeit · Kürzel Name Von–Bis', titel);
+  await c.klick({ text: 'Kürzel', in: '#ansicht-einsatzplan', sel: 'summary', genau: true });
+  gleich(await offen(), false, 'wieder zugeklappt');
+});
+
 // ================================================================ Ende
 
 const ok = ergebnisse.filter((e) => e.ok).length;

@@ -76,6 +76,7 @@ export const HILFE = {
       'Klick auf einen Namen öffnet die Eckdaten der Person.',
       'Vergangene Tage sind schreibgeschützt. „IST erfassen“ wechselt in den Modus IST.',
       'Am Tablet: waagerecht ziehen malt, senkrecht wischen scrollt.',
+      'Was ein Kürzel bedeutet, zeigt „Kürzel“ rechts neben den Knöpfen (aufklappen).',
     ],
   },
 
@@ -93,10 +94,11 @@ export const HILFE = {
     gut_zu_wissen: [
       'Bestätigen lässt sich nicht zurücknehmen. Bestätigte Zeilen ändern geht nur mit Grund.',
       'Ist die Woche schon gebucht, bucht PEP die Änderung automatisch als Korrektur ins Zeitkonto.',
-      'Rechts in jeder Zeile: der Status und „Abw.“ (IST minus Plan in Stunden).',
+      'Rechts je Zeile: Status und „Abw.“ (IST minus Plan, Stunden).',
       '„Zeitrahmen erweitern“ zeigt 04:00 bis 24:00. Im IST gibt es keine Regel- und Kompetenzprüfung.',
       'Krankheit trotzdem eintragen: im Modus „Plan“ über „Krank/ZA“ oder im Reiter Abwesenheiten.',
       '„Wocheneinsatz-IST drucken“ druckt die ganze Woche.',
+      '„Kürzel“ aufklappen erklärt die Kürzel.',
     ],
   },
 

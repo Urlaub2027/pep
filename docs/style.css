@@ -680,6 +680,13 @@ th { background: var(--hell); font-weight: 600; }
 .ep-tag[aria-pressed="true"] { background: var(--netto-gelb); border-color: var(--schwarz); box-shadow: inset 0 0 0 1px var(--schwarz); }
 .ep-tag[aria-pressed="true"] small { color: var(--schwarz); }
 .ep-pinsel { gap: 4px; }
+/* Legende der Bereichskürzel: zugeklappt am Ende der Pinselzeile, aufgeklappt eine eigene Zeile */
+.ep-legende { font-size: 0.85rem; color: var(--text-2); }
+.ep-legende[open] { flex-basis: 100%; }
+.ep-legende summary { cursor: pointer; font-weight: 600; width: max-content; padding: 4px 0; } /* Dreieck ▸/▾ bleibt sichtbar */
+.ep-legende ul { display: flex; flex-wrap: wrap; gap: 4px var(--a3); margin: 2px 0 0; padding: 0; list-style: none; }
+.ep-legende li { display: inline-flex; align-items: center; gap: 5px; }
+.ep-legende strong { color: var(--text); }
 .ep-pinsel .chip { gap: 5px; padding: 0 9px; font-size: 0.85rem; }
 .ep-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
 /* „wird gespeichert …“ erst nach 300 ms zeigen, damit es bei schneller Antwort nicht flackert */

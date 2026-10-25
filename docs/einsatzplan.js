@@ -294,7 +294,23 @@ function zeichneKopf() {
       element('div', { class: 'ep-tage', role: 'group', 'aria-label': 'Tag' }, woche.tage.map(tagesReiter))),
     element('div', { class: 'werkzeug-zeile' },
       pinselLeiste(),
-      element('div', { class: 'ep-knoepfe' }, rahmen.speichert, rahmen.rueckgaengig, knoepfe))));
+      element('div', { class: 'ep-knoepfe' }, rahmen.speichert, rahmen.rueckgaengig, knoepfe),
+      kuerzelLegende())));
+}
+
+// Legende der Bereichskürzel (KA = Kasse …), auch für Tablets ohne Maus-Tooltip: „Kürzel“ am Ende der Pinselzeile,
+// aufgeklappt eine eigene Zeile darunter. Zugeklappt kostet sie keinen Platz; der Zustand wird im Browser gemerkt.
+const LEGENDE_SCHLUESSEL = 'pep-einsatzplan-legende';
+function kuerzelLegende() {
+  let offen = false;
+  try { offen = localStorage.getItem(LEGENDE_SCHLUESSEL) === 'offen'; } catch { /* Vorgabe */ }
+  const legende = element('details', { class: 'ep-legende', ...(offen ? { open: '' } : {}) },
+    element('summary', {}, 'Kürzel'),
+    element('ul', {}, woche.bereiche.map((b) => element('li', {}, farbfeld(b.farbe), element('strong', {}, b.kuerzel), ` ${b.name}`))));
+  legende.addEventListener('toggle', () => {
+    try { localStorage.setItem(LEGENDE_SCHLUESSEL, legende.open ? 'offen' : 'zu'); } catch { /* nur für diese Sitzung */ }
+  });
+  return legende;
 }
 
 // IST-Knöpfe: Zeitrahmen 04:00–24:00 ein/aus, „Tag bestätigen“ (alle offenen Zeilen des Tages) und der Ausdruck
@@ -419,7 +435,8 @@ function zeile(m, sp, oeffnung) {
           td.append(element('button', { type: 'button', class: 'ep-ersatz', onclick: () => starte(() => aktionen.ersatz(m.id, datum)) }, 'Ersatz'));
         }
       }
-      titel.push(b ? `${b.kuerzel} ${b.name}` : '', z.unbesetzt ? `unbesetzt (${a?.code ?? 'abwesend'})` : '',
+      const block = segmente.find((x) => x.id === z.block_id);
+      titel.push(b ? `${b.kuerzel} ${b.name}${block ? ` ${zeitspanne(block.von.slice(0, 5), block.bis.slice(0, 5))}` : ''}` : '', z.unbesetzt ? `unbesetzt (${a?.code ?? 'abwesend'})` : '',
         vorschlag ? 'Vorschlag aus dem Plan' : '');
     } else if (klassen.includes('ep-abw')) titel.push(`${a.code} ${a.name}`);
     td.title = titel.filter(Boolean).join(' · ');
