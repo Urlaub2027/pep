@@ -3209,11 +3209,18 @@ begin
         left join lateral pep.wochenvertrag(m.id, v_mo) v on true), '[]'::jsonb),
     'bloecke', case when p_ist then pep.ist_bloecke_antwort(v_f, v_mo, v_so, null)
                     else pep.bloecke_antwort(v_f, v_mo, v_so, null) end,
+    -- Im IST-Modus zusätzlich zaehlt: die Abwesenheit geht in abwesend der Wochenrechnung ein – Code mit gutschrift an
+    -- einem Tag aus pep.zeitkonto_tage ohne Feiertagsgutschrift, dieselbe Regel wie pep.zeitkonto_woche und
+    -- pep.stundenblatt_person (ZA und U an einem geschlossenen Feiertag zählen nicht). Der Wocheneinsatz-IST druckt sie
+    -- dann wie das Stundenblatt als „ZA (ohne Gutschrift)“.
     'abwesenheiten', coalesce((
       select jsonb_agg(jsonb_build_object(
                'mitarbeiter_id', a.mitarbeiter_id, 'datum', to_char(a.datum, 'YYYY-MM-DD'),
                'code', c.code, 'name', c.name, 'farbe', c.farbe, 'sperrt', c.sperrt, 'stunden', a.stunden,
                'von', to_char(a.von, 'HH24:MI'), 'bis', to_char(a.bis, 'HH24:MI'))
+             || case when p_ist then jsonb_build_object('zaehlt', c.gutschrift and exists (
+                       select 1 from pep.zeitkonto_tage(a.mitarbeiter_id, v_mo) k where k.tag = a.datum and not k.feiertag))
+                     else '{}'::jsonb end
              order by a.datum, a.mitarbeiter_id)
         from pep.abwesenheiten a
         join pep.abwesenheitscodes c on c.id = a.code_id

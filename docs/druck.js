@@ -263,7 +263,8 @@ function wochenIst({ ist, zeitkonto }) {
     element('p', { class: 'dr-fuss' }, `Summe Soll: ${zahl(summe('soll'))} h · Summe IST: ${zahl(summe('ist'))} h · `
       + `Offene IST-Tage: ${zeitkonto?.offene_tage ?? 0}`),
     element('p', { class: 'dr-fuss dr-legende' },
-      'Je Tag das bestätigte IST: Zeiten, darunter Arbeitsstunden ohne Pause und (P Pause); Abwesenheit als Code/Stunden; '
+      'Je Tag das bestätigte IST: Zeiten, darunter Arbeitsstunden ohne Pause und (P Pause); Abwesenheit als Code/Stunden, '
+      + 'ohne Gutschrift (z. B. ZA) ohne Stunden; '
       + '„offen“ = noch nicht bestätigt (zählt nicht); „–“ = geschlossen oder nicht gearbeitet. '
       + 'IST = bestätigte Arbeitszeit ohne Pausen; Spät = davon ab der Spätgrenze; '
       + 'Diff = IST + Abwesend + Feiertag − Soll (Führung: Plus erst über der Grenze); Saldo = Zeitkonto. '

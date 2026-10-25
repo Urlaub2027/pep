@@ -253,6 +253,19 @@ test('Wocheneinsatz-IST: bestätigt „07:00–15:30 / 8,00 (P 0:30)“, offen �
   assert.equal(anna.gebucht, true, 'ohne Feld gebucht: wie gebucht');
 });
 
+test('Wocheneinsatz-IST: Abwesenheit ohne Gutschrift (zaehlt false) wie im Stundenblatt „ZA (ohne Gutschrift)“', () => {
+  const ist = istWoche();
+  const abw = (mid, datum) => ist.abwesenheiten.find((a) => a.mitarbeiter_id === mid && a.datum === datum);
+  Object.assign(abw(3, TAGE[1]), { code: 'ZA', zaehlt: false }); // keine IST-Zeile
+  Object.assign(abw(3, TAGE[2]), { zaehlt: true });
+  abw(4, TAGE[0]).zaehlt = false; // bestätigt mit IST
+  abw(4, TAGE[1]).zaehlt = false; // offen
+  const [, , cem, dana] = wochenIstZeilen(ist, zkWoche());
+  assert.deepEqual(cem.tage.slice(0, 3), ['U/6,25', 'ZA (ohne Gutschrift)', 'U/6,25']);
+  assert.equal(dana.tage[0], 'KM (ohne Gutschrift)\n10:00–14:00 / 4,00');
+  assert.equal(dana.tage[1], 'KM (ohne Gutschrift)\noffen');
+});
+
 test('Wocheneinsatz-IST: gebucht aus dem Zeitkonto (false = Diff nicht gebucht), ohne Zeitkonto-Zeile null', () => {
   const zk = zkWoche();
   zk.mitarbeiter[1] = { ...zk.mitarbeiter[1], gebucht: false, diff: -37.5, saldo_aktuell: -2.25 };

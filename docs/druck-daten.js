@@ -35,11 +35,14 @@ function pauseText(segmente, pausen) {
 }
 
 const abwesenheitText = (a) => (a.stunden == null ? a.code : `${a.code}/${stundenText(a.stunden)}`);
+// Abwesenheit mit zaehlt = false (pep_ist_woche, pep_stundenblatt: ZA, U am Feiertag mit Gutschrift) ohne Stunden als
+// „ZA (ohne Gutschrift)“; ohne das Feld (Plan) wie bisher mit Stunden.
+const gutschriftText = (a) => (a.zaehlt === false ? `${a.code} (ohne Gutschrift)` : abwesenheitText(a));
 
 // Ein Tag im Wochenplan: „07:00–15:30 / 8,00 (P 0:30)“, Abwesenheit „U/6,25“, beides untereinander.
 function tagText(segmente, abwesenheit, pausen) {
   const teile = [];
-  if (abwesenheit) teile.push(abwesenheitText(abwesenheit));
+  if (abwesenheit) teile.push(gutschriftText(abwesenheit));
   const zeiten = zeitenText(segmente);
   if (zeiten) {
     const pause = pauseText(segmente, pausen);
@@ -175,7 +178,8 @@ const zahlOderNull = (n) => (n == null ? null : Number(n));
 // Tagestext: bestätigt → wie im Wochenplan „07:00–15:30 / 8,00 (P 0:30)“ aus den IST-Blöcken (Vorschläge zählen nie),
 // bestätigt ohne IST „–“; offene IST-Zeile → „offen“ (keine Stunden, auch nicht das schon erfasste IST); keine IST-Zeile
 // (künftig, ganztägig abwesend, vor dem Start der IST-Erfassung) → nur die Abwesenheit „U/6,25“; geschlossen → „–“.
-// Eine Abwesenheit steht immer vorn („KM/2,00“, darunter Zeiten bzw. „offen“).
+// Eine Abwesenheit steht immer vorn („KM/2,00“, darunter Zeiten bzw. „offen“). Abwesenheit ohne Gutschrift (zaehlt
+// false aus pep_ist_woche: ZA, U am Feiertag mit Gutschrift) wie im Stundenblatt „ZA (ohne Gutschrift)“.
 export function wochenIstZeilen(ist, zeitkonto) {
   const pausen = pauseIds(ist);
   const konto = new Map((zeitkonto?.mitarbeiter ?? []).map((m) => [m.id, m]));
@@ -187,8 +191,8 @@ export function wochenIstZeilen(ist, zeitkonto) {
     const tage = ist.tage.map((t) => {
       const s = status.get(`${m.id}|${t.datum}`);
       const abw = abwesenheiten.find((a) => a.datum === t.datum);
-      if (s && !s.bestaetigt) return [abw ? abwesenheitText(abw) : null, 'offen'].filter(Boolean).join('\n');
-      const text = s ? tagText(eigene.filter((b) => b.datum === t.datum), abw, pausen) : abw ? abwesenheitText(abw) : '';
+      if (s && !s.bestaetigt) return [abw ? gutschriftText(abw) : null, 'offen'].filter(Boolean).join('\n');
+      const text = s ? tagText(eigene.filter((b) => b.datum === t.datum), abw, pausen) : abw ? gutschriftText(abw) : '';
       return text || (s || !t.geoeffnet ? '–' : '');
     });
     return {
@@ -231,7 +235,7 @@ export function stundenblattSeiten(daten) {
       von: t.anwesend_von ?? '',
       bis: t.anwesend_bis ?? '',
       pause: t.pause == null ? '' : stundenMinuten(t.pause),
-      abwesend: !t.abwesend ? '' : t.abwesend.zaehlt ? abwesenheitText(t.abwesend) : `${t.abwesend.code} (ohne Gutschrift)`,
+      abwesend: t.abwesend ? gutschriftText(t.abwesend) : '',
       arbeitszeit: t.arbeitszeit == null ? '' : stundenText(t.arbeitszeit),
       hinweis: [t.vor_start ? 'vor IST-Start' : t.offen ? 'offen' : '', t.feiertag ?? '',
         (t.spannen ?? []).length > 1 ? `geteilter Dienst ${t.spannen.map((x) => zeitspanne(x.von, x.bis)).join(', ')}` : '']

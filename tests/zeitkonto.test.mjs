@@ -396,3 +396,25 @@ test('Tabellen: RLS an, Browser-Rollen haben keinen direkten Zugriff', async () 
   assert.deepEqual(r, [{ relname: 'wochen_abschluesse', relrowsecurity: true }, { relname: 'zeitkonto_buchungen', relrowsecurity: true }]);
   await assert.rejects(als(t.db, 'authenticated', t.leitung, 'select * from pep.zeitkonto_buchungen'), /permission denied/);
 });
+
+test('pep_ist_woche: Abwesenheit mit zaehlt wie pep.zeitkonto_woche (U ja, ZA nein, U am geschlossenen Feiertag nein)', async () => {
+  const { ma, json, leitung, db, abwesend, code, fil, zk } = t;
+  const p = await ma('Zaehlt, Zoe');
+  await abwesend(p, 'U', TAGE[0]);
+  await abwesend(p, 'ZA', TAGE[1]);
+  const eigene = (w) => w.abwesenheiten.filter((a) => a.mitarbeiter_id === p).map((a) => [a.datum, a.code, a.zaehlt]);
+  const w46 = await json(leitung, 'select public.pep_ist_woche(2026, 46) as r');
+  assert.deepEqual(eigene(w46), [[TAGE[0], 'U', true], [TAGE[1], 'ZA', false]]);
+  // Summe der zählenden Abwesenheiten = abwesend der Wochenrechnung
+  const summe = w46.abwesenheiten.filter((a) => a.mitarbeiter_id === p && a.zaehlt).reduce((n, a) => n + Number(a.stunden), 0);
+  assert.equal(summe, Number((await zk(p)).abwesend));
+  // Mi 06.01.2027 (Heilige Drei Könige, geschlossen): U gibt es dort nur per SQL; die Feiertagsgutschrift hat Vorrang
+  await db.query(`insert into pep.abwesenheiten (filiale_id, mitarbeiter_id, code_id, datum, stunden, quelle)
+    values ($1, $2, $3, '2027-01-06', 6.25, 'manuell')`, [fil, p, code.U]);
+  await abwesend(p, 'U', '2027-01-07');
+  const w1 = await json(leitung, 'select public.pep_ist_woche(2027, 1) as r');
+  assert.deepEqual(eigene(w1), [['2027-01-06', 'U', false], ['2027-01-07', 'U', true]]);
+  // Plan-Ansicht unverändert: ohne zaehlt
+  const plan = await json(leitung, 'select public.pep_einsatzplan_woche(2026, 46) as r');
+  assert.equal(plan.abwesenheiten.find((a) => a.mitarbeiter_id === p).zaehlt, undefined);
+});
