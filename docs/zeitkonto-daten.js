@@ -30,8 +30,16 @@ export function journalZeilen(buchungen) {
     saldo: Number(b.saldo_nach),
     grund: b.grund ?? '',
     von: b.angelegt_von_name ?? '',
-    am: b.angelegt_am ? String(b.angelegt_am).slice(0, 10) : '',
+    am: b.angelegt_am ? ortsDatum(b.angelegt_am) : '',
   }));
+}
+
+// Datum 'JJJJ-MM-TT' eines Zeitstempels in Ortszeit (wie die Uhrzeit im Kopf „Abgeschlossen am …“), nicht der
+// Text vor dem 'T': eine Buchung um 00:30 deutscher Zeit trägt in UTC noch das Vortagsdatum.
+function ortsDatum(zeitstempel) {
+  const d = new Date(zeitstempel);
+  const zwei = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${zwei(d.getMonth() + 1)}-${zwei(d.getDate())}`;
 }
 
 // Summenzeile der Wochentabelle über alle angezeigten Mitarbeiter.
@@ -46,12 +54,33 @@ export function wochenSumme(mitarbeiter) {
 
 // Stunden aus der Eingabe einer Buchung: Komma oder Punkt als Dezimalzeichen, Minus auch als „−“, höchstens zwei
 // Nachkommastellen, Betrag bis 999, nicht 0 (dieselben Regeln prüft pep_zeitkonto_buchen: STUNDEN_UNGUELTIG).
+// Leerzeichen nur am Rand und eines direkt nach dem Vorzeichen („− 3,75“); „1 2“ ist ungültig.
 // Leer → null (STUNDEN_FEHLEN), Unlesbares → NaN.
 export function stundenEingabe(wert) {
-  const t = String(wert ?? '').replace(/\s/g, '').replace(/−/g, '-');
+  const t = String(wert ?? '').trim().replace(/−/g, '-');
   if (t === '') return null;
-  const m = /^([+-]?)(\d{0,3})(?:[.,](\d{1,2}))?$/.exec(t);
+  const m = /^(?:([+-]) ?)?(\d{0,3})(?:[.,](\d{1,2}))?$/.exec(t);
   if (!m || (m[2] === '' && m[3] === undefined)) return NaN;
-  const n = Number(`${m[1]}${m[2] || '0'}.${m[3] ?? '0'}`);
+  const n = Number(`${m[1] ?? ''}${m[2] || '0'}.${m[3] ?? '0'}`);
   return n === 0 ? NaN : n;
+}
+
+// Warnung zum Saldo – Spiegel der Regel in public.pep_zeitkonto_woche (supabase/schema.sql): 'plus', wenn der Saldo über
+// zeitkonto_warnfaktor × wochenstunden liegt, 'minus', wenn er unter dem Negativen davon liegt, sonst null (die Grenze
+// selbst warnt nicht). Der Browser braucht sie für die laufende Woche, in der die Warnung am Saldo Vorwoche hängt; ändert
+// sich die Regel im Schema, muss sie hier mitgeändert werden. Ohne Faktor keine Warnung (SQL: Vergleich mit NULL).
+export function saldoWarnung(saldo, wochenstunden, faktor) {
+  if (faktor == null || faktor === '') return null;
+  const s = Number(saldo);
+  const grenze = Number(faktor) * Number(wochenstunden);
+  return s > grenze ? 'plus' : s < -grenze ? 'minus' : null;
+}
+
+// Laufende (oder künftige) Woche: nicht abgeschlossen und ihr Sonntag ist nicht vor heute. Diff und Saldo aktuell sind
+// dann vorläufig (das Soll gilt für die ganze Woche, das IST erst bis heute).
+export function laufendeWoche(woche, heute) {
+  if (woche.abgeschlossen) return false;
+  const [j, m, t] = woche.montag.split('-').map(Number);
+  const sonntag = new Date(Date.UTC(j, m - 1, t + 6)).toISOString().slice(0, 10);
+  return sonntag >= heute;
 }

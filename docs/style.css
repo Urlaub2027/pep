@@ -800,6 +800,10 @@ table.zk-tabelle td { white-space: nowrap; }
 table.zk-tabelle tr.inaktiv > * { color: var(--text-2); }
 .zk-tabelle .zahl.plus, .zk-journal .zahl.plus { color: var(--ok); font-weight: 700; }
 table.zk-tabelle td.zk-warnung { background: var(--hinweis); }
+/* Laufende Woche: Diff und Saldo aktuell neutral grau, im Spaltenkopf „vorläufig“ */
+.zk-tabelle .zahl.vorlaeufig { color: var(--text-2); font-weight: 400; font-style: italic; }
+.zk-vorlaeufig-marke { display: block; font-size: 0.75rem; font-weight: 400; font-style: italic; color: var(--text-2); }
+.dialog .zk-erster { margin-top: 0; }
 .zk-name {
   padding: 0; font: inherit; color: var(--text); text-align: left; background: none; border: 0; cursor: pointer;
   text-decoration: underline dotted var(--linie-stark); text-underline-offset: 3px;

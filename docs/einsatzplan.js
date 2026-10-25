@@ -254,7 +254,7 @@ function zeichneKopf() {
   const auswahl = element('input', { type: 'date', class: 'ep-datum', 'aria-label': 'Datum wählen', value: datum });
   auswahl.addEventListener('change', () => springeZu(auswahl.value));
   rahmen.rueckgaengig = element('button', {
-    type: 'button', class: 'knopf', disabled: stapel.leer(), onclick: rueckgaengig,
+    type: 'button', class: 'knopf', disabled: stapel.leer() || rueckgaengigLaeuft, onclick: rueckgaengig,
     title: 'Letzten Strich zurücknehmen (bis zu 20 Schritte)',
   }, '↶ Rückgängig');
   rahmen.speichert = element('span', { class: 'ep-speichert', role: 'status', hidden: !wartend.length }, 'wird gespeichert …');
@@ -650,7 +650,7 @@ async function sendeStrich(s, bereichId, zeiger, vorherBeimZiehen) {
     if (JSON.stringify(nachher) !== JSON.stringify(vorher)) {
       stapel.merken({ mitarbeiterId: s.mitarbeiter, datum: s.datum, bloecke: vorher, ist: s.ist, grund: s.grund });
     }
-    rahmen.rueckgaengig.disabled = stapel.leer();
+    rueckgaengigKnopf();
     if (inWoche(s.datum, s.ist)) {
       uebernehme(antwort, [s.mitarbeiter]);
       if (s.datum === datum) zeichneZeilen([s.mitarbeiter]);
@@ -710,15 +710,21 @@ function uebernehme(antwort, ids) {
 // Sperre gegen einen zweiten Aufruf, solange der erste noch vorbereitet (Striche abwarten, Eintrag holen, Grund
 // fragen): ein Doppelklick vor dem Grund-Dialog würde sonst einen zweiten Eintrag holen und den Stapel umordnen. Sobald
 // der Eintrag in der Kette seiner Zeile steht, ist die Sperre frei: ein weiteres Rückgängig wartet dann auf die Kette.
+// Solange gesperrt ist, ist der Knopf ausgegraut – kein Klick verschwindet ohne Rückmeldung.
 let rueckgaengigLaeuft = false;
+function rueckgaengigKnopf() {
+  if (rahmen.rueckgaengig) rahmen.rueckgaengig.disabled = stapel.leer() || rueckgaengigLaeuft;
+}
 async function rueckgaengig() {
   if (rueckgaengigLaeuft) return;
   rueckgaengigLaeuft = true;
+  rueckgaengigKnopf();
   let auftrag;
   try {
     auftrag = await rueckgaengigVorbereiten();
   } finally {
     rueckgaengigLaeuft = false;
+    rueckgaengigKnopf();
   }
   if (auftrag) await einreihen(auftrag.schluessel, auftrag.aufgabe);
 }
@@ -729,10 +735,10 @@ async function rueckgaengigVorbereiten() {
   // Schleife: ein Strich, der während des Wartens dazukommt, wird ebenfalls abgewartet.
   while (ketten.size) await Promise.all([...ketten.values()]);
   const eintrag = stapel.holen();
-  rahmen.rueckgaengig.disabled = stapel.leer();
+  rueckgaengigKnopf();
   if (!eintrag) return;
   // Misslingt Rückgängig (Fehler oder abgebrochener Grund), bleibt der Eintrag auf dem Stapel.
-  const zurueck = () => { stapel.merken(eintrag); rahmen.rueckgaengig.disabled = stapel.leer(); };
+  const zurueck = () => { stapel.merken(eintrag); rueckgaengigKnopf(); };
   // IST: Rückgängig schickt denselben Grund wie der Strich. Wurde die Zeile erst danach bestätigt, fehlt er: fragen –
   // vorab, wenn die Woche geladen ist; sonst (Plan oder andere Woche geladen) erst, wenn der Server GRUND_FEHLT meldet.
   let grund = eintrag.grund ?? null;

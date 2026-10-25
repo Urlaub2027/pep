@@ -5,10 +5,12 @@
 import { $, meldung, fehlerText, element, stundenDE, datumDE } from './hilfe.js';
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { dialog } from './dialog.js';
-import { isoWoche, kwVorZurueck, plusTage, heuteDatum } from './zeit.js';
+import { isoWoche, kwVorZurueck, plusTage, heuteDatum, montagDerKw } from './zeit.js';
 import { kurz } from './plan-raster.js';
 import { oeffneIst } from './einsatzplan.js';
-import { vorzeichen, journalZeilen, wochenSumme, stundenEingabe } from './zeitkonto-daten.js';
+import {
+  vorzeichen, journalZeilen, wochenSumme, stundenEingabe, saldoWarnung, laufendeWoche,
+} from './zeitkonto-daten.js';
 
 // Adresse: ?jahr=&kw= wählen die Woche, ?heute=JJJJ-MM-TT ersetzt das heutige Datum (Vorschau).
 const adresse = new URLSearchParams(location.search);
@@ -23,6 +25,10 @@ let jahr = ganzzahl('jahr', 2000, 2100) ?? start.jahr;
 let kw = ganzzahl('kw', 1, 53) ?? start.kw;
 let woche = null; // Antwort von pep_zeitkonto_woche
 let journalNachLaden = null; // Mitarbeiter-Id: Journal öffnen, sobald die Woche geladen ist (oeffneZeitkonto)
+// zeitkonto_warnfaktor aus pep_einstellungen (je Anzeigen des Reiters neu): für die Warnung am Saldo Vorwoche in der
+// laufenden Woche (saldoWarnung spiegelt die Regel des Servers). Fehlt er, warnt die laufende Woche nicht.
+let warnfaktor = null;
+let warnfaktorLaden = Promise.resolve(null);
 const rahmen = {}; // Container: kopf, tabelle
 
 const darfBuchen = () => ich?.rolle === 'leitung';
@@ -34,6 +40,8 @@ const anzahl = (n, eins, mehr) => `${n} ${n === 1 ? eins : mehr}`;
 const vorzeichenKlasse = (n) => (Math.round(Number(n) * 100) > 0 ? 'plus' : Math.round(Number(n) * 100) < 0 ? 'minus' : '');
 const uhrzeitAus = (zeitstempel) => new Date(zeitstempel).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 const datumAus = (zeitstempel) => new Date(zeitstempel).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+const laeuft = () => laufendeWoche(woche, heuteIso());
+const VORLAEUFIG = 'vorläufig: Soll der ganzen Woche, IST erst bis heute';
 
 // ---------------------------------------------------------------- Laden
 
@@ -43,7 +51,7 @@ async function lade(j = jahr, k = kw) {
   const nummer = ++ladeNummer;
   let antwort;
   try {
-    antwort = await aufruf('pep_zeitkonto_woche', { p_jahr: j, p_kw: k });
+    [antwort, warnfaktor] = await Promise.all([aufruf('pep_zeitkonto_woche', { p_jahr: j, p_kw: k }), warnfaktorLaden]);
   } catch (fehler) {
     if (nummer !== ladeNummer) return; // veraltete Anfrage: Fehler egal
     throw fehler;
@@ -99,12 +107,12 @@ function abschlussTeil() {
       `Abgeschlossen am ${datumAus(a.am)} um ${uhrzeitAus(a.am)}${a.von_name ? ` von ${a.von_name}` : ''}`);
   }
   const sonntag = plusTage(woche.montag, 6);
-  const laeuft = sonntag >= heuteIso();
+  const laufend = laeuft();
   const offen = woche.offene_tage;
   const teile = [];
   if (darfBuchen()) {
     teile.push(element('button', {
-      type: 'button', class: 'knopf primaer', disabled: offen > 0 || laeuft, onclick: wocheBuchen,
+      type: 'button', class: 'knopf primaer', disabled: offen > 0 || laufend, onclick: (e) => wocheBuchen(e.currentTarget),
       title: 'Bucht je Mitarbeiter die Differenz dieser Woche ins Zeitkonto',
     }, 'Woche buchen'));
   } else {
@@ -115,7 +123,7 @@ function abschlussTeil() {
       type: 'button', class: 'zk-offen', onclick: () => zumErstenOffenenTag(), title: 'Zum ersten offenen Tag im IST',
     }, `${anzahl(offen, 'Tag', 'Tage')} im IST offen`));
   }
-  if (laeuft) {
+  if (laufend) {
     teile.push(element('span', { class: 'hinweis' },
       `Die Woche läuft noch; abschließen geht ab ${datumDE(plusTage(sonntag, 1))}.`));
   } else if (offen > 0 && darfBuchen()) {
@@ -157,11 +165,12 @@ function vertragText(m) {
 
 const zahlZelle = (wert, klasse = '') => element('td', { class: `zahl ${klasse}`.trim() }, wert);
 
-function saldoZelle(m) {
-  const warn = m.warnung === 'plus' || m.warnung === 'minus';
-  const td = zahlZelle(vorzeichen(m.saldo_aktuell), `${vorzeichenKlasse(m.saldo_aktuell)}${warn ? ' zk-warnung' : ''}`);
+// Saldo-Zelle mit Warnung ('plus' | 'minus' | null): ⚠ und gelber Grund, Erklärung im title.
+function saldoZelle(wert, warnung, klasse) {
+  const warn = warnung === 'plus' || warnung === 'minus';
+  const td = zahlZelle(vorzeichen(wert), `${klasse}${warn ? ' zk-warnung' : ''}`);
   if (warn) {
-    td.title = m.warnung === 'plus'
+    td.title = warnung === 'plus'
       ? 'Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen)'
       : 'Saldo unter dem Warnwert (−Warnfaktor × Wochenstunden, Einstellungen)';
     td.prepend(element('span', { class: 'zk-warnsymbol', 'aria-label': 'Warnung' }, '⚠ '));
@@ -169,7 +178,21 @@ function saldoZelle(m) {
   return td;
 }
 
-function zeile(m) {
+// Laufende Woche: Diff und Saldo aktuell grau und ohne Vorzeichenfarbe (vorläufig); die Warnung hängt dann am Saldo
+// Vorwoche, im Browser nach der Regel des Servers gerechnet. Sonst wie geliefert: Warnung am Saldo aktuell.
+function saldoZellen(m, laufend) {
+  if (laufend) {
+    const diff = zahlZelle(vorzeichen(m.diff), 'vorlaeufig');
+    diff.title = VORLAEUFIG;
+    const aktuell = zahlZelle(vorzeichen(m.saldo_aktuell), 'vorlaeufig');
+    aktuell.title = VORLAEUFIG;
+    return [diff, saldoZelle(m.saldo_vorwoche, saldoWarnung(m.saldo_vorwoche, m.wochenstunden, warnfaktor), ''), aktuell];
+  }
+  return [zahlZelle(vorzeichen(m.diff), vorzeichenKlasse(m.diff)), zahlZelle(vorzeichen(m.saldo_vorwoche)),
+    saldoZelle(m.saldo_aktuell, m.warnung, vorzeichenKlasse(m.saldo_aktuell))];
+}
+
+function zeile(m, laufend) {
   const fuehrung = m.vertragsart === 'fuehrung' && m.grenze != null;
   return element('tr', { 'data-mitarbeiter': m.id, class: m.aktiv ? '' : 'inaktiv' },
     element('th', { scope: 'row' },
@@ -180,9 +203,7 @@ function zeile(m) {
     zahlZelle(stundenDE(m.ist)),
     zahlZelle(stundenDE(m.abwesend)),
     zahlZelle(stundenDE(m.feiertag)),
-    zahlZelle(vorzeichen(m.diff), vorzeichenKlasse(m.diff)),
-    zahlZelle(vorzeichen(m.saldo_vorwoche)),
-    saldoZelle(m),
+    saldoZellen(m, laufend),
     zahlZelle(stundenDE(m.spaet)),
     element('td', { class: 'zk-offen-zelle' }, m.offene_tage > 0
       ? element('button', {
@@ -198,29 +219,61 @@ function zeichneTabelle() {
     return;
   }
   const s = wochenSumme(liste);
+  const laufend = laeuft();
   const kopf = element('tr', {}, element('th', { scope: 'col' }, 'Mitarbeiter'),
     SPALTEN.map(([titel, hinweis], i) => element('th', {
       scope: 'col', title: hinweis, class: i > 0 && i < SPALTEN.length - 1 ? 'zahl' : '',
-    }, titel)));
+    }, titel, laufend && (titel === 'Diff' || titel === 'Saldo aktuell')
+      ? element('small', { class: 'zk-vorlaeufig-marke' }, 'vorläufig') : null)));
   const fuss = element('tr', {}, element('th', { scope: 'row' }, 'Summe'), element('td'),
     zahlZelle(stundenDE(s.soll)), zahlZelle(stundenDE(s.ist)), zahlZelle(stundenDE(s.abwesend)),
-    zahlZelle(stundenDE(s.feiertag)), zahlZelle(vorzeichen(s.diff), vorzeichenKlasse(s.diff)),
+    zahlZelle(stundenDE(s.feiertag)), zahlZelle(vorzeichen(s.diff), laufend ? 'vorlaeufig' : vorzeichenKlasse(s.diff)),
     element('td'), element('td'), element('td'), element('td'));
   rahmen.tabelle.replaceChildren(
     element('div', { class: 'tabelle-scroll' },
       element('table', { class: 'zk-tabelle' },
-        element('thead', {}, kopf), element('tbody', {}, liste.map(zeile)), element('tfoot', {}, fuss))),
-    element('p', { class: 'hinweis zk-fuss' },
-      'Klick auf einen Namen öffnet das Journal. ⚠ = Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).',
-      woche.abgeschlossen ? '' : ' Solange die Woche nicht gebucht ist, enthält „Saldo aktuell“ die Diff vorläufig.'));
+        element('thead', {}, kopf), element('tbody', {}, liste.map((m) => zeile(m, laufend))), element('tfoot', {}, fuss))),
+    element('p', { class: 'hinweis zk-fuss' }, 'Klick auf einen Namen öffnet das Journal. ', laufend
+      ? 'Die Woche läuft noch: Diff und Saldo aktuell sind vorläufig (Soll der ganzen Woche, IST erst bis heute). '
+        + '⚠ = Saldo Vorwoche über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).'
+      : '⚠ = Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).',
+    woche.abgeschlossen || laufend ? '' : ' Solange die Woche nicht gebucht ist, enthält „Saldo aktuell“ die Diff.'));
 }
 
 // ---------------------------------------------------------------- Woche buchen
 
-function wocheBuchen() {
-  const { jahr: j, kw: k } = woche;
+const ERSTER_ABSCHLUSS = 'Erster Wochenabschluss: Startsalden (Übernahme aus der bisherigen Zeiterfassung) bitte vorher '
+  + 'im Journal je Mitarbeiter eintragen – danach geht nur noch „Korrektur von Hand“.';
+
+// Erster Abschluss der Filiale? Ohne Schemaänderung: Ist die Vorwoche abgeschlossen, nein. Sonst entscheidet das Journal
+// der ganzen Filiale – jeder Abschluss bucht Zeilen „woche“. Den Journal-Abruf gibt es also nur, wenn die Vorwoche offen
+// ist (erster Abschluss oder Abschluss außer der Reihe). Bei Fehler lieber mit Hinweis.
+async function ersterAbschluss(montag) {
+  try {
+    const vor = isoWoche(plusTage(montag, -7));
+    if ((await aufruf('pep_zeitkonto_woche', { p_jahr: vor.jahr, p_kw: vor.kw }))?.abgeschlossen) return false;
+    const journal = await aufruf('pep_zeitkonto_journal', { p_mitarbeiter_id: null, p_von: null, p_bis: null });
+    return !(journal ?? []).some((b) => b.art === 'woche');
+  } catch (fehler) {
+    if (fehler.behandelt) throw fehler;
+    return true;
+  }
+}
+
+async function wocheBuchen(knopf) {
+  const { jahr: j, kw: k, montag } = woche;
   let antwort = null;
+  knopf.disabled = true; // Doppelklick während der Prüfung öffnet keinen zweiten Dialog
+  let erster;
+  try {
+    erster = await ersterAbschluss(montag);
+  } catch {
+    return; // abgemeldet
+  } finally {
+    knopf.disabled = false;
+  }
   dialog(`KW ${k}/${j} abschließen`, [
+    erster ? element('p', { class: 'hinweis-gelb zk-erster' }, ERSTER_ABSCHLUSS) : null,
     element('p', {}, 'Bucht für jeden Mitarbeiter die Diff dieser Woche ins Zeitkonto.'),
     element('p', { class: 'hinweis' },
       'Ein Abschluss lässt sich nicht zurücknehmen. Ändert sich danach etwas in dieser Woche (IST, Abwesenheit, Vertrag), '
@@ -247,16 +300,23 @@ function oeffneJournal(m) {
   const d = dialog(`Zeitkonto: ${m.name}`, [inhalt], [], () => {}, 'Schließen');
   d.classList.add('zk-journal-dialog');
   d.querySelector('.dialog-knoepfe').prepend(knoepfe);
-  const fuellen = async () => {
-    const zeilen = journalZeilen(await aufruf('pep_zeitkonto_journal', { p_mitarbeiter_id: m.id, p_von: null, p_bis: null }));
-    const nachBuchung = async () => { await fuellen(); await lade(); };
-    inhalt.replaceChildren(...journalInhalt(zeilen));
-    knoepfe.replaceChildren(...buchungsKnoepfe(m, zeilen, nachBuchung));
+  // Nach einer Buchung: Wochentabelle (Fehler als Seitenmeldung) und Journal (Fehler im offenen Dialog) unabhängig neu.
+  const nachBuchung = async () => {
+    lade().catch(zeigeFehler);
+    await fuellen();
   };
-  fuellen().catch((fehler) => {
-    if (fehler.behandelt) { d.close(); return; }
-    inhalt.replaceChildren(element('p', { class: 'meldung fehler', role: 'alert' }, fehlerText(fehler.message)));
-  });
+  const fuellen = async () => {
+    try {
+      const zeilen = journalZeilen(await aufruf('pep_zeitkonto_journal', { p_mitarbeiter_id: m.id, p_von: null, p_bis: null }));
+      inhalt.replaceChildren(...journalInhalt(zeilen));
+      knoepfe.replaceChildren(...buchungsKnoepfe(m, zeilen, nachBuchung));
+    } catch (fehler) {
+      if (fehler.behandelt) { d.close(); return; }
+      inhalt.replaceChildren(element('p', { class: 'meldung fehler', role: 'alert' }, fehlerText(fehler.message)));
+      knoepfe.replaceChildren();
+    }
+  };
+  fuellen();
 }
 
 function journalInhalt(zeilen) {
@@ -297,19 +357,23 @@ function buchungsKnoepfe(m, zeilen, nachBuchung) {
 
 // Startsaldo oder Korrektur von Hand. Stunden mit Komma („−4,5“, „2,25“), Grund Pflicht, Datum bestimmt die Woche,
 // in deren Saldo die Buchung zählt. Vorbelegt: Korrektur heute; Startsaldo der Sonntag vor der angezeigten Woche, damit er
-// dort als „Saldo Vorwoche“ erscheint (mit heute stünde er erst in der laufenden Woche, nach den ersten Abschlüssen).
+// dort als „Saldo Vorwoche“ erscheint (mit heute stünde er erst in der laufenden Woche, nach den ersten Abschlüssen) –
+// höchstens aber der Sonntag vor der aktuellen Woche, damit er nie in der Zukunft liegt.
 function buchungsDialog(m, art, nachBuchung) {
+  const heute = isoWoche(heuteIso());
+  const startDatum = [plusTage(woche.montag, -1), plusTage(montagDerKw(heute.jahr, heute.kw), -1)].sort()[0];
+  const startKw = isoWoche(plusTage(startDatum, 1));
   const stunden = element('input', {
     type: 'text', inputmode: 'decimal', autocomplete: 'off', placeholder: 'z. B. −4,5 oder 2,25', class: 'zk-stunden',
   });
-  const datum = element('input', { type: 'date', value: art === 'start' ? plusTage(woche.montag, -1) : heuteIso() });
+  const datum = element('input', { type: 'date', value: art === 'start' ? startDatum : heuteIso() });
   const grund = element('input', {
     type: 'text', maxlength: '200', autocomplete: 'off',
     placeholder: art === 'start' ? 'z. B. Übernahme aus der bisherigen Liste' : 'z. B. Überstunden ausgezahlt',
   });
   const d = dialog(art === 'start' ? `Startsaldo: ${m.name}` : `Korrektur buchen: ${m.name}`, [
     element('p', { class: 'hinweis' }, art === 'start'
-      ? `Stand des Zeitkontos zu Beginn; das Datum ist auf den Tag vor KW ${woche.kw}/${woche.jahr} vorbelegt. `
+      ? `Stand des Zeitkontos zu Beginn; das Datum ist auf den Tag vor KW ${startKw.kw}/${startKw.jahr} vorbelegt. `
         + 'Geht nur als erste Buchung des Mitarbeiters.'
       : 'Plus schreibt Stunden gut, Minus zieht sie ab. Die Buchung zählt in der Woche des Datums.'),
     element('label', { class: 'feld' }, 'Stunden (Plus oder Minus)', stunden),
@@ -343,6 +407,9 @@ function buchungsDialog(m, art, nachBuchung) {
 
 async function zeigen() {
   meldung('');
+  warnfaktorLaden = aufruf('pep_einstellungen')
+    .then((e) => e?.werte?.zeitkonto_warnfaktor ?? null)
+    .catch((fehler) => { if (fehler.behandelt) throw fehler; return null; });
   if (!rahmen.kopf) {
     rahmen.kopf = element('div', { class: 'box werkzeugleiste' });
     rahmen.tabelle = element('div', { class: 'box' });
