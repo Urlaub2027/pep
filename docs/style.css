@@ -455,6 +455,9 @@ th { background: var(--hell); font-weight: 600; }
 .pd-luecke { font-weight: 600; color: var(--ok); white-space: nowrap; }
 .pd-luecke.ueber { color: var(--text-2); }
 .pd-kandidat small { color: var(--text-2); }
+.pd-uebernahme { font-size: 0.9rem; }
+.pd-uebernahme.ueber { color: var(--netto-rot); font-weight: 600; }
+.pd-pause { color: var(--text-2); font-size: 0.9rem; }
 .pd-hinweis { justify-self: start; padding: 1px 6px; font-size: 0.85rem; background: var(--hinweis); border-left: 3px solid var(--netto-gelb); border-radius: 3px; }
 
 /* Eckdaten-Fenster (plan-dialoge.js): Abschnitte in zwei Spalten, schmal in einer; der Dialog scrollt in sich */

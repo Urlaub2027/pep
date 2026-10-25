@@ -159,6 +159,31 @@ export function lueckeText(luecke) {
   return 'Woche voll';
 }
 
+// Unbesetzte Blöcke im Ersatz-Fenster (Antwort von pep_ersatz_kandidaten, [{von, bis, bereich_id}]): Pausen stehen
+// nicht als eigener Block da, sondern als „inkl. Pause 12:30–13:00“ (der Ersatz übernimmt die Schicht samt Pause).
+// stunden = Arbeitsstunden der Übernahme ohne Pause, wie pep.arbeitsstunden (F4). Ist nur eine Pause unbesetzt,
+// bleibt sie als Block stehen (0 h).
+export function ersatzBloecke(unbesetzt, pauseIds) {
+  const pausen = alsMenge(pauseIds);
+  const istPause = (b) => pausen.has(b.bereich_id);
+  const arbeit = (unbesetzt ?? []).filter((b) => !istPause(b));
+  const pause = (unbesetzt ?? []).filter(istPause);
+  if (!arbeit.length) return { arbeit: pause, pauseText: '', stunden: 0 };
+  const pauseText = pause.length
+    ? `inkl. ${pause.length === 1 ? 'Pause' : 'Pausen'} ${pause.map((b) => `${b.von}–${b.bis}`).join(', ')}` : '';
+  return { arbeit, pauseText, stunden: arbeit.reduce((summe, b) => summe + stunden(b), 0) };
+}
+
+// Was die Übernahme von den offenen Wochenstunden eines Kandidaten verbraucht (luecke = Soll − geplant vor der
+// Übernahme): „Übernahme 8,0 h · danach noch 2,0 h offen“ bzw. „… danach 1,5 h über Soll“ (ueber = true).
+export function uebernahmeText(stundenUebernahme, luecke) {
+  const zahl = (n) => n.toFixed(2).replace(/0$/, '').replace('.', ','); // 8,0 · 1,5 · 6,25
+  const h = Math.round(Number(stundenUebernahme) * 100) / 100 || 0;
+  const rest = Math.round((Number(luecke) - h) * 100) / 100 || 0;
+  const danach = rest > 0 ? `danach noch ${zahl(rest)} h offen` : rest < 0 ? `danach ${zahl(-rest)} h über Soll` : 'danach Woche voll';
+  return { text: `Übernahme ${zahl(h)} h · ${danach}`, ueber: rest < 0 };
+}
+
 // ---------------------------------------------------------------- Eckdaten
 
 const kurzZahl = (n) => String(Math.round(Number(n) * 100) / 100).replace('.', ',');

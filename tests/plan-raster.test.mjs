@@ -7,7 +7,7 @@ import {
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
   rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
-  vorgabeText,
+  vorgabeText, ersatzBloecke, uebernahmeText,
 } from '../docs/plan-raster.js';
 
 test('heuteDatum: lokales Datum zum Aufrufzeitpunkt; ?heute= ersetzt es nur bei gültigem Datum', () => {
@@ -222,6 +222,39 @@ test('lueckeText: offene Wochenstunden des Ersatzes, voll oder über Soll', () =
   assert.equal(lueckeText(0), 'Woche voll');
   assert.equal(lueckeText(-1e-9), 'Woche voll');
   assert.equal(lueckeText(-1.25), '1,25 h über Soll');
+});
+
+test('ersatzBloecke: Pausen nicht als eigene Blöcke, Stunden der Übernahme ohne Pause', () => {
+  const pausen = new Set([10]);
+  const r = ersatzBloecke([
+    { von: '07:00', bis: '12:30', bereich_id: 1 },
+    { von: '12:30', bis: '13:00', bereich_id: 10 },
+    { von: '13:00', bis: '15:30', bereich_id: 1 },
+  ], pausen);
+  assert.deepEqual(r.arbeit.map((b) => b.von), ['07:00', '13:00']);
+  assert.equal(r.pauseText, 'inkl. Pause 12:30–13:00');
+  assert.equal(r.stunden, 8);
+  const zwei = ersatzBloecke([{ von: '08:00', bis: '12:00', bereich_id: 1 }, { von: '12:00', bis: '12:15', bereich_id: 10 },
+    { von: '12:15', bis: '16:00', bereich_id: 2 }, { von: '16:00', bis: '16:30', bereich_id: 10 }], [10]);
+  assert.equal(zwei.pauseText, 'inkl. Pausen 12:00–12:15, 16:00–16:30');
+  assert.equal(zwei.stunden, 7.75);
+  const ohne = ersatzBloecke([{ von: '08:00', bis: '10:00', bereich_id: 1 }], pausen);
+  assert.equal(ohne.pauseText, '');
+  assert.equal(ohne.stunden, 2);
+  // Nur eine Pause unbesetzt: dann steht sie selbst da (sonst wäre die Zeile leer), 0 h Arbeit.
+  const nurPause = ersatzBloecke([{ von: '12:30', bis: '13:00', bereich_id: 10 }], pausen);
+  assert.deepEqual(nurPause.arbeit.map((b) => b.von), ['12:30']);
+  assert.equal(nurPause.pauseText, '');
+  assert.equal(nurPause.stunden, 0);
+});
+
+test('uebernahmeText: Stunden der Übernahme und was danach von der Woche offen bleibt', () => {
+  assert.deepEqual(uebernahmeText(8, 10), { text: 'Übernahme 8,0 h · danach noch 2,0 h offen', ueber: false });
+  assert.deepEqual(uebernahmeText(8, '6.5'), { text: 'Übernahme 8,0 h · danach 1,5 h über Soll', ueber: true });
+  assert.deepEqual(uebernahmeText(7.75, 7.75), { text: 'Übernahme 7,75 h · danach Woche voll', ueber: false });
+  assert.deepEqual(uebernahmeText(4, 10.25), { text: 'Übernahme 4,0 h · danach noch 6,25 h offen', ueber: false });
+  assert.deepEqual(uebernahmeText(4, -1), { text: 'Übernahme 4,0 h · danach 5,0 h über Soll', ueber: true });
+  assert.deepEqual(uebernahmeText(8, 8 + 1e-9), { text: 'Übernahme 8,0 h · danach Woche voll', ueber: false });
 });
 
 test('vorgabeText: Wochenvorgabe als Zeile im Eckdaten-Fenster', () => {

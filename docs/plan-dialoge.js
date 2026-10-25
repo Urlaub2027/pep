@@ -9,7 +9,8 @@ import { dialog } from './dialog.js';
 import { waehleMitarbeiter, VERTRAGSARTEN } from './mitarbeiter.js';
 import { plusTage, montagDerKw, zeitspanne, isoWoche } from './zeit.js';
 import {
-  gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText, vorgabeText,
+  gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText, vorgabeText, ersatzBloecke,
+  uebernahmeText,
 } from './plan-raster.js';
 
 const WOCHENTAG_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -293,7 +294,10 @@ export async function ersatzDialog(kontext, mitarbeiterId, datum) {
   const name = woche.mitarbeiter.find((m) => m.id === mitarbeiterId)?.name ?? '';
   const bereich = (id) => woche.bereiche.find((b) => b.id === id);
   const kuerzel = (u) => `${bereich(u.bereich_id)?.kuerzel ?? '?'} ${zeitspanne(u.von, u.bis)}`;
-  const blockText = antwort.unbesetzt.map(kuerzel).join(', ');
+  // Pausen stehen nicht als eigener Block da, sondern als „inkl. Pause …“ hinter der Schicht.
+  const pausen = woche.bereiche.filter((b) => b.art === 'pause').map((b) => b.id);
+  const bloecke = ersatzBloecke(antwort.unbesetzt, pausen);
+  const blockText = [bloecke.arbeit.map(kuerzel).join(', '), bloecke.pauseText].filter(Boolean).join(' ');
 
   let d = null;
   const uebernehmen = async (k, knopf) => {
@@ -317,10 +321,12 @@ export async function ersatzDialog(kontext, mitarbeiterId, datum) {
   };
 
   const zeile = (k) => {
+    const verbrauch = uebernahmeText(bloecke.stunden, k.luecke); // wie viel der offenen Wochenstunden die Übernahme braucht
     const knopf = element('button', { type: 'button', class: 'pd-kandidat', title: `${k.name} übernimmt ${blockText}` },
       element('span', { class: 'pd-kandidat-kopf' },
         element('strong', {}, k.name),
         element('span', { class: `pd-luecke${Number(k.luecke) < 0 ? ' ueber' : ''}` }, lueckeText(k.luecke))),
+      element('span', { class: `pd-uebernahme${verbrauch.ueber ? ' ueber' : ''}` }, verbrauch.text),
       element('small', {}, `${k.samstage_monat} ${k.samstage_monat === 1 ? 'Samstag' : 'Samstage'} im Monat · `
         + `${k.spaet_woche} ${k.spaet_woche === 1 ? 'Spätschicht' : 'Spätschichten'} in der Woche`),
       k.hinweise.map((h) => element('span', { class: 'pd-hinweis' }, h)));
@@ -330,7 +336,8 @@ export async function ersatzDialog(kontext, mitarbeiterId, datum) {
 
   d = dialog(`Ersatz für ${name}`, [
     element('p', { class: 'pd-unbesetzt' }, element('strong', {}, `${tagKurz(datum)} unbesetzt:`),
-      antwort.unbesetzt.map((u) => element('span', { class: 'pd-block' }, farbfeld(bereich(u.bereich_id)?.farbe), kuerzel(u)))),
+      bloecke.arbeit.map((u) => element('span', { class: 'pd-block' }, farbfeld(bereich(u.bereich_id)?.farbe), kuerzel(u))),
+      bloecke.pauseText ? element('span', { class: 'pd-pause' }, bloecke.pauseText) : null),
     antwort.kandidaten.length
       ? element('div', { class: 'pd-kandidaten' }, antwort.kandidaten.map(zeile))
       : element('p', { class: 'warnung' }, 'Niemand kann einspringen, ohne eine Sperre, die Ruhezeit oder die '

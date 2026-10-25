@@ -895,6 +895,16 @@ await szenario('Krank melden über geplanten Blöcken, Ersatz übernehmen', asyn
   const kandidaten = await texte('dialog[open] .pd-kandidat strong');
   pruefe(kandidaten.length > 0, 'Kandidaten gelistet', kandidaten);
   notiz(`Kandidaten: ${kandidaten.join(', ')}; unbesetzt: ${await text('dialog[open] .pd-unbesetzt')}`);
+  const bloeckeText = await texte('dialog[open] .pd-block');
+  pruefe(bloeckeText.length > 0 && bloeckeText.every((x) => !x.startsWith('PA')), 'Pause nicht als eigener unbesetzter Block', bloeckeText);
+  const pausen = geplant.filter((x) => x.startsWith('PA ')).map((x) => x.slice(3).replace('-', '–'));
+  gleich(await text('dialog[open] .pd-pause'), pausen.length ? `inkl. Pause ${pausen.join(', ')}` : null, 'Schichtzeile nennt die Pause');
+  // Arbeitsstunden der Übernahme = Ben am Tag ohne Pause (alle seine Blöcke sind unbesetzt)
+  const arbeit = (await sql(`select coalesce(sum(extract(epoch from (p.bis - p.von)) / 3600), 0)::float as h from pep.plan_bloecke p
+    join pep.bereiche b on b.id = p.bereich_id where p.mitarbeiter_id = $1 and p.datum = $2::date and b.art <> 'pause'`, [ben, DO]))[0].h;
+  const verbrauch = await texte('dialog[open] .pd-uebernahme');
+  gleich(verbrauch.length, kandidaten.length, 'Jeder Kandidat zeigt den Verbrauch der Übernahme');
+  pruefe(verbrauch.every((x) => x.startsWith(`Übernahme ${arbeit.toFixed(1).replace('.', ',')} h · danach `)), `Übernahme ${arbeit} h`, verbrauch);
   await c.foto(`${FOTOS}ersatz-dialog.png`);
   if (kandidaten.length) {
     const ersatzName = kandidaten[0];
