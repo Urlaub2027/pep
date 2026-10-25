@@ -176,7 +176,7 @@ test('pausenabloese: Kasse in der Pause leer und niemand mit Kassenkompetenz fre
 test('pausenabloese: Kasse von jemand anderem besetzt → kein Eintrag; Kasse leer, aber Kraft mit Kassenkompetenz frei → kein Eintrag', async () => {
   const k = await ma('Test, Karla');
   const z = await ma('Test, Zora');
-  const o = await ma('Test, Olga', { kompetenzen: ['OG'] });
+  const o = await ma('Test, Odile', { kompetenzen: ['OG'] });
   await plan(k, '2026-11-27', '08:00-12:00 KA, 12:00-12:30 PA, 12:30-16:00 KA');
   await plan(z, '2026-11-27', '12:00-12:30 KA');
   await plan(o, '2026-11-27', '08:00-16:00 OG'); // niemand mit Kassenkompetenz frei

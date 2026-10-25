@@ -343,7 +343,7 @@ test('leer radierte offene Zeile: Vorschlag kommt nicht zurück, Bestätigen sch
 
 test('pep_ist_woche: Form wie pep_einsatzplan_woche plus modus/status/plan_bloecke; vorschlag nur an offenen Tagen ohne IST', async () => {
   const { ma, plan, ist, bestaetigen, istWoche, leitung, stellv, json, bereich } = t;
-  const a = await ma('Test, Olga');
+  const a = await ma('Test, Odile');
   for (const d of ['2026-11-09', '2026-11-10', '2026-11-11']) await plan(a, d, '08:00', '12:00', 'KA');
   await ist(leitung, a, '2026-11-10', '12:00', '13:00', 'KA');     // offen, mit IST
   await bestaetigen(leitung, '2026-11-11', [a]);                    // bestätigt aus Vorschlag

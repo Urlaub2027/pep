@@ -215,7 +215,7 @@ test('alter_am: Geburtstag 2009-03-15 → am 2027-03-14 = 17, am 2027-03-15 = 18
   const alter = async (id, d) => (await db.query('select pep.alter_am($1, $2::date) a', [id, d])).rows[0].a;
   assert.equal(await alter(m, '2027-03-14'), 17);
   assert.equal(await alter(m, '2027-03-15'), 18);
-  assert.equal(await alter(await neuerMitarbeiter('Ohne, Olga'), '2027-03-15'), null);
+  assert.equal(await alter(await neuerMitarbeiter('Ohne, Odile'), '2027-03-15'), null);
 });
 
 test('jedes Speichern schreibt Protokoll mit tabelle und schluessel', async () => {
