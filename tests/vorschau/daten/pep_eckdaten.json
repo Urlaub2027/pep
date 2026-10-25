@@ -1,0 +1,113 @@
+{
+ "woche": {
+  "soll": 37.5,
+  "geplant": 37.5
+ },
+ "vertrag": {
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5
+ },
+ "hinweise": [
+  "Hatte letzte Woche überwiegend früh – eher spät planen",
+  "Letzter gearbeiteter Samstag war spät – nicht wieder spät planen"
+ ],
+ "samstage": {
+  "monat": [
+   {
+    "code": null,
+    "datum": "2026-11-07",
+    "status": "gearbeitet"
+   },
+   {
+    "code": null,
+    "datum": "2026-11-14",
+    "status": "frei"
+   },
+   {
+    "code": null,
+    "datum": "2026-11-21",
+    "status": "frei"
+   },
+   {
+    "code": "U",
+    "datum": "2026-11-28",
+    "status": "abwesend"
+   }
+  ],
+  "frei_jahr": 44,
+  "ziel_jahr": 12,
+  "ziel_monat": 1
+ },
+ "vorgaben": [
+  {
+   "art": "nicht_verfuegbar",
+   "bis": null,
+   "von": null,
+   "notiz": "ärztliche Vorgabe",
+   "pflicht": true,
+   "wochentag": null,
+   "max_stunden_tag": 9,
+   "max_stunden_woche": null
+  },
+  {
+   "art": "nur_zwischen",
+   "bis": "14:00",
+   "von": "06:00",
+   "notiz": "Sportverein dienstags",
+   "pflicht": false,
+   "wochentag": 2,
+   "max_stunden_tag": null,
+   "max_stunden_woche": null
+  }
+ ],
+ "vorwoche": [
+  {
+   "lage": "frueh",
+   "datum": "2026-11-02"
+  },
+  {
+   "lage": "frueh",
+   "datum": "2026-11-03"
+  },
+  {
+   "lage": "frueh",
+   "datum": "2026-11-04"
+  },
+  {
+   "lage": "spaet",
+   "datum": "2026-11-05"
+  },
+  {
+   "lage": null,
+   "datum": "2026-11-06"
+  },
+  {
+   "lage": "spaet",
+   "datum": "2026-11-07"
+  },
+  {
+   "lage": null,
+   "datum": "2026-11-08"
+  }
+ ],
+ "kommentar": "Obstlieferung prüfen",
+ "zeitkonto": null,
+ "kompetenzen": [],
+ "mitarbeiter": {
+  "id": 5,
+  "name": "Demo, Emil",
+  "alter": null,
+  "personalnummer": "90005"
+ },
+ "abwesenheiten": [
+  {
+   "bis": null,
+   "von": null,
+   "code": "ZA",
+   "datum": "2026-11-20",
+   "stunden": 6.25
+  }
+ ],
+ "vorwoche_lage": "frueh",
+ "letzter_samstag_spaet": true
+}

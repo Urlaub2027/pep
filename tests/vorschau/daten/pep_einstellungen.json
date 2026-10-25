@@ -1,0 +1,355 @@
+{
+ "codes": [
+  {
+   "id": 1,
+   "code": "U",
+   "name": "Urlaub",
+   "aktiv": true,
+   "farbe": "#4CAF50",
+   "sperrt": true,
+   "position": 1,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 2,
+   "code": "KM",
+   "name": "Krank",
+   "aktiv": true,
+   "farbe": "#E53935",
+   "sperrt": true,
+   "position": 2,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 3,
+   "code": "BS",
+   "name": "Berufsschule",
+   "aktiv": true,
+   "farbe": "#1E88E5",
+   "sperrt": true,
+   "position": 3,
+   "stundenregel": "tatsaechlich"
+  },
+  {
+   "id": 4,
+   "code": "ZA",
+   "name": "Zeitausgleich",
+   "aktiv": true,
+   "farbe": "#F9A825",
+   "sperrt": true,
+   "position": 4,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 5,
+   "code": "AF",
+   "name": "Andere Filiale",
+   "aktiv": true,
+   "farbe": "#1565C0",
+   "sperrt": true,
+   "position": 5,
+   "stundenregel": "tatsaechlich"
+  },
+  {
+   "id": 6,
+   "code": "BV",
+   "name": "Berufliche Veranstaltung",
+   "aktiv": true,
+   "farbe": "#3949AB",
+   "sperrt": true,
+   "position": 6,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 7,
+   "code": "FT",
+   "name": "Feiertag",
+   "aktiv": true,
+   "farbe": "#8E24AA",
+   "sperrt": true,
+   "position": 7,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 8,
+   "code": "NV",
+   "name": "Nicht verfügbar",
+   "aktiv": true,
+   "farbe": "#80CBC4",
+   "sperrt": true,
+   "position": 8,
+   "stundenregel": "keine"
+  },
+  {
+   "id": 9,
+   "code": "T",
+   "name": "Termin/Schulung",
+   "aktiv": true,
+   "farbe": "#5C6BC0",
+   "sperrt": true,
+   "position": 9,
+   "stundenregel": "tatsaechlich"
+  }
+ ],
+ "werte": {
+  "max_tag_h": 10,
+  "ruhezeit_h": 11,
+  "spaet_grenze": "18:00",
+  "max_tag_u18_h": 8,
+  "ruhezeit_u18_h": 12,
+  "feiertag_teiler": 6,
+  "max_woche_u18_h": 40,
+  "pause_ab_6h_min": 30,
+  "pause_ab_9h_min": 45,
+  "u18_fruehestens": "06:00",
+  "u18_spaetestens": "20:00",
+  "wochen_toleranz_h": 0,
+  "abwesenheit_teiler": 6,
+  "freie_samstage_jahr": 12,
+  "freie_samstage_monat": 1,
+  "zeitkonto_warnfaktor": 1,
+  "stundenleistung_eur_h": 200,
+  "kassierleistung_eur_halbe_h": 900
+ },
+ "rahmen": [
+  {
+   "geoeffnet": true,
+   "wochentag": 1,
+   "rahmen_bis": "21:30:00",
+   "rahmen_von": "06:00:00",
+   "oeffnung_bis": "20:00:00",
+   "oeffnung_von": "07:00:00"
+  },
+  {
+   "geoeffnet": true,
+   "wochentag": 2,
+   "rahmen_bis": "21:30:00",
+   "rahmen_von": "06:00:00",
+   "oeffnung_bis": "20:00:00",
+   "oeffnung_von": "07:00:00"
+  },
+  {
+   "geoeffnet": true,
+   "wochentag": 3,
+   "rahmen_bis": "21:30:00",
+   "rahmen_von": "06:00:00",
+   "oeffnung_bis": "20:00:00",
+   "oeffnung_von": "07:00:00"
+  },
+  {
+   "geoeffnet": true,
+   "wochentag": 4,
+   "rahmen_bis": "21:30:00",
+   "rahmen_von": "06:00:00",
+   "oeffnung_bis": "20:00:00",
+   "oeffnung_von": "07:00:00"
+  },
+  {
+   "geoeffnet": true,
+   "wochentag": 5,
+   "rahmen_bis": "21:30:00",
+   "rahmen_von": "06:00:00",
+   "oeffnung_bis": "20:00:00",
+   "oeffnung_von": "07:00:00"
+  },
+  {
+   "geoeffnet": true,
+   "wochentag": 6,
+   "rahmen_bis": "21:30:00",
+   "rahmen_von": "06:00:00",
+   "oeffnung_bis": "20:00:00",
+   "oeffnung_von": "07:00:00"
+  },
+  {
+   "geoeffnet": false,
+   "wochentag": 7,
+   "rahmen_bis": null,
+   "rahmen_von": null,
+   "oeffnung_bis": null,
+   "oeffnung_von": null
+  }
+ ],
+ "filiale": {
+  "id": 1,
+  "name": "Netto Aschaffenburg",
+  "nummer": "2558",
+  "bundesland": "BY"
+ },
+ "benutzer": [
+  {
+   "rolle": "leitung",
+   "user_id": "778224ab-45ea-411d-b9af-f209c6f091b1",
+   "anzeigename": "chef",
+   "benutzername": "chef"
+  }
+ ],
+ "bereiche": [
+  {
+   "id": 1,
+   "art": "bereich",
+   "name": "Kasse",
+   "aktiv": true,
+   "farbe": "#7FD1FF",
+   "kuerzel": "KA",
+   "position": 1,
+   "bedeutung": "kasse",
+   "kompetenz_noetig": true
+  },
+  {
+   "id": 2,
+   "art": "bereich",
+   "name": "Obst",
+   "aktiv": true,
+   "farbe": "#9BE38A",
+   "kuerzel": "OG",
+   "position": 2,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 3,
+   "art": "bereich",
+   "name": "Backen",
+   "aktiv": true,
+   "farbe": "#F3C96B",
+   "kuerzel": "BB",
+   "position": 3,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 4,
+   "art": "bereich",
+   "name": "TroSo",
+   "aktiv": true,
+   "farbe": "#D9B38C",
+   "kuerzel": "TS",
+   "position": 4,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 5,
+   "art": "bereich",
+   "name": "MoPro",
+   "aktiv": true,
+   "farbe": "#F5F5F5",
+   "kuerzel": "MO",
+   "position": 5,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 6,
+   "art": "bereich",
+   "name": "TK",
+   "aktiv": true,
+   "farbe": "#B8C4FF",
+   "kuerzel": "TK",
+   "position": 6,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 7,
+   "art": "bereich",
+   "name": "Führung",
+   "aktiv": true,
+   "farbe": "#2E7D4F",
+   "kuerzel": "FÜ",
+   "position": 7,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 8,
+   "art": "bereich",
+   "name": "Reinigung",
+   "aktiv": true,
+   "farbe": "#C9C9C9",
+   "kuerzel": "RE",
+   "position": 8,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 9,
+   "art": "bereich",
+   "name": "Backoffice",
+   "aktiv": true,
+   "farbe": "#AEE0D6",
+   "kuerzel": "BO",
+   "position": 9,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 10,
+   "art": "pause",
+   "name": "Pause",
+   "aktiv": true,
+   "farbe": "#555555",
+   "kuerzel": "PA",
+   "position": 10,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 11,
+   "art": "bereich",
+   "name": "Post",
+   "aktiv": false,
+   "farbe": "#E6E600",
+   "kuerzel": "PO",
+   "position": 11,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 12,
+   "art": "bereich",
+   "name": "Kiosk",
+   "aktiv": false,
+   "farbe": "#FF8C42",
+   "kuerzel": "KI",
+   "position": 12,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 13,
+   "art": "bereich",
+   "name": "Getränkemarkt",
+   "aktiv": false,
+   "farbe": "#333333",
+   "kuerzel": "GM",
+   "position": 13,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 14,
+   "art": "bereich",
+   "name": "Bedienbäckerei",
+   "aktiv": false,
+   "farbe": "#B5651D",
+   "kuerzel": "BE",
+   "position": 14,
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 15,
+   "art": "funktion",
+   "name": "VP",
+   "aktiv": true,
+   "farbe": "#9A5AD0",
+   "kuerzel": "VP",
+   "position": 15,
+   "bedeutung": "vp",
+   "kompetenz_noetig": false
+  }
+ ],
+ "schulferien": [],
+ "abweichungen": []
+}

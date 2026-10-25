@@ -107,3 +107,36 @@ export async function umfrageMitarbeiter(db, umfrageId, name) {
 // Abgabe wie im Browser: antworten = { "<frage_id>": wert }.
 export const abgeben = (db, code, antworten) =>
   browser(db, 'select public.umfrage_absenden($1, $2)', [code, JSON.stringify(antworten)]);
+
+// Grundlage aller Einsatzplan-Tests: Leitung „chef“ mit Filiale, Stellvertretung „vize“,
+// Stichtag heute (Standard Mo 02.11.2026, Testwoche KW 46 = 09.–15.11.2026).
+// bereich und code bilden Kürzel → Id ab. ma() legt Mitarbeiter mit Vertrag und Kompetenzen an,
+// malen() ruft pep_plan_malen (kuerzel null = radieren) und liefert die Tag-Antwort.
+export async function planGrundlage(db, { heute = '2026-11-02' } = {}) {
+  await heuteSetzen(db, heute);
+  const leitung = await pepBenutzer(db, 'chef');
+  const fil = await filiale(db, leitung);
+  const stellv = await pepBenutzer(db, 'vize', 'stellvertretung', fil);
+  const json = async (nutzer, sql, params = []) => (await als(db, 'authenticated', nutzer, sql, params))[0].r;
+  const e = await json(leitung, 'select public.pep_einstellungen() as r');
+  const bereich = Object.fromEntries(e.bereiche.map((b) => [b.kuerzel, b.id]));
+  const code = Object.fromEntries(e.codes.map((c) => [c.code, c.id]));
+
+  const ma = async (name, { stunden = 37.5, art = 'vollzeit', ab = '2026-01-01', geburtsdatum = null,
+    kompetenzen = ['KA'] } = {}) => {
+    const id = await json(leitung, 'select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r',
+      [JSON.stringify({ name, geburtsdatum })]);
+    await als(db, 'authenticated', leitung, 'select public.pep_vertrag_speichern($1, $2::jsonb)',
+      [id, JSON.stringify({ vertragsart: art, wochenstunden: stunden, gueltig_ab: ab })]);
+    for (const k of kompetenzen) {
+      await als(db, 'authenticated', leitung, 'select public.pep_kompetenz_setzen($1, $2, true)', [id, bereich[k]]);
+    }
+    return id;
+  };
+
+  const malen = (nutzer, maId, datum, von, bis, kuerzel) =>
+    json(nutzer, 'select public.pep_plan_malen($1, $2::date, $3::time, $4::time, $5) as r',
+      [maId, datum, von, bis, kuerzel === null ? null : bereich[kuerzel]]);
+
+  return { leitung, stellv, fil, bereich, code, json, ma, malen };
+}

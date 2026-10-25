@@ -1,0 +1,11 @@
+{
+ "rolle": "leitung",
+ "filiale": {
+  "id": 1,
+  "name": "Netto Aschaffenburg",
+  "nummer": "2558",
+  "bundesland": "BY"
+ },
+ "anzeigename": "chef",
+ "benutzername": "chef"
+}

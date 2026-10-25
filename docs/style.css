@@ -1,175 +1,831 @@
+/* PEP – Gestaltung. Tokens zuerst; Komponenten (Knöpfe, Karten, Chips, Raster) gelten für alle Reiter. */
 :root {
+  /* Netto-Farben: Rot nur für Verstöße und „unbesetzt“ */
   --netto-gelb: #FFE500;
   --netto-rot: #E30613;
   --schwarz: #111;
   --grau: #666;
   --linie: #d9d9d9;
   --hell: #f5f5f2;
+
+  --text: #1a1a1a;
+  --text-2: #5f6368;
+  --hintergrund: #f4f4f1;
+  --flaeche: #fff;
+  --linie-stark: #b9b9b0;
+  --hinweis: #fff4b3;
+  --ok: #2e7d32;
+  --hover-gelb: rgba(255, 229, 0, 0.22);
+
+  --radius: 8px;
+  --schatten-1: 0 1px 2px rgba(0, 0, 0, .06), 0 1px 3px rgba(0, 0, 0, .08);
+  --schatten-2: 0 6px 20px rgba(0, 0, 0, .16);
+  --dauer: 150ms;
+
+  --a1: 4px;
+  --a2: 8px;
+  --a3: 12px;
+  --a4: 16px;
+  --a5: 24px;
+  --a6: 32px;
+
+  --knopf-hoehe: 40px;
 }
+@media (pointer: coarse) { :root { --knopf-hoehe: 44px; } }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-  color: var(--schwarz);
-  background: var(--hell);
+  font-family: system-ui, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 16px;
+  color: var(--text);
+  background: var(--hintergrund);
   line-height: 1.4;
 }
+
+h2 { font-size: 1.25rem; line-height: 1.25; }
+h3 { font-size: 1rem; }
+
+:focus-visible { outline: 3px solid var(--schwarz); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
+
+/* ---------------------------------------------------------------- Kopf und Reiter */
 
 .kopf {
   display: flex;
   align-items: baseline;
-  gap: 16px;
-  padding: 10px 16px;
+  gap: var(--a3);
+  padding: var(--a3) var(--a4);
   background: var(--netto-gelb);
   color: var(--schwarz);
 }
-.kopf h1 { margin: 0; font-size: 1.6rem; letter-spacing: 0.05em; }
-.wer { margin: 0 0 0 auto; font-size: 0.95rem; }
+.kopf h1 { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: 0.06em; }
+.kopf-filiale { margin: 0; font-size: 1rem; font-weight: 600; }
+.kopf-filiale:empty { display: none; }
+.wer { margin: 0 0 0 auto; font-size: 0.9rem; }
 
 .reiterleiste {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 0 16px;
-  background: #fff;
+  gap: var(--a1);
+  padding: 0 var(--a4);
+  background: var(--flaeche);
   border-bottom: 1px solid var(--linie);
+  box-shadow: var(--schatten-1);
 }
 .reiterleiste[hidden] { display: none; }
 .reiter-knopf {
   min-height: 44px;
-  padding: 8px 14px;
+  padding: var(--a2) 14px;
   font: inherit;
-  color: var(--schwarz);
+  color: var(--text);
   background: none;
   border: 0;
   border-bottom: 3px solid transparent;
   cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer);
 }
-.reiter-knopf:hover { background: var(--hell); }
-.reiter-knopf.aktiv { font-weight: 600; border-bottom-color: var(--netto-rot); }
-.reiter-knopf.rechts { margin-left: auto; }
+.reiter-knopf:hover { background: var(--hintergrund); }
+.reiter-knopf.aktiv { font-weight: 700; border-bottom-color: var(--netto-rot); }
+.reiter-knopf.rechts { margin-left: auto; color: var(--text-2); }
 .reiter-knopf[hidden] { display: none; }
 
-main { max-width: 1600px; margin: 0 auto; padding: 16px; }
+main { max-width: 1600px; margin: 0 auto; padding: var(--a4); }
 section[hidden] { display: none; }
 
-.box {
-  padding: 16px;
-  background: #fff;
-  border: 1px solid var(--linie);
-  border-radius: 6px;
-  margin-bottom: 16px;
-}
-.formular-box { max-width: 420px; margin-inline: auto; }
-.box h2 { margin-top: 0; }
+/* ---------------------------------------------------------------- Karten */
 
-.feld { display: block; margin-bottom: 12px; font-size: 0.95rem; }
-.feld input, .feld select {
+.karte, .box {
+  padding: var(--a4) var(--a5);
+  background: var(--flaeche);
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-1);
+  margin-bottom: var(--a4);
+}
+.karte h2, .box h2 { margin: 0 0 var(--a3); }
+.karte h3, .box h3 { margin: var(--a4) 0 var(--a1); }
+.formular-box { max-width: 420px; margin: 8vh auto 0; padding: var(--a5) var(--a6); box-shadow: var(--schatten-2); }
+.formular-box button[type="submit"] { width: 100%; margin-top: var(--a2); }
+
+/* ---------------------------------------------------------------- Formularfelder */
+
+.feld { display: block; margin-bottom: var(--a3); font-size: 0.9rem; color: var(--text-2); }
+.feld input, .feld select, .feld textarea {
   display: block;
   width: 100%;
-  min-height: 40px;
-  margin-top: 4px;
-  padding: 6px 8px;
+  margin-top: var(--a1);
+  padding: 0 10px;
   font: inherit;
-  border: 1px solid #999;
-  border-radius: 4px;
-  background: #fff;
+  font-size: 1rem;
+  color: var(--text);
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  background: var(--flaeche);
+  transition: border-color var(--dauer);
 }
-.feld input:focus, .feld select:focus { outline: 2px solid var(--schwarz); outline-offset: 1px; }
+.feld input, .feld select { height: 40px; }
+.feld textarea { padding: var(--a2) 10px; }
+.feld input:hover, .feld select:hover, .feld textarea:hover { border-color: var(--grau); }
+.feld input:disabled, .feld select:disabled, .feld textarea:disabled { color: var(--text-2); background: var(--hell); }
+.feld input[type="checkbox"] { display: inline-block; width: 20px; height: 20px; }
 
-button[type="submit"], .knopf {
-  min-height: 44px;
-  padding: 8px 18px;
+/* ---------------------------------------------------------------- Knöpfe */
+
+.knopf, button[type="submit"] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--a2);
+  min-height: var(--knopf-hoehe);
+  padding: 0 var(--a4);
   font: inherit;
   font-weight: 600;
-  color: var(--schwarz);
-  background: var(--netto-gelb);
-  border: 2px solid var(--schwarz);
-  border-radius: 4px;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
   cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer), box-shadow var(--dauer);
 }
+.knopf:hover, button[type="submit"]:hover { background: var(--hintergrund); border-color: var(--grau); }
+.knopf:active, button[type="submit"]:active { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .2); }
+
+/* Gelbe Hauptaktion – höchstens eine je Bereich. Speichern-Knöpfe in Formularzeilen bleiben sekundär. */
+.knopf.primaer, button[type="submit"] {
+  background: var(--netto-gelb);
+  border-color: var(--schwarz);
+}
+.knopf.primaer:hover, button[type="submit"]:hover { background: #f5dc00; border-color: var(--schwarz); }
+.zeile button[type="submit"] { background: var(--flaeche); border-color: var(--linie-stark); }
+.zeile button[type="submit"]:hover { background: var(--hintergrund); border-color: var(--grau); }
+
+.knopf.gefahr { color: var(--netto-rot); border-color: var(--netto-rot); }
+.knopf.gefahr:hover { color: #fff; background: var(--netto-rot); }
+
 button:disabled { opacity: 0.5; cursor: default; }
 
-.meldung { padding: 10px 12px; margin: 0 0 16px; border-radius: 4px; border: 1px solid var(--linie); background: #fff; }
+/* ---------------------------------------------------------------- Chips (Palette, Auswahl) */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--knopf-hoehe);
+  padding: 0 var(--a3);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer), box-shadow var(--dauer);
+}
+.chip:hover { background: var(--hintergrund); border-color: var(--grau); }
+.chip[aria-pressed="true"] {
+  background: var(--netto-gelb);
+  border-color: var(--schwarz);
+  box-shadow: inset 0 0 0 1px var(--schwarz);
+}
+.chip-gruppe { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.farbfeld {
+  display: inline-block;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, .25);
+  background: var(--flaeche);
+  vertical-align: middle;
+}
+.farbfeld.leer { background: linear-gradient(to top right, transparent 45%, var(--grau) 45% 55%, transparent 55%), var(--flaeche); }
+
+/* Schalter (Checkbox mit role="switch") */
+.schalter-feld { display: inline-flex; align-items: center; gap: var(--a2); min-height: var(--knopf-hoehe); font-size: 0.9rem; cursor: pointer; }
+input.schalter {
+  appearance: none;
+  position: relative;
+  flex: none;
+  width: 36px;
+  height: 20px;
+  margin: 0;
+  border-radius: 10px;
+  background: var(--linie-stark);
+  cursor: pointer;
+  transition: background-color var(--dauer);
+}
+input.schalter::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .3);
+  transition: transform var(--dauer);
+}
+input.schalter:checked { background: var(--schwarz); }
+input.schalter:checked::before { transform: translateX(16px); }
+
+/* ---------------------------------------------------------------- Meldungen und Hinweise */
+
+.meldung { padding: 10px var(--a3); margin: 0 0 var(--a4); border-radius: 6px; border: 1px solid var(--linie); background: var(--flaeche); }
 .meldung[hidden] { display: none; }
-.meldung.fehler { color: var(--netto-rot); border-color: var(--netto-rot); }
-.meldung.ok { color: var(--schwarz); border-color: var(--schwarz); }
+.meldung.fehler { color: var(--netto-rot); border-color: var(--netto-rot); background: #fff5f5; }
+.meldung.ok { color: var(--text); border-color: var(--ok); }
+/* Ergebnis mit Auffälligkeiten (Kopieren: ausgelassen, gekürzt …): bleibt stehen statt Toast */
+.meldung.ergebnis { color: var(--text); border-left: 4px solid var(--netto-gelb); background: var(--hinweis); }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: var(--a5);
+  z-index: 100;
+  transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  padding: var(--a3) var(--a5);
+  color: #fff;
+  font-weight: 600;
+  background: var(--schwarz);
+  border-left: 6px solid var(--ok);
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-2);
+}
+.toast[hidden] { display: none; }
+
+.hinweis { color: var(--text-2); }
+.hinweis-gelb { padding: var(--a2) var(--a3); background: var(--hinweis); border-left: 4px solid var(--netto-gelb); border-radius: 4px; }
+.warnung { padding: var(--a2) var(--a3); color: var(--text); background: #fdecee; border-left: 4px solid var(--netto-rot); border-radius: 4px; }
+.unbesetzt {
+  background: repeating-linear-gradient(-45deg, rgba(227, 6, 19, .22) 0 4px, rgba(227, 6, 19, .05) 4px 8px);
+  outline: 1px solid var(--netto-rot);
+  outline-offset: -1px;
+}
+.zahl { text-align: right; font-variant-numeric: tabular-nums; }
+.zahl.minus { color: var(--netto-rot); font-weight: 700; }
+
+/* ---------------------------------------------------------------- Tabellen */
 
 table { width: 100%; border-collapse: collapse; }
-th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--linie); }
+th, td { padding: 6px var(--a2); text-align: left; border-bottom: 1px solid var(--linie); }
 th { background: var(--hell); font-weight: 600; }
+.tabelle-scroll { overflow-x: auto; }
 
-/* Reiter Mitarbeiter */
-.zweispaltig { display: grid; grid-template-columns: 320px 1fr; gap: 16px; align-items: start; }
-@media (max-width: 900px) { .zweispaltig { grid-template-columns: 1fr; } }
-.ma-liste { list-style: none; margin: 12px 0 0; padding: 0; }
-.ma-eintrag { display: block; width: 100%; min-height: 44px; margin-bottom: 4px; padding: 6px 10px; font: inherit; text-align: left; color: var(--schwarz); background: #fff; border: 1px solid var(--linie); border-radius: 4px; cursor: pointer; }
-.ma-eintrag:hover { background: var(--hell); }
-.ma-eintrag.gewaehlt { border: 2px solid var(--schwarz); background: var(--netto-gelb); }
-.ma-eintrag.inaktiv { color: var(--grau); background: var(--hell); }
-.ma-eintrag small { display: block; color: var(--grau); }
-.ma-eintrag.gewaehlt small { color: var(--schwarz); }
-.badge { display: inline-block; margin-left: 4px; padding: 0 6px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--schwarz); border-radius: 8px; background: #fff; }
-.hinweis { color: var(--grau); }
-.zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 4px 12px; padding: 10px 0; border-bottom: 1px solid var(--linie); }
-.zeile .feld { width: 170px; margin-bottom: 0; }
-.zeile .feld.breit { width: 100%; }
-.zeile .feld textarea { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font: inherit; border: 1px solid #999; border-radius: 4px; }
-.zeile .zeilentitel { width: 100%; }
-.zeile .zeiten { display: flex; gap: 12px; }
-.zeile .zeiten[hidden] { display: none; }
-.zeile .zeiten .feld { width: 120px; }
-.feld.haken, .haken { display: flex; align-items: center; gap: 6px; min-height: 40px; }
-.feld.haken input, .haken input { width: 20px; min-height: 20px; margin: 0; }
-.haken-liste { display: flex; flex-wrap: wrap; gap: 4px 24px; }
-.zeile .knopf { background: #fff; }
+/* ---------------------------------------------------------------- Werkzeugleiste */
 
-/* Einstellungen */
-.zeile.grau { background: var(--hell); color: var(--grau); }
-.zeile .erklaerung { flex: 1 1 260px; }
-.zeile .feld input[type="color"] { width: 60px; padding: 2px; }
-.box h3 { margin: 16px 0 4px; font-size: 1rem; }
+.werkzeugleiste { display: flex; flex-direction: column; gap: var(--a2); padding: var(--a3) var(--a4); }
+.werkzeug-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a2) var(--a4); }
+.werkzeugleiste .hinweis { margin: 0; }
+.werkzeugleiste .knopf { font-size: 0.9rem; }
+.monatsnavi { display: flex; align-items: center; gap: var(--a1); }
+.knopf.pfeil { width: var(--knopf-hoehe); padding: 0; font-size: 0.8rem; }
+.legende { display: flex; flex-wrap: wrap; gap: var(--a1) var(--a3); margin-left: auto; font-size: 0.85rem; color: var(--text-2); }
+.legende span { display: inline-flex; align-items: center; gap: 6px; }
 
-/* Abwesenheiten */
-:root { --schulferien: #dff3df; --feiertag: #fff3a8; --geschlossen: #e4e4e4; }
-.abw-kopfzeile { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
-.abw-monat { min-width: 9em; text-align: center; }
-.abw-legende { margin-left: auto; }
-.abw-farbe { display: inline-block; width: 14px; height: 14px; vertical-align: middle; border: 1px solid var(--linie); background: #fff; }
-.abw-farbe.schulferien { background: var(--schulferien); }
-.abw-farbe.feiertag { background: var(--feiertag); }
-.abw-farbe.geschlossen { background: var(--geschlossen); }
-.abw-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
-@media (max-width: 1300px) { .abw-layout { grid-template-columns: 200px minmax(0, 1fr); } .abw-seite { grid-column: 1 / -1; } }
-@media (max-width: 800px) { .abw-layout { grid-template-columns: 1fr; } }
-.abw-pal-eintrag { display: flex; align-items: center; gap: 8px; min-height: 36px; cursor: pointer; }
-.abw-pal-eintrag input { width: 18px; height: 18px; margin: 0; }
-.abw-palette .knopf { margin-top: 8px; }
-.abw-scroll { overflow-x: auto; background: #fff; border: 1px solid var(--linie); }
-.abw-tabelle { width: auto; border-collapse: collapse; touch-action: none; user-select: none; }
-.abw-tabelle th, .abw-tabelle td { padding: 0; border: 1px solid var(--linie); text-align: center; font-size: 0.75rem; }
-.abw-tabelle th.abw-name { position: sticky; left: 0; z-index: 1; min-width: 130px; padding: 2px 6px; text-align: left; white-space: nowrap; background: var(--hell); }
-.abw-tag span, .abw-tag small { display: block; line-height: 1.15; }
-.abw-zelle { position: relative; width: 26px; min-width: 26px; max-width: 26px; height: 34px; line-height: 1.1; cursor: pointer; }
-.abw-zelle .kz { display: block; font-weight: 600; }
-.abw-zelle small { display: block; font-size: 0.6rem; }
-.abw-zelle .warn { position: absolute; top: 0; right: 1px; font-weight: 700; color: var(--netto-rot); }
+/* ---------------------------------------------------------------- Raster (Abwesenheiten, später Einsatzplan) */
+
+/* Scroll-Container: nur er scrollt quer, Kopfzeilen kleben oben, die erste Spalte links. */
+.raster-scroll {
+  max-height: calc(100vh - 230px);
+  overflow: auto;
+  margin-bottom: var(--a4);
+  background: var(--flaeche);
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-1);
+}
+.raster { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; user-select: none; }
+.malt .raster { touch-action: none; } /* Malen per Ziehen: keine Wischgesten des Browsers */
+.raster th, .raster td { padding: 0; border: 0; border-right: 1px solid var(--linie); border-bottom: 1px solid var(--linie); text-align: center; }
+.raster thead th { position: sticky; top: 0; z-index: 3; background: var(--hell); }
+.raster thead tr.kw-zeile th { height: 26px; }
+.raster thead tr:nth-child(2) th { top: 26px; height: 40px; border-bottom-color: var(--linie-stark); }
+.raster tr > :first-child { position: sticky; left: 0; z-index: 2; border-right-color: var(--linie-stark); }
+.raster thead tr > :first-child { z-index: 4; }
+.raster col.name-spalte { width: 200px; }
+
+/* ---------------------------------------------------------------- Abwesenheiten */
+
+:root { --schulferien: #dff3df; --feiertag: #fff3a8; --geschlossen: #e9e9e6; }
+.farbfeld.schulferien { background: var(--schulferien); }
+.farbfeld.feiertag { background: var(--feiertag); }
+.farbfeld.geschlossen { background: var(--geschlossen); }
+.abw-monat { min-width: 9.5em; font-size: 1.1rem; text-align: center; }
+
+.abw-tabelle th, .abw-tabelle td { font-size: 12px; }
+.abw-tabelle .abw-kw { font-weight: 600; color: var(--text-2); border-right-color: var(--linie-stark); }
+.abw-tabelle th.abw-name {
+  padding: 0 var(--a3);
+  font-size: 14px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--flaeche);
+}
+.abw-tabelle thead th.abw-name { font-size: 12px; color: var(--text-2); background: var(--hell); }
+.abw-tag span { display: block; font-weight: 400; color: var(--text-2); line-height: 1.1; }
+.abw-tag small { display: block; font-size: 13px; font-weight: 700; line-height: 1.2; }
+.abw-tabelle tbody tr { height: 40px; }
+.abw-zelle { position: relative; cursor: pointer; }
+
 .abw-tabelle .schulferien { background: var(--schulferien); }
 .abw-tabelle .feiertag { background: var(--feiertag); }
 .abw-tabelle .wochenende, .abw-tabelle .geschlossen { background: var(--geschlossen); }
+
+/* Heute: Kopf gelb, Spalte mit schwarzen Seitenlinien */
+.abw-tabelle th.abw-tag.heute { background: var(--netto-gelb); }
+.abw-tabelle th.abw-tag.heute span { color: var(--schwarz); }
+.abw-tabelle .heute { box-shadow: inset 2px 0 0 var(--schwarz), inset -2px 0 0 var(--schwarz); }
+
+/* Hover: Zeile und Spalte hellgelb (als Überlagerung, die Tagesfarbe bleibt sichtbar) */
+.abw-tabelle tbody tr:hover > *, .abw-tabelle .spalte-hover { background-image: linear-gradient(var(--hover-gelb), var(--hover-gelb)); }
+
+/* Belegte Zelle als Chip in Codefarbe */
+.abw-zelle .belegt {
+  position: absolute;
+  inset: 3px 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--linie);
+  line-height: 1.05;
+}
+.abw-zelle .kz { display: block; font-size: 12px; font-weight: 700; }
+.abw-zelle .belegt small { display: block; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.abw-zelle .warn { position: absolute; top: 0; right: 2px; z-index: 1; font-weight: 800; color: var(--netto-rot); }
 .abw-zelle.wunsch { outline: 2px dashed var(--schwarz); outline-offset: -3px; }
 .abw-zelle.wunsch-abgelehnt { outline: 1px dashed var(--grau); outline-offset: -3px; }
 .abw-zelle.wunsch-abgelehnt .kz { color: var(--grau); font-weight: 400; text-decoration: line-through; opacity: 0.6; }
 .abw-zelle.markiert { outline: 2px solid var(--schwarz); outline-offset: -2px; background: var(--netto-gelb); }
 .abw-tabelle tr.inaktiv th.abw-name { color: var(--grau); font-style: italic; }
-.abw-summe td, .abw-summe th { font-weight: 600; background: var(--hell); }
-.abw-urlaub th, .abw-urlaub td { font-size: 0.85rem; padding: 4px 6px; }
-.abw-urlaub td { text-align: right; }
-.abw-dialog { max-width: 420px; width: calc(100% - 32px); padding: 16px; border: 2px solid var(--schwarz); border-radius: 6px; }
-.abw-dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
-.abw-dialog .dialog-knoepfe { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.abw-info { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
-.abw-info dt { color: var(--grau); }
+
+.abw-summe td, .abw-summe th { height: 40px; font-weight: 700; background: var(--hell); border-top: 1px solid var(--linie-stark); }
+.abw-summe td.zahl { padding: 0 2px; text-align: center; font-size: 12px; white-space: nowrap; overflow: hidden; }
+
+/* Urlaubsübersicht unter dem Raster */
+.abw-urlaub-box summary { cursor: pointer; }
+.abw-urlaub-box summary h2 { display: inline; margin: 0; }
+.abw-urlaub-box[open] summary { margin-bottom: var(--a3); }
+.abw-urlaub { width: auto; min-width: min(100%, 760px); }
+.abw-urlaub th, .abw-urlaub td { padding: 6px var(--a3); font-size: 0.9rem; }
+.abw-urlaub thead th { white-space: nowrap; }
+.abw-urlaub tbody th { font-weight: 400; background: none; }
+.abw-urlaub tbody tr:hover > * { background: var(--hover-gelb); }
+
+/* ---------------------------------------------------------------- Dialog */
+
+.dialog {
+  max-width: 460px;
+  width: calc(100% - 32px);
+  padding: var(--a5);
+  color: var(--text);
+  border: 0;
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-2);
+}
+.dialog::backdrop { background: rgba(0, 0, 0, 0.4); }
+.dialog h2 { margin-top: 0; }
+/* Knöpfe kleben unten, auch wenn ein langer Dialog in sich scrollt */
+.dialog .dialog-knoepfe {
+  position: sticky;
+  bottom: calc(-1 * var(--a5));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--a2);
+  margin: var(--a2) 0 calc(-1 * var(--a5));
+  padding: var(--a3) 0 var(--a5);
+  background: var(--flaeche);
+}
+.abw-info { display: grid; grid-template-columns: auto 1fr; gap: var(--a1) var(--a3); margin: 0; }
+.abw-info dt { color: var(--text-2); }
 .abw-info dd { margin: 0; }
+
+/* Dialoge Kopieren und Vorlagen (plan-dialoge.js) */
+.dialog .pd-titel { margin: var(--a4) 0 var(--a2); font-size: 1rem; }
+.pd-gruppe { margin: 0 0 var(--a2); padding: 0; border: 0; }
+.pd-legende { margin-bottom: var(--a1); padding: 0; font-size: 0.9rem; color: var(--text-2); }
+.pd-unter { display: grid; gap: var(--a1); margin: 0 0 var(--a2) 26px; }
+.pd-unter.aus { opacity: 0.55; }
+.pd-option { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a1) var(--a2); }
+.pd-option input:not([type="radio"]), .pd-option select {
+  height: 40px; padding: 0 10px; font: inherit; color: var(--text);
+  border: 1px solid var(--linie-stark); border-radius: 6px; background: var(--flaeche);
+}
+.pd-option input[type="number"] { width: 5em; }
+.pd-ziele { min-height: 1.4em; margin: 0 0 var(--a2); }
+.pd-vorlagen { display: grid; gap: var(--a1); }
+.dialog.pd-breit { max-width: 580px; }
+.pd-vorlage { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--a1) var(--a2); padding: var(--a2) 0; border-bottom: 1px solid var(--linie); }
+.pd-vorlage-text { min-width: 0; }
+@media (max-width: 520px) { .pd-vorlage { grid-template-columns: 1fr 1fr; } .pd-vorlage-text { grid-column: 1 / -1; } }
+.pd-vorlage-text strong, .pd-vorlage-text small { display: block; overflow-wrap: anywhere; }
+.pd-vorlage-text small { color: var(--text-2); }
+
+/* Dialoge Krank/ZA und Ersatz (plan-dialoge.js) */
+.pd-zeitraum { display: grid; grid-template-columns: 1fr 1fr; gap: var(--a3); }
+.pd-unbesetzt { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a1) var(--a3); }
+.pd-block { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; color: var(--netto-rot); font-weight: 600;
+  border: 1px solid var(--netto-rot); border-radius: 4px; background: #fff5f5; }
+.pd-kandidaten { display: grid; gap: var(--a2); margin-bottom: var(--a3); }
+.pd-kandidat {
+  display: grid; gap: 2px; width: 100%; min-height: var(--knopf-hoehe); padding: var(--a2) var(--a3);
+  font: inherit; color: var(--text); text-align: left;
+  background: var(--flaeche); border: 1px solid var(--linie-stark); border-radius: 6px; cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer);
+}
+.pd-kandidat:hover, .pd-kandidat:focus-visible { background: var(--hover-gelb); border-color: var(--schwarz); }
+.pd-kandidat:disabled { cursor: default; opacity: 0.6; }
+.pd-kandidat.laeuft { opacity: 1; background: var(--hinweis); border-color: var(--schwarz); }
+.pd-kandidat-kopf { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--a1) var(--a3); }
+.pd-kandidat-kopf strong { overflow-wrap: anywhere; }
+.pd-luecke { font-weight: 600; color: var(--ok); white-space: nowrap; }
+.pd-luecke.ueber { color: var(--text-2); }
+.pd-kandidat small { color: var(--text-2); }
+.pd-hinweis { justify-self: start; padding: 1px 6px; font-size: 0.85rem; background: var(--hinweis); border-left: 3px solid var(--netto-gelb); border-radius: 3px; }
+
+/* Eckdaten-Fenster (plan-dialoge.js): Abschnitte in zwei Spalten, schmal in einer; der Dialog scrollt in sich */
+.dialog.pd-eck-dialog { max-width: 780px; }
+.pd-eck-kopf { margin: calc(-1 * var(--a2)) 0 var(--a3); color: var(--text-2); }
+.pd-eck-hinweise { display: flex; flex-wrap: wrap; gap: var(--a1) var(--a2); margin-bottom: var(--a3); }
+.pd-eck-hinweise .pd-hinweis { font-size: 0.95rem; padding: 2px 8px; }
+.pd-eck { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--a3) var(--a5); }
+@media (max-width: 680px) { .pd-eck { grid-template-columns: minmax(0, 1fr); } }
+.pd-eck-teil { min-width: 0; padding-top: var(--a2); border-top: 1px solid var(--linie); }
+.pd-eck-teil p { margin: 0 0 var(--a1); }
+.dialog .pd-eck-titel { margin: 0 0 var(--a2); font-size: 0.95rem; }
+.pd-eck-teil .badge:first-child { margin-left: 0; }
+.pd-eck-werte { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--a3); margin: 0 0 var(--a1); }
+.pd-eck-werte dt { color: var(--text-2); }
+.pd-eck-werte dd { margin: 0; font-variant-numeric: tabular-nums; }
+.pd-eck-liste { margin: 0; padding-left: 1.1em; }
+.pd-eck-liste li { margin-bottom: 2px; overflow-wrap: anywhere; }
+.pd-eck-liste small { display: block; color: var(--text-2); }
+.pd-samstage, .pd-lagen { display: flex; flex-wrap: wrap; gap: var(--a1); margin: 0 0 var(--a2); padding: 0; list-style: none; }
+.pd-sa { padding: 2px 8px; font-size: 0.9rem; border: 1px solid var(--linie-stark); border-radius: 4px; background: var(--flaeche); }
+.pd-sa.gearbeitet { background: var(--hell); }
+.pd-sa.frei, .pd-sa.abwesend { color: var(--ok); border-color: var(--ok); }
+.pd-sa.geschlossen { color: var(--text-2); border-style: dashed; }
+.pd-sa.vor_eintritt { color: var(--text-2); background: var(--hell); border-color: var(--linie); }
+.pd-lage { display: grid; justify-items: center; min-width: 3.4em; padding: 2px 6px; font-size: 0.9rem; border: 1px solid var(--linie); border-radius: 4px; }
+.pd-lage small { color: var(--text-2); font-size: 0.75rem; }
+.pd-lage.frueh { background: var(--hinweis); }
+.pd-lage.spaet { background: #dfe5f7; }
+.pd-lage.lang { background: #ece0f5; }
+
+/* ---------------------------------------------------------------- Reiter Mitarbeiter */
+
+.zweispaltig { display: grid; grid-template-columns: 320px 1fr; gap: var(--a4); align-items: start; }
+@media (max-width: 900px) { .zweispaltig { grid-template-columns: 1fr; } }
+.ma-liste { list-style: none; margin: var(--a3) 0 0; padding: 0; }
+.ma-eintrag {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: var(--a1);
+  padding: 6px var(--a3);
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  box-shadow: var(--schatten-1);
+  cursor: pointer;
+  transition: background-color var(--dauer), border-color var(--dauer);
+}
+.ma-eintrag:hover { border-color: var(--linie-stark); }
+.ma-eintrag.gewaehlt { border: 1px solid var(--schwarz); background: var(--netto-gelb); }
+.ma-eintrag.inaktiv { color: var(--text-2); background: var(--hell); }
+.ma-eintrag small { display: block; color: var(--text-2); }
+.ma-eintrag.gewaehlt small { color: var(--schwarz); }
+/* ▲/▼ neben aktiven Mitarbeitern (nur Leitung): Reihenfolge im Einsatzplan */
+.ma-zeile { display: flex; gap: var(--a1); margin-bottom: var(--a1); }
+.ma-zeile .ma-eintrag { flex: 1; min-width: 0; margin-bottom: 0; }
+.ma-pfeile { display: flex; gap: 2px; }
+.ma-pfeile .knopf { width: 36px; min-height: 0; height: 100%; padding: 0; font-size: 0.75rem; color: var(--text-2); }
+.badge { display: inline-block; margin-left: var(--a1); padding: 0 6px; font-size: 0.75rem; font-weight: 600; border: 1px solid var(--schwarz); border-radius: 8px; background: #fff; }
+.zeile { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--a1) var(--a3); padding: var(--a3) 0; border-bottom: 1px solid var(--linie); }
+.zeile:last-child { border-bottom: 0; }
+.zeile .feld { width: 170px; margin-bottom: 0; }
+.zeile .feld.breit { width: 100%; }
+.zeile .zeilentitel { width: 100%; }
+.zeile .zeiten { display: flex; gap: var(--a3); }
+.zeile .zeiten[hidden] { display: none; }
+.zeile .zeiten .feld { width: 120px; }
+.feld.haken, .haken { display: flex; align-items: center; gap: 6px; min-height: 40px; color: var(--text); }
+.feld.haken input, .haken input { width: 20px; height: 20px; min-height: 20px; margin: 0; }
+.haken-liste { display: flex; flex-wrap: wrap; gap: var(--a1) var(--a5); }
+
+/* ---------------------------------------------------------------- Einstellungen */
+
+.zeile.grau { background: var(--hell); color: var(--text-2); padding-inline: var(--a2); border-radius: 6px; }
+.zeile .erklaerung { flex: 1 1 260px; }
+.zeile .feld input[type="color"] { width: 60px; padding: 2px; }
+
+/* ---------------------------------------------------------------- Einsatzplan */
+
+.ep-werkzeug { gap: 6px; margin-bottom: var(--a3); padding: 10px var(--a4); }
+.ep-werkzeug .werkzeug-zeile { gap: 6px var(--a3); }
+.ep-werkzeug .knopf { padding: 0 12px; font-size: 0.85rem; }
+.ep-kw { min-width: 4.2em; font-size: 1.1rem; text-align: center; }
+.ep-datum { height: var(--knopf-hoehe); margin-left: var(--a2); padding: 0 var(--a2); font: inherit; font-size: 0.9rem; border: 1px solid var(--linie-stark); border-radius: 6px; }
+.ep-tage { display: flex; flex-wrap: wrap; gap: var(--a1); }
+.ep-tag {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  min-height: var(--knopf-hoehe);
+  padding: 2px var(--a2);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  line-height: 1.15;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 1px solid var(--linie-stark);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.ep-tag small { font-size: 0.75rem; font-weight: 400; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.ep-tag:hover { border-color: var(--grau); }
+.ep-tag.heute { border-width: 2px; border-color: var(--schwarz); }
+.ep-tag.geschlossen { color: var(--text-2); background: var(--geschlossen); }
+.ep-tag.vergangen span { font-style: italic; font-weight: 400; }
+.ep-tag[aria-pressed="true"] { background: var(--netto-gelb); border-color: var(--schwarz); box-shadow: inset 0 0 0 1px var(--schwarz); }
+.ep-tag[aria-pressed="true"] small { color: var(--schwarz); }
+.ep-pinsel { gap: 4px; }
+.ep-pinsel .chip { gap: 5px; padding: 0 9px; font-size: 0.85rem; }
+.ep-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.ep-werkzeug .hinweis-gelb { margin: 0; }
+
+/* Raster links, Seitenleiste ab 1600 px rechts, sonst darunter */
+.ep-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0 var(--a4); align-items: start; }
+.ep-seite { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 var(--a4); align-items: start; }
+@media (min-width: 1600px) {
+  .ep-layout { grid-template-columns: minmax(0, 1fr) 330px; }
+  .ep-seite { grid-template-columns: 1fr; }
+}
+
+.ep-scroll { max-height: calc(100vh - 250px); min-height: 280px; } /* genaue Höhe setzt einsatzplan.js */
+.ep-tabelle col.ep-name-spalte { width: 168px; }
+.ep-tabelle col.ep-std-spalte { width: 52px; }
+.ep-tabelle col.ep-kom-spalte { width: 170px; }
+.ep-tabelle th, .ep-tabelle td { font-size: 12px; }
+.ep-tabelle thead th { height: 30px; font-weight: 600; color: var(--text-2); }
+.ep-tabelle thead th.ep-stunde { padding-left: 3px; text-align: left; font-variant-numeric: tabular-nums; box-shadow: inset 1px 0 0 var(--linie-stark); }
+.ep-tabelle thead th.ep-stunde.offen { color: var(--text); box-shadow: inset 1px 0 0 var(--linie-stark), inset 0 -4px 0 var(--netto-gelb); }
+.ep-tabelle tbody tr { height: 42px; }
+.ep-tabelle th.ep-name { padding: 0 var(--a2) 0 var(--a3); text-align: left; background: var(--flaeche); }
+.ep-tabelle thead th.ep-name, .ep-tabelle tfoot th.ep-name { color: var(--text-2); background: var(--hell); }
+.ep-name-knopf, .ep-name-text {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: none;
+  border: 0;
+}
+.ep-name-knopf { cursor: pointer; }
+.ep-name-knopf:hover { text-decoration: underline; }
+.ep-info { display: block; font-size: 11px; font-weight: 400; color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-info .badge { margin-left: 3px; padding: 0 4px; font-size: 10px; border-radius: 4px; }
+.ep-abw-kz { font-weight: 700; color: var(--text); }
+.ep-tabelle td.ep-std { padding: 0 var(--a2); font-weight: 600; }
+.ep-tabelle td.ep-kom, .ep-tabelle th.ep-kom { padding: 0 var(--a2); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.ep-tabelle td.ep-kom.bearbeitbar { cursor: text; }
+.ep-kom-leer { color: var(--text-2); opacity: 0.6; }
+.ep-tabelle td.ep-kom input { width: 100%; height: 30px; padding: 0 6px; font: inherit; border: 1px solid var(--schwarz); border-radius: 4px; }
+
+/* Halbstunden-Zellen: volle Stunde mit stärkerer Linie, außerhalb der Öffnung grau */
+.malt .ep-tabelle td.ep-z { cursor: crosshair; }
+.ep-tabelle td.ep-z.voll, .ep-tabelle td.ep-dz.voll { box-shadow: inset 1px 0 0 var(--linie-stark); }
+.ep-tabelle td.ep-z.zu { background: #ecece7; }
+.ep-tabelle td.ep-z.ep-abw { background: repeating-linear-gradient(-45deg, #dcdcd6 0 3px, #f3f3ef 3px 7px); }
+.ep-tabelle td.ep-z.belegt { border-right-color: rgba(0, 0, 0, .08); }
+.ep-tabelle td.ep-z.unbesetzt { background: repeating-linear-gradient(-45deg, rgba(227, 6, 19, .28) 0 4px, rgba(227, 6, 19, .07) 4px 8px); color: var(--netto-rot); }
+.ep-tabelle td.ep-start { position: relative; }
+.ep-kz { position: absolute; top: 50%; left: 3px; z-index: 1; transform: translateY(-50%); font-size: 11px; font-weight: 800; pointer-events: none; }
+.ep-ersatz {
+  position: absolute;
+  top: 50%;
+  left: 24px;
+  z-index: 1;
+  transform: translateY(-50%);
+  height: 26px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--netto-rot);
+  background: #fff;
+  border: 1px solid var(--netto-rot);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ep-ersatz:hover { color: #fff; background: var(--netto-rot); }
+.ep-tabelle td.ep-z.markiert { background-image: linear-gradient(rgba(255, 229, 0, .65), rgba(255, 229, 0, .65)); box-shadow: inset 0 2px 0 var(--schwarz), inset 0 -2px 0 var(--schwarz); }
+
+/* Malen: waagerechtes Ziehen malt, senkrechtes Wischen scrollt weiter (Tablet). Kopf und Fußzeilen scrollen quer. */
+.malt .ep-tabelle { touch-action: auto; }
+.malt .ep-tabelle td.ep-z { touch-action: pan-y; }
+
+/* Ganztags abwesend: graue Zeile */
+.ep-tabelle tr.ep-abwesend th.ep-name, .ep-tabelle tr.ep-abwesend td { color: var(--text-2); background: var(--hell); }
+.ep-tabelle td.ep-sperre { padding: 0 var(--a3); text-align: left; font-style: italic; letter-spacing: 0.02em; }
+
+/* Abdeckung Kasse/VP: klebt unten im Scroll-Container */
+.ep-tabelle tfoot td, .ep-tabelle tfoot th { position: sticky; bottom: 0; z-index: 3; height: 26px; background: var(--hell); font-weight: 700; font-variant-numeric: tabular-nums; }
+.ep-tabelle tfoot tr:first-child > * { bottom: 26px; border-top: 1px solid var(--linie-stark); }
+.ep-tabelle tfoot tr > :first-child { z-index: 4; }
+.ep-tabelle tfoot td.gelb { background: var(--hinweis); }
+.ep-tabelle tfoot td.rot { color: #fff; background: var(--netto-rot); }
+
+/* Markierung aus der Regelprüfung */
+.ep-tabelle tr.hervor > th.ep-name { background: var(--netto-gelb); }
+.ep-tabelle tr.hervor td.hervor-zelle { box-shadow: inset 0 0 0 3px var(--schwarz); }
+
+.ep-geschlossen h2 { margin: 0; }
+
+/* Hinweis am Zeiger bei einer Sperre */
+.ep-sperre-hinweis {
+  position: fixed;
+  z-index: 200;
+  max-width: 320px;
+  padding: var(--a2) var(--a3);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--schwarz);
+  border-left: 5px solid var(--netto-rot);
+  border-radius: 6px;
+  box-shadow: var(--schatten-2);
+  pointer-events: none;
+}
+
+/* Seitenleiste */
+.ep-box { padding: var(--a3) var(--a4); }
+.ep-box h3 { margin: 0 0 var(--a2); font-size: 0.95rem; }
+.ep-box h3 small { font-weight: 400; color: var(--text-2); }
+.ep-regeln { max-height: 340px; margin: 0; padding: 0; overflow: auto; list-style: none; }
+.ep-eintrag {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--a1);
+  font: inherit;
+  font-size: 0.85rem;
+  text-align: left;
+  cursor: pointer;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+.ep-eintrag strong { margin-right: 6px; }
+.ep-eintrag[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--schwarz); }
+.ep-klein { font-size: 0.85rem; }
+.ep-klein th, .ep-klein td { padding: 3px var(--a1); }
+.ep-klein tbody th { max-width: 150px; font-weight: 400; background: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ep-klein thead th { font-size: 0.8rem; color: var(--text-2); }
+.ep-klein tfoot th, .ep-klein tfoot td { font-weight: 700; background: var(--hell); border-bottom: 0; }
+.ep-klein .plus { color: var(--ok); font-weight: 600; }
+.ep-fuss { margin: var(--a2) 0 0; font-size: 0.8rem; }
+
+/* ---------------------------------------------------------------- Vorausplanung */
+
+table.vorausplanung { min-width: 760px; table-layout: fixed; }
+table.vorausplanung th[scope="row"] { width: 190px; background: var(--hell); font-weight: 600; }
+table.vorausplanung thead th { position: sticky; top: 0; text-align: center; }
+table.vorausplanung td { padding: 6px var(--a2); }
+.woche-sprung { display: flex; flex-direction: column; align-items: center; width: 100%; padding: 4px; font: inherit; color: inherit;
+  background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
+.woche-sprung:hover { background: var(--hover-gelb); border-color: var(--linie-stark); }
+.woche-sprung small { font-weight: 400; color: var(--text-2); }
+.eingabe-mit-einheit { display: flex; align-items: center; gap: 4px; }
+.eingabe-mit-einheit input { width: 100%; min-width: 0; height: 36px; padding: 0 8px; border: 1px solid var(--linie-stark); border-radius: 6px; font: inherit; }
+.eingabe-mit-einheit .einheit { color: var(--text-2); font-size: 0.85rem; }
+table.vorausplanung td.plus { color: var(--ok); font-weight: 700; }
+table.vorausplanung td.vorgabe strong { display: block; font-size: 1.1rem; }
+table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); font-weight: 400; }
+
+/* ---------------------------------------------------------------- Startseite (start.js)
+   Vier Kacheln: oben ein farbiger Rand (Rot nur bei Verstoß oder Lücke, Grün ohne Befund, sonst Gelb). */
+.start-kopf { margin: 0 0 var(--a3); color: var(--text-2); }
+.start-kopf strong { color: var(--text); }
+.kacheln { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--a4); align-items: stretch; }
+@media (max-width: 1200px) { .kacheln { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .kacheln { grid-template-columns: minmax(0, 1fr); } }
+.kachel { display: flex; flex-direction: column; margin: 0; border-top: 6px solid var(--netto-gelb); }
+.kachel.rot { border-top-color: var(--netto-rot); }
+.kachel.gruen { border-top-color: var(--ok); }
+.kachel h2 { margin: 0; }
+.kachel-zeitraum { margin: 2px 0 0; color: var(--text-2); font-size: 0.9rem; }
+.kachel-zahl { margin: var(--a3) 0; font-size: 3rem; font-weight: 800; line-height: 1; }
+.kachel.rot .kachel-zahl { color: var(--netto-rot); }
+.kachel.gruen .kachel-zahl { color: var(--ok); }
+.kachel-einheit { margin-left: var(--a2); font-size: 1rem; font-weight: 600; color: var(--text-2); }
+.kachel-gruen { margin: 0 0 var(--a3); color: var(--ok); font-weight: 700; }
+.kachel-liste { margin: 0 0 var(--a3); padding: 0; list-style: none; }
+.kachel-liste li { padding: 3px 0; border-bottom: 1px solid var(--linie); overflow-wrap: anywhere; }
+.kachel-liste li:last-child { border-bottom: 0; }
+.kachel-tag { min-height: 32px; padding: 0; font: inherit; font-weight: 700; color: inherit; background: none;
+  border: 0; border-bottom: 2px solid var(--netto-gelb); cursor: pointer; }
+.kachel-tag:hover { background: var(--hover-gelb); }
+.kachel-ungeplant { margin: 0 0 var(--a3); }
+.kachel-fuss { margin: 0 0 var(--a3); font-size: 0.85rem; }
+.kachel-sprung { margin-top: auto; align-self: flex-start; }
+
+/* ---------------------------------------------------------------- Ausdrucke (druck.js)
+   Die Druckansicht #ansicht-druck ist am Bildschirm immer verborgen. Mit body.druckt ist sie beim Drucken das Einzige;
+   ohne (Strg+P ohne Knopf) druckt der Browser die Seite, wie sie ist. Farben drucken mit (print-color-adjust),
+   die Kürzel stehen trotzdem in jeder Zelle, damit Schwarz-Weiß lesbar bleibt. */
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body.druckt { background: #fff; color: #000; font-size: 8pt; line-height: 1.2; }
+  body.druckt > :not(main), body.druckt main > :not(#ansicht-druck) { display: none !important; }
+  body.druckt main { max-width: none; margin: 0; padding: 0; }
+  body.druckt #ansicht-druck { display: block !important; }
+  .druckansicht * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+  .dr-seite { break-after: page; }
+  .dr-seite:last-child { break-after: auto; }
+  .dr-tabelle { width: 100%; table-layout: fixed; border-collapse: collapse; }
+  .dr-tabelle th, .dr-tabelle td { padding: 1pt 2pt; font-size: 7.5pt; color: #000; text-align: left; vertical-align: middle;
+    background: none; border: 0.5pt solid #777; overflow: hidden; }
+  .dr-tabelle thead th { background: #e3e3e3; font-weight: 700; }
+  .dr-tabelle tbody th { font-weight: 600; }
+  .dr-tabelle tfoot th, .dr-tabelle tfoot td { font-weight: 700; background: #efefef; }
+  .dr-tabelle tr { break-inside: avoid; }
+  .dr-tabelle .zahl { text-align: right; }
+  .dr-tabelle .zahl.minus { color: #b00010; }
+  .dr-tabelle small { display: block; font-weight: 400; }
+
+  /* Seitenkopf: erste thead-Zeile, wiederholt sich auf jeder Seite */
+  .dr-tabelle thead .dr-kopfzeile th { padding: 0 0 3mm; background: none; border: 0; font-weight: 400; }
+  .dr-kopf { display: flex; justify-content: space-between; align-items: baseline; gap: 6mm; font-size: 9pt; }
+  .dr-titel { font-size: 13pt; }
+  .dr-kopf-rechts { display: flex; gap: 6mm; }
+  .dr-fuss { margin: 2mm 0 0; font-size: 8pt; }
+  .dr-legende { color: #333; font-size: 7pt; }
+  .dr-name { white-space: nowrap; text-overflow: ellipsis; }
+  .dr-c-name { width: 36mm; }
+  .dr-c-zahl { width: 13mm; }
+
+  /* Tagesplan: je halbe Stunde eine Zelle mit Kürzel */
+  .dr-c-zeiten { width: 25mm; }
+  .dr-c-std { width: 9mm; }
+  .dr-c-kommentar { width: 30mm; }
+  .dr-tagesplan .dr-zeiten { white-space: pre-line; }
+  .dr-tagesplan .dr-kommentar { font-size: 7pt; }
+  .dr-stunde { padding-left: 1pt; font-size: 7pt; }
+  .dr-stunde:not(.offen) { color: #555; font-weight: 400; }
+  .dr-tagesplan tbody tr { height: 6mm; }
+  .dr-tagesplan td.dr-z { padding: 0; font-size: 6.5pt; font-weight: 700; text-align: center; border-left-color: #bbb; }
+  .dr-tagesplan td.dr-z.voll { border-left-color: #555; }
+  .dr-tagesplan td.dr-unbesetzt {
+    background: repeating-linear-gradient(-45deg, #999 0 0.4pt, #fff 0.4pt 3pt);
+    outline: 1pt dashed var(--netto-rot);
+    outline-offset: -1pt;
+  }
+
+  /* Wochenplan: je Tag Zeiten, darunter Stunden und Pause */
+  .dr-wochenplan thead th { text-align: center; }
+  .dr-wochenplan thead th.dr-name { text-align: left; }
+  .dr-wochenplan td.dr-tag { white-space: pre-line; text-align: center; line-height: 1.25; }
+  .dr-wochenplan tbody tr { height: 9mm; }
+
+  /* Abwesenheitsmonat: Tag = Spalte, Code fett, darunter Stunden */
+  .dr-monat th, .dr-monat td { padding: 1pt 1pt; }
+  .dr-monat thead th { text-align: center; white-space: pre-line; font-size: 6.5pt; }
+  .dr-monat thead th.dr-name { text-align: left; font-size: 7.5pt; }
+  .dr-monat td.dr-mt { text-align: center; font-size: 6.5pt; line-height: 1.15; }
+  .dr-monat td.dr-mt strong, .dr-monat td.dr-mt span { display: block; }
+  .dr-monat .frei { background: #d6d6d6; }
+  .dr-monat tbody tr { height: 7.5mm; }
+  .dr-monat tfoot td.zahl { padding: 1pt 0; text-align: center; font-size: 6pt; }
+
+  /* Resturlaub */
+  .dr-resturlaub tbody tr { height: 6mm; }
+  .dr-resturlaub thead th { font-size: 7pt; }
+}

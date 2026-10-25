@@ -42,3 +42,10 @@ export function stundenAnzeige(eintrag) {
   if (eintrag.stunden == null) return eintrag.code;
   return `${eintrag.code} ${Number(eintrag.stunden).toFixed(2).replace('.', ',')}`;
 }
+
+// Kurze Stundenanzeige für enge Zellen: 13 → '13', 6.25 → '6,25', 14.5 → '14,50'; 0 und null → ''.
+export function kurzStunden(n) {
+  if (n == null || Number(n) === 0) return '';
+  const zahl = Number(n);
+  return Number.isInteger(zahl) ? String(zahl) : zahl.toFixed(2).replace('.', ',');
+}

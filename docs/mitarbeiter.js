@@ -7,7 +7,7 @@ import {
 } from './hilfe.js';
 import { aufruf, ich, reiter } from './app.js';
 
-const VERTRAGSARTEN = {
+export const VERTRAGSARTEN = {
   vollzeit: 'Vollzeit', teilzeit: 'Teilzeit', minijob: 'Minijob', azubi: 'Azubi', fuehrung: 'F (Führungskraft)',
 };
 const ARTEN = { nicht_verfuegbar: 'Nicht verfügbar', nur_zwischen: 'Nur zwischen …' };
@@ -16,6 +16,7 @@ let liste = [];
 let bereiche = [];
 let auswahl = null; // Mitarbeiter-ID, 'neu' oder null
 let karte = null;
+let zurKarte = false; // nach dem Sprung aus dem Einsatzplan die Karte ins Bild holen (schmal: Karte unter der Liste)
 
 const darfSchreiben = () => ich?.rolle === 'leitung';
 const vertragsText = (m) => (m.vertragsart
@@ -51,12 +52,25 @@ async function waehle(id) {
   try { await ladeKarte(); } catch (fehler) { fehlerMelden(fehler); }
 }
 
+// Sprung aus dem Einsatzplan (Eckdaten „Zur Mitarbeiterkarte“): wählt den Mitarbeiter vor. Danach
+// zeigeAnsicht('mitarbeiter') aufrufen; zeigen() lädt Liste und Karte und behält die Auswahl, solange er in der
+// Liste steht. Nur eine Vorwahl ohne eigenes Laden, damit sich zwei Ladevorgänge nicht überholen.
+export function waehleMitarbeiter(id) {
+  auswahl = id;
+  karte = null;
+  zurKarte = true;
+}
+
 async function zeigen() {
   bereiche = await aufruf('pep_bereiche');
   await ladeListe();
   if (!auswahl && liste.length) auswahl = liste[0].id;
   zeichneListe();
   await ladeKarte();
+  if (zurKarte) {
+    zurKarte = false;
+    $('ma-karte').scrollIntoView({ block: 'start' });
+  }
 }
 
 // ---------------------------------------------------------------- Liste
@@ -64,9 +78,10 @@ async function zeigen() {
 function zeichneListe() {
   const knoten = [];
   if (darfSchreiben()) {
-    knoten.push(element('button', { type: 'button', class: 'knopf', onclick: neuer }, 'Neuer Mitarbeiter'));
+    knoten.push(element('button', { type: 'button', class: 'knopf primaer', onclick: neuer }, 'Neuer Mitarbeiter'));
   }
-  const eintraege = liste.map((m) => element('li', {},
+  const aktive = liste.filter((m) => m.aktiv).map((m) => m.id);
+  const eintraege = liste.map((m) => element('li', { class: 'ma-zeile' },
     element('button', {
       type: 'button',
       class: `ma-eintrag${m.id === auswahl ? ' gewaehlt' : ''}${m.aktiv ? '' : ' inaktiv'}`,
@@ -74,10 +89,24 @@ function zeichneListe() {
     },
     element('span', { class: 'ma-name' }, m.name,
       m.kompetenzen.map((k) => element('span', { class: 'badge' }, k))),
-    element('small', {}, vertragsText(m)))));
+    element('small', {}, vertragsText(m))),
+    darfSchreiben() && m.aktiv ? reihenfolgeKnoepfe(m, aktive) : null));
   knoten.push(element('ul', { class: 'ma-liste' }, eintraege));
   if (!liste.length) knoten.push(element('p', { class: 'hinweis' }, 'Noch keine Mitarbeiter.'));
   $('ma-liste').replaceChildren(...knoten);
+}
+
+// ▲/▼ (F12): Reihenfolge der aktiven Mitarbeiter im Einsatzplan; ein Klick tauscht mit dem Nachbarn und speichert.
+function reihenfolgeKnoepfe(m, aktive) {
+  const i = aktive.indexOf(m.id);
+  const schiebe = (schritt) => {
+    const neu = [...aktive];
+    [neu[i], neu[i + schritt]] = [neu[i + schritt], neu[i]];
+    speichere(() => aufruf('pep_mitarbeiter_reihenfolge', { p_ids: neu }));
+  };
+  return element('div', { class: 'ma-pfeile' },
+    element('button', { type: 'button', class: 'knopf', 'aria-label': `${m.name} nach oben`, disabled: i === 0, onclick: () => schiebe(-1) }, '▲'),
+    element('button', { type: 'button', class: 'knopf', 'aria-label': `${m.name} nach unten`, disabled: i === aktive.length - 1, onclick: () => schiebe(1) }, '▼'));
 }
 
 function neuer() {

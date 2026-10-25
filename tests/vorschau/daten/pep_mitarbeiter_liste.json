@@ -1,0 +1,147 @@
+[
+ {
+  "id": 1,
+  "name": "Test, Anna",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": "90001"
+ },
+ {
+  "id": 2,
+  "name": "Muster, Ben",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA",
+   "VP"
+  ],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": "90002"
+ },
+ {
+  "id": 3,
+  "name": "Beispiel, Cem",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA"
+  ],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 30,
+  "personalnummer": "90003"
+ },
+ {
+  "id": 4,
+  "name": "Probe, Dana",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA"
+  ],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 20,
+  "personalnummer": "90004"
+ },
+ {
+  "id": 5,
+  "name": "Demo, Emil",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": "90005"
+ },
+ {
+  "id": 6,
+  "name": "Fiktiv, Frieda",
+  "aktiv": true,
+  "kompetenzen": [
+   "VP"
+  ],
+  "vertragsart": "fuehrung",
+  "wochenstunden": 42,
+  "personalnummer": "90006"
+ },
+ {
+  "id": 7,
+  "name": "Platzhalter, Gustav",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA"
+  ],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 25,
+  "personalnummer": "90007"
+ },
+ {
+  "id": 8,
+  "name": "Vorlage, Hanna",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": "90008"
+ },
+ {
+  "id": 9,
+  "name": "Entwurf, Ivo",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 30,
+  "personalnummer": "90009"
+ },
+ {
+  "id": 10,
+  "name": "Skizze, Jana",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA"
+  ],
+  "vertragsart": "vollzeit",
+  "wochenstunden": 37.5,
+  "personalnummer": "90010"
+ },
+ {
+  "id": 11,
+  "name": "Modell, Kai",
+  "aktiv": true,
+  "kompetenzen": [],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 20,
+  "personalnummer": "90011"
+ },
+ {
+  "id": 12,
+  "name": "Attrappe, Lea",
+  "aktiv": true,
+  "kompetenzen": [
+   "VP"
+  ],
+  "vertragsart": "fuehrung",
+  "wochenstunden": 42,
+  "personalnummer": "90012"
+ },
+ {
+  "id": 13,
+  "name": "Reserve, Mia",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA"
+  ],
+  "vertragsart": "teilzeit",
+  "wochenstunden": 20,
+  "personalnummer": null
+ },
+ {
+  "id": 14,
+  "name": "Aushilfe, Nico",
+  "aktiv": true,
+  "kompetenzen": [
+   "KA"
+  ],
+  "vertragsart": "minijob",
+  "wochenstunden": 10,
+  "personalnummer": null
+ }
+]

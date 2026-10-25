@@ -1,0 +1,913 @@
+{
+ "tage": [
+  {
+   "kw": 44,
+   "datum": "2026-11-01",
+   "feiertag": "Allerheiligen",
+   "geoeffnet": false,
+   "wochentag": 7,
+   "schulferien": null
+  },
+  {
+   "kw": 45,
+   "datum": "2026-11-02",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 1,
+   "schulferien": null
+  },
+  {
+   "kw": 45,
+   "datum": "2026-11-03",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 2,
+   "schulferien": null
+  },
+  {
+   "kw": 45,
+   "datum": "2026-11-04",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 3,
+   "schulferien": null
+  },
+  {
+   "kw": 45,
+   "datum": "2026-11-05",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 4,
+   "schulferien": null
+  },
+  {
+   "kw": 45,
+   "datum": "2026-11-06",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 5,
+   "schulferien": null
+  },
+  {
+   "kw": 45,
+   "datum": "2026-11-07",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 6,
+   "schulferien": null
+  },
+  {
+   "kw": 45,
+   "datum": "2026-11-08",
+   "feiertag": null,
+   "geoeffnet": false,
+   "wochentag": 7,
+   "schulferien": null
+  },
+  {
+   "kw": 46,
+   "datum": "2026-11-09",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 1,
+   "schulferien": null
+  },
+  {
+   "kw": 46,
+   "datum": "2026-11-10",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 2,
+   "schulferien": null
+  },
+  {
+   "kw": 46,
+   "datum": "2026-11-11",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 3,
+   "schulferien": null
+  },
+  {
+   "kw": 46,
+   "datum": "2026-11-12",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 4,
+   "schulferien": null
+  },
+  {
+   "kw": 46,
+   "datum": "2026-11-13",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 5,
+   "schulferien": null
+  },
+  {
+   "kw": 46,
+   "datum": "2026-11-14",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 6,
+   "schulferien": null
+  },
+  {
+   "kw": 46,
+   "datum": "2026-11-15",
+   "feiertag": null,
+   "geoeffnet": false,
+   "wochentag": 7,
+   "schulferien": null
+  },
+  {
+   "kw": 47,
+   "datum": "2026-11-16",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 1,
+   "schulferien": null
+  },
+  {
+   "kw": 47,
+   "datum": "2026-11-17",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 2,
+   "schulferien": null
+  },
+  {
+   "kw": 47,
+   "datum": "2026-11-18",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 3,
+   "schulferien": null
+  },
+  {
+   "kw": 47,
+   "datum": "2026-11-19",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 4,
+   "schulferien": null
+  },
+  {
+   "kw": 47,
+   "datum": "2026-11-20",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 5,
+   "schulferien": null
+  },
+  {
+   "kw": 47,
+   "datum": "2026-11-21",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 6,
+   "schulferien": null
+  },
+  {
+   "kw": 47,
+   "datum": "2026-11-22",
+   "feiertag": null,
+   "geoeffnet": false,
+   "wochentag": 7,
+   "schulferien": null
+  },
+  {
+   "kw": 48,
+   "datum": "2026-11-23",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 1,
+   "schulferien": null
+  },
+  {
+   "kw": 48,
+   "datum": "2026-11-24",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 2,
+   "schulferien": null
+  },
+  {
+   "kw": 48,
+   "datum": "2026-11-25",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 3,
+   "schulferien": null
+  },
+  {
+   "kw": 48,
+   "datum": "2026-11-26",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 4,
+   "schulferien": null
+  },
+  {
+   "kw": 48,
+   "datum": "2026-11-27",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 5,
+   "schulferien": null
+  },
+  {
+   "kw": 48,
+   "datum": "2026-11-28",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 6,
+   "schulferien": null
+  },
+  {
+   "kw": 48,
+   "datum": "2026-11-29",
+   "feiertag": null,
+   "geoeffnet": false,
+   "wochentag": 7,
+   "schulferien": null
+  },
+  {
+   "kw": 49,
+   "datum": "2026-11-30",
+   "feiertag": null,
+   "geoeffnet": true,
+   "wochentag": 1,
+   "schulferien": null
+  }
+ ],
+ "codes": [
+  {
+   "id": 1,
+   "code": "U",
+   "name": "Urlaub",
+   "farbe": "#4CAF50",
+   "sperrt": true,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 2,
+   "code": "KM",
+   "name": "Krank",
+   "farbe": "#E53935",
+   "sperrt": true,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 3,
+   "code": "BS",
+   "name": "Berufsschule",
+   "farbe": "#1E88E5",
+   "sperrt": true,
+   "stundenregel": "tatsaechlich"
+  },
+  {
+   "id": 4,
+   "code": "ZA",
+   "name": "Zeitausgleich",
+   "farbe": "#F9A825",
+   "sperrt": true,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 5,
+   "code": "AF",
+   "name": "Andere Filiale",
+   "farbe": "#1565C0",
+   "sperrt": true,
+   "stundenregel": "tatsaechlich"
+  },
+  {
+   "id": 6,
+   "code": "BV",
+   "name": "Berufliche Veranstaltung",
+   "farbe": "#3949AB",
+   "sperrt": true,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 7,
+   "code": "FT",
+   "name": "Feiertag",
+   "farbe": "#8E24AA",
+   "sperrt": true,
+   "stundenregel": "teiler"
+  },
+  {
+   "id": 8,
+   "code": "NV",
+   "name": "Nicht verfügbar",
+   "farbe": "#80CBC4",
+   "sperrt": true,
+   "stundenregel": "keine"
+  },
+  {
+   "id": 9,
+   "code": "T",
+   "name": "Termin/Schulung",
+   "farbe": "#5C6BC0",
+   "sperrt": true,
+   "stundenregel": "tatsaechlich"
+  }
+ ],
+ "summen": {
+  "2026-11-03": 13,
+  "2026-11-04": 5,
+  "2026-11-05": 5,
+  "2026-11-09": 14.58,
+  "2026-11-10": 14.25,
+  "2026-11-11": 6.25,
+  "2026-11-12": 12.5,
+  "2026-11-13": 6.25,
+  "2026-11-14": 6.25,
+  "2026-11-16": 6.25,
+  "2026-11-17": 14.25,
+  "2026-11-18": 6.25,
+  "2026-11-19": 6.25,
+  "2026-11-20": 12.5,
+  "2026-11-23": 6.25,
+  "2026-11-24": 14.25,
+  "2026-11-25": 6.25,
+  "2026-11-26": 6.25,
+  "2026-11-27": 6.25,
+  "2026-11-28": 6.25
+ },
+ "urlaub": [
+  {
+   "rest": 187.5,
+   "anspruch": 225,
+   "genehmigt": 37.5,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 1
+  },
+  {
+   "rest": 225,
+   "anspruch": 225,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 2
+  },
+  {
+   "rest": 180,
+   "anspruch": 180,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 3
+  },
+  {
+   "rest": 120,
+   "anspruch": 120,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 4
+  },
+  {
+   "rest": 187.5,
+   "anspruch": 225,
+   "genehmigt": 37.5,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 5
+  },
+  {
+   "rest": 252,
+   "anspruch": 252,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 6
+  },
+  {
+   "rest": 150,
+   "anspruch": 150,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 7
+  },
+  {
+   "rest": 225,
+   "anspruch": 225,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 8
+  },
+  {
+   "rest": 180,
+   "anspruch": 180,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 9
+  },
+  {
+   "rest": -11.25,
+   "anspruch": 20,
+   "genehmigt": 31.25,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 10
+  },
+  {
+   "rest": 120,
+   "anspruch": 120,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 11
+  },
+  {
+   "rest": 252,
+   "anspruch": 252,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 12
+  },
+  {
+   "rest": 0,
+   "anspruch": 0,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 13
+  },
+  {
+   "rest": 0,
+   "anspruch": 0,
+   "genehmigt": 0,
+   "rest_vorjahr": 0,
+   "mitarbeiter_id": 14
+  }
+ ],
+ "wuensche": [],
+ "mitarbeiter": [
+  {
+   "id": 1,
+   "name": "Test, Anna",
+   "tage": {
+    "2026-11-09": {
+     "id": 1,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-10": {
+     "id": 2,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-11": {
+     "id": 3,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-12": {
+     "id": 4,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-13": {
+     "id": 5,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-14": {
+     "id": 6,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
+   "aktiv": true,
+   "wochenstunden": 37.5
+  },
+  {
+   "id": 2,
+   "name": "Muster, Ben",
+   "tage": {},
+   "aktiv": true,
+   "wochenstunden": 37.5
+  },
+  {
+   "id": 3,
+   "name": "Beispiel, Cem",
+   "tage": {
+    "2026-11-03": {
+     "id": 7,
+     "bis": null,
+     "von": null,
+     "code": "KM",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 2,
+     "stunden": 5,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-04": {
+     "id": 8,
+     "bis": null,
+     "von": null,
+     "code": "KM",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 2,
+     "stunden": 5,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-05": {
+     "id": 9,
+     "bis": null,
+     "von": null,
+     "code": "KM",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 2,
+     "stunden": 5,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
+   "aktiv": true,
+   "wochenstunden": 30
+  },
+  {
+   "id": 4,
+   "name": "Probe, Dana",
+   "tage": {
+    "2026-11-09": {
+     "id": 31,
+     "bis": null,
+     "von": null,
+     "code": "KM",
+     "notiz": null,
+     "quelle": "schnell",
+     "code_id": 2,
+     "stunden": 3.33,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
+   "aktiv": true,
+   "wochenstunden": 20
+  },
+  {
+   "id": 5,
+   "name": "Demo, Emil",
+   "tage": {
+    "2026-11-20": {
+     "id": 33,
+     "bis": null,
+     "von": null,
+     "code": "ZA",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 4,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-23": {
+     "id": 10,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-24": {
+     "id": 11,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-25": {
+     "id": 12,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-26": {
+     "id": 13,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-27": {
+     "id": 14,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-28": {
+     "id": 15,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
+   "aktiv": true,
+   "wochenstunden": 37.5
+  },
+  {
+   "id": 6,
+   "name": "Fiktiv, Frieda",
+   "tage": {},
+   "aktiv": true,
+   "wochenstunden": 42
+  },
+  {
+   "id": 7,
+   "name": "Platzhalter, Gustav",
+   "tage": {},
+   "aktiv": true,
+   "wochenstunden": 25
+  },
+  {
+   "id": 8,
+   "name": "Vorlage, Hanna",
+   "tage": {
+    "2026-11-12": {
+     "id": 16,
+     "bis": null,
+     "von": null,
+     "code": "ZA",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 4,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
+   "aktiv": true,
+   "wochenstunden": 37.5
+  },
+  {
+   "id": 9,
+   "name": "Entwurf, Ivo",
+   "tage": {
+    "2026-11-09": {
+     "id": 32,
+     "bis": "13:00:00",
+     "von": "08:00:00",
+     "code": "BS",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 3,
+     "stunden": 5,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
+   "aktiv": true,
+   "wochenstunden": 30
+  },
+  {
+   "id": 10,
+   "name": "Skizze, Jana",
+   "tage": {
+    "2026-11-16": {
+     "id": 17,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-17": {
+     "id": 18,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-18": {
+     "id": 19,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-19": {
+     "id": 20,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    },
+    "2026-11-20": {
+     "id": 21,
+     "bis": null,
+     "von": null,
+     "code": "U",
+     "notiz": null,
+     "quelle": "manuell",
+     "code_id": 1,
+     "stunden": 6.25,
+     "freigabe_id": null,
+     "wiederholung_id": null,
+     "wunsch_geaendert": false
+    }
+   },
+   "aktiv": true,
+   "wochenstunden": 37.5
+  },
+  {
+   "id": 11,
+   "name": "Modell, Kai",
+   "tage": {
+    "2026-11-03": {
+     "id": 22,
+     "bis": null,
+     "von": null,
+     "code": "BS",
+     "notiz": null,
+     "quelle": "wiederholung",
+     "code_id": 3,
+     "stunden": 8,
+     "freigabe_id": null,
+     "wiederholung_id": 1,
+     "wunsch_geaendert": false
+    },
+    "2026-11-10": {
+     "id": 23,
+     "bis": null,
+     "von": null,
+     "code": "BS",
+     "notiz": null,
+     "quelle": "wiederholung",
+     "code_id": 3,
+     "stunden": 8,
+     "freigabe_id": null,
+     "wiederholung_id": 1,
+     "wunsch_geaendert": false
+    },
+    "2026-11-17": {
+     "id": 24,
+     "bis": null,
+     "von": null,
+     "code": "BS",
+     "notiz": null,
+     "quelle": "wiederholung",
+     "code_id": 3,
+     "stunden": 8,
+     "freigabe_id": null,
+     "wiederholung_id": 1,
+     "wunsch_geaendert": false
+    },
+    "2026-11-24": {
+     "id": 25,
+     "bis": null,
+     "von": null,
+     "code": "BS",
+     "notiz": null,
+     "quelle": "wiederholung",
+     "code_id": 3,
+     "stunden": 8,
+     "freigabe_id": null,
+     "wiederholung_id": 1,
+     "wunsch_geaendert": false
+    }
+   },
+   "aktiv": true,
+   "wochenstunden": 20
+  },
+  {
+   "id": 12,
+   "name": "Attrappe, Lea",
+   "tage": {},
+   "aktiv": true,
+   "wochenstunden": 42
+  },
+  {
+   "id": 13,
+   "name": "Reserve, Mia",
+   "tage": {},
+   "aktiv": true,
+   "wochenstunden": 20
+  },
+  {
+   "id": 14,
+   "name": "Aushilfe, Nico",
+   "tage": {},
+   "aktiv": true,
+   "wochenstunden": 10
+  }
+ ]
+}

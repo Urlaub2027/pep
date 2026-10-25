@@ -1,0 +1,50 @@
+[
+ {
+  "name": "Neujahr",
+  "datum": "2026-01-01"
+ },
+ {
+  "name": "Heilige Drei Könige",
+  "datum": "2026-01-06"
+ },
+ {
+  "name": "Karfreitag",
+  "datum": "2026-04-03"
+ },
+ {
+  "name": "Ostermontag",
+  "datum": "2026-04-06"
+ },
+ {
+  "name": "Tag der Arbeit",
+  "datum": "2026-05-01"
+ },
+ {
+  "name": "Christi Himmelfahrt",
+  "datum": "2026-05-14"
+ },
+ {
+  "name": "Pfingstmontag",
+  "datum": "2026-05-25"
+ },
+ {
+  "name": "Fronleichnam",
+  "datum": "2026-06-04"
+ },
+ {
+  "name": "Tag der Deutschen Einheit",
+  "datum": "2026-10-03"
+ },
+ {
+  "name": "Allerheiligen",
+  "datum": "2026-11-01"
+ },
+ {
+  "name": "1. Weihnachtstag",
+  "datum": "2026-12-25"
+ },
+ {
+  "name": "2. Weihnachtstag",
+  "datum": "2026-12-26"
+ }
+]

@@ -35,6 +35,7 @@ export async function aufruf(funktion, parameter = {}) {
 export async function aktualisiereIch() {
   ich = await aufruf('pep_ich');
   $('wer').textContent = `Angemeldet als ${ich.anzeigename}`;
+  $('kopf-filiale').textContent = ich.filiale?.name ?? '';
   $('nav-einstellungen').hidden = ich.rolle !== 'leitung';
   return ich;
 }
@@ -49,6 +50,7 @@ export function abmelden(text = '') {
   sitzung.logout();
   ich = null;
   $('wer').textContent = '';
+  $('kopf-filiale').textContent = '';
   $('navigation').hidden = true;
   zeigeAnsicht('login');
   meldung(text);

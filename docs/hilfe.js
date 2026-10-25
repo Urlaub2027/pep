@@ -3,12 +3,25 @@ export const WOCHENTAGE = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 
 export const $ = (id) => document.getElementById(id);
 
+// Fehler (und Hinweise) stehen oben in der Seite, bis die nächste Meldung kommt.
+// Erfolg (art 'ok') erscheint als Toast unten mittig und verschwindet nach 3 s.
+let toastUhr = null;
 export function meldung(text, art = 'fehler') {
   const m = $('meldung');
-  m.textContent = text || '';
-  m.hidden = !text;
+  const alsToast = Boolean(text) && art === 'ok';
+  m.textContent = alsToast ? '' : text || '';
+  m.hidden = alsToast || !text;
   m.className = `meldung ${art}`.trim();
-  if (text) m.scrollIntoView({ block: 'nearest' });
+  if (alsToast) zeigeToast(text);
+  else if (text) m.scrollIntoView({ block: 'nearest' });
+}
+
+function zeigeToast(text) {
+  const t = $('toast');
+  t.textContent = text;
+  t.hidden = false;
+  clearTimeout(toastUhr);
+  toastUhr = setTimeout(() => { t.hidden = true; }, 3000);
 }
 
 const FEHLER = {
@@ -19,12 +32,16 @@ const FEHLER = {
   invalid_grant: 'Benutzername oder Passwort stimmt nicht.',
   // Datenbank
   ABWEICHUNG_NICHT_GEFUNDEN: 'Diese Abweichung gibt es nicht (mehr).',
+  ABWESEND: 'Der Mitarbeiter ist zu dieser Zeit abwesend.',
   ART_FEST: 'Die Art dieses Eintrags ist fest vorgegeben und lässt sich nicht ändern.',
   ART_UNGUELTIG: 'Die Art ist ungültig.',
+  AUSSERHALB_RAHMEN: 'Das liegt außerhalb der Planungszeit dieses Tages.',
   BENUTZER_NICHT_GEFUNDEN: 'Diesen Benutzer gibt es nicht (mehr).',
   BEREICH_NICHT_GEFUNDEN: 'Diesen Bereich gibt es nicht (mehr).',
+  BEREICH_NICHT_MALBAR: 'Das ist eine Funktion (z. B. VP), kein Bereich – sie wird nur als Kompetenz vergeben.',
   BUNDESLAND_UNGUELTIG: 'Bitte ein gültiges Bundesland wählen.',
   CODE_NICHT_GEFUNDEN: 'Diesen Code gibt es nicht (mehr).',
+  CODE_UNGUELTIG: 'Hier geht nur KM (krank) oder ZA (Zeitausgleich). Andere Abwesenheiten bitte im Reiter Abwesenheiten eintragen.',
   DATUM_UNGUELTIG: 'Das Datum ist ungültig.',
   EINSTELLUNG_FEHLT: 'Diese Einstellung fehlt.',
   EINSTELLUNG_UNBEKANNT: 'Diese Einstellung gibt es nicht.',
@@ -32,16 +49,22 @@ const FEHLER = {
   FILIALE_VORHANDEN: 'Es gibt schon eine Filiale.',
   FREIGABE_NICHT_GEFUNDEN: 'Diese Freigabe gibt es nicht (mehr).',
   FREIGABE_VORHANDEN: 'Diese Freigabe gibt es schon.',
+  GESCHLOSSEN: 'An diesem Tag ist die Filiale geschlossen.',
   HALBE_STUNDE: 'Uhrzeiten nur in halben Stunden (:00 oder :30).',
   KEINE_FILIALE: 'Es ist noch keine Filiale angelegt.',
   KEIN_VERTRAG: 'Für dieses Datum gibt es keinen Vertrag.',
   KEIN_ZUGRIFF: 'Kein Zugriff: Dein Konto ist nicht für die PEP freigeschaltet.',
+  KOMPETENZ_FEHLT: 'Dem Mitarbeiter fehlt die Kompetenz für diesen Bereich (siehe Mitarbeiterkarte).',
   KUERZEL_DOPPELT: 'Dieses Kürzel gibt es schon.',
   KUERZEL_UNGUELTIG: 'Das Kürzel ist ungültig.',
   LETZTER_VERTRAG: 'Der letzte Vertrag eines Mitarbeiters kann nicht gelöscht werden.',
-  MITARBEITER_INAKTIV: 'Dieser Mitarbeiter ist nicht mehr aktiv.',
+  MITARBEITER_INAKTIV: 'Dieser Mitarbeiter ist an diesem Tag nicht beschäftigt (inaktiv, noch nicht eingetreten oder schon ausgetreten).',
   MITARBEITER_NICHT_GEFUNDEN: 'Diesen Mitarbeiter gibt es nicht (mehr).',
+  MITARBEITER_WAEHLEN: 'Bitte einen Mitarbeiter wählen.',
+  MODUS_UNGUELTIG: 'Bitte wählen, ob belegte Tage ersetzt oder nur leere Zeilen gefüllt werden sollen.',
   NAME_LEER: 'Bitte einen Namen eingeben.',
+  NICHTS_UNBESETZT: 'An diesem Tag ist bei diesem Mitarbeiter nichts unbesetzt – es braucht keinen Ersatz.',
+  NICHTS_ZU_KOPIEREN: 'An diesem Tag bzw. in dieser Woche ist nichts geplant – es gibt nichts zu kopieren.',
   NICHT_SELBST: 'Das kannst du bei dir selbst nicht machen.',
   NUR_LEITUNG: 'Das darf nur die Filialleitung.',
   ROLLE_UNGUELTIG: 'Die Rolle ist ungültig.',
@@ -50,10 +73,17 @@ const FEHLER = {
   STUNDEN_FEHLEN: 'Bitte die Stunden angeben.',
   STUNDEN_UNGUELTIG: 'Die Stunden sind ungültig.',
   TEILNEHMER_NICHT_GEFUNDEN: 'Diesen Teilnehmer gibt es nicht (mehr).',
+  TEXT_ZU_LANG: 'Der Text ist zu lang (höchstens 200 Zeichen).',
+  UEBERLAPPUNG: 'Dieser Mitarbeiter ist zu dieser Zeit schon eingeplant.',
   UMFRAGE_NICHT_GEFUNDEN: 'Diese Umfrage gibt es nicht (mehr).',
+  VERGANGEN: 'Vergangene Tage lassen sich nicht mehr ändern.',
   VERTRAGSART_UNGUELTIG: 'Die Vertragsart ist ungültig.',
   VERTRAG_DOPPELT: 'Für diesen Zeitraum gibt es schon einen Vertrag.',
   VERTRAG_NICHT_GEFUNDEN: 'Diesen Vertrag gibt es nicht (mehr).',
+  VORGABE_VERLETZT: 'Das verstößt gegen eine Pflicht-Vorgabe des Mitarbeiters (siehe Mitarbeiterkarte).',
+  VORLAGE_DOPPELT: 'Eine Vorlage mit diesem Namen gibt es schon.',
+  VORLAGE_LEER: 'An diesem Tag bzw. in dieser Woche ist nichts geplant – eine leere Vorlage lässt sich nicht speichern.',
+  VORLAGE_NICHT_GEFUNDEN: 'Diese Vorlage gibt es nicht (mehr).',
   WERT_UNGUELTIG: 'Der Wert ist ungültig.',
   WIEDERHOLUNG_NICHT_GEFUNDEN: 'Diese Wiederholung gibt es nicht (mehr).',
   WOCHENTAG_UNGUELTIG: 'Der Wochentag ist ungültig.',
@@ -62,6 +92,7 @@ const FEHLER = {
   ZEITEN_UNGUELTIG: 'Die Zeiten sind ungültig. „Bis“ muss nach „von“ liegen.',
   ZEITRAUM_UNGUELTIG: 'Der Zeitraum ist ungültig. „Bis“ darf nicht vor „von“ liegen.',
   ZEITRAUM_ZU_LANG: 'Der Zeitraum ist zu lang.',
+  ZU_VIELE_ZIELE: 'Zu viele Ziele auf einmal (höchstens 60 Tage oder 12 Wochen).',
 };
 
 export function fehlerText(code) {
@@ -93,9 +124,28 @@ export function stundenDE(n) {
   return Number(n).toFixed(2).replace('.', ',');
 }
 
+// Lesbare Schrift auf einer Code- oder Bereichsfarbe (#RRGGBB): dunkel auf hellem Grund, sonst weiß.
+export function textfarbe(farbe) {
+  const m = /^#([0-9a-f]{6})$/i.exec(farbe || '');
+  if (!m) return '';
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+  return (r * 299 + g * 587 + b * 114) / 1000 > 140 ? '#111' : '#fff';
+}
+
 // ---------------------------------------------------------------- Formular-Bausteine (mehrere Reiter)
 
 export const zahl = (wert) => (wert === '' || wert == null ? null : Number(String(wert).replace(',', '.')));
+// Zahl aus deutscher Eingabe: '60.000' → 60000 (Punkt vor genau drei Ziffern = Tausendertrennung),
+// '60000,50' und '60.000,50' → Komma ist das Dezimalzeichen, '60.5' → 60,5; Leerzeichen und € werden ignoriert.
+// Leer → null, Unlesbares → NaN (der Aufrufer meldet WERT_UNGUELTIG).
+export function geldZahl(wert) {
+  const t = String(wert ?? '').replace(/[\s€]/g, '');
+  if (t === '') return null;
+  let n = t;
+  if (t.includes(',')) n = /^(\d{1,3}(\.\d{3})*|\d*),\d*$/.test(t) ? t.replace(/\./g, '').replace(',', '.') : '';
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) n = t.replace(/\./g, '');
+  return /^(\d+(\.\d*)?|\.\d+)$/.test(n) && n !== '.' ? Number(n) : NaN;
+}
 export const text = (wert) => (wert == null ? '' : String(wert));
 export const datum = (wert) => (wert ? String(wert).slice(0, 10) : '');
 export const uhrzeit = (wert) => (wert ? String(wert).slice(0, 5) : '');
