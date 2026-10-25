@@ -707,7 +707,24 @@ function uebernehme(antwort, ids) {
   }
 }
 
+// Sperre gegen einen zweiten Aufruf, solange der erste noch vorbereitet (Striche abwarten, Eintrag holen, Grund
+// fragen): ein Doppelklick vor dem Grund-Dialog würde sonst einen zweiten Eintrag holen und den Stapel umordnen. Sobald
+// der Eintrag in der Kette seiner Zeile steht, ist die Sperre frei: ein weiteres Rückgängig wartet dann auf die Kette.
+let rueckgaengigLaeuft = false;
 async function rueckgaengig() {
+  if (rueckgaengigLaeuft) return;
+  rueckgaengigLaeuft = true;
+  let auftrag;
+  try {
+    auftrag = await rueckgaengigVorbereiten();
+  } finally {
+    rueckgaengigLaeuft = false;
+  }
+  if (auftrag) await einreihen(auftrag.schluessel, auftrag.aufgabe);
+}
+
+// Liefert { schluessel, aufgabe } für die Kette der Zeile oder nichts (Stapel leer, Grund abgebrochen).
+async function rueckgaengigVorbereiten() {
   // Erst die offenen Striche abwarten: ihr Eintrag kommt mit der Antwort, und „Rückgängig“ gilt dem letzten Strich.
   // Schleife: ein Strich, der während des Wartens dazukommt, wird ebenfalls abgewartet.
   while (ketten.size) await Promise.all([...ketten.values()]);
@@ -724,7 +741,7 @@ async function rueckgaengig() {
     if (grund === undefined) { zurueck(); return; }
   }
   const schluessel = zeilenSchluessel(eintrag.ist, eintrag.mitarbeiterId, eintrag.datum);
-  await einreihen(schluessel, async () => {
+  return { schluessel, aufgabe: async () => {
     const parameter = { p_mitarbeiter_id: eintrag.mitarbeiterId, p_datum: eintrag.datum, p_bloecke: eintrag.bloecke };
     const setzen = () => (eintrag.ist ? aufruf('pep_ist_zeile_setzen', { ...parameter, p_grund: grund })
       : aufruf('pep_plan_zeile_setzen', parameter));
@@ -754,7 +771,7 @@ async function rueckgaengig() {
       springeZu(eintrag.datum); // Strich aus einer anderen Woche: dorthin wechseln, damit man sieht, was zurückging
     }
     meldung(`Rückgängig: ${nameVon(eintrag.mitarbeiterId) || 'Zeile'}, ${datumDE(eintrag.datum)}`, 'ok');
-  });
+  } };
 }
 
 // IST „Tag bestätigen“ (ids null = alle offenen Zeilen) bzw. „✓“ einer Zeile. Erst laufen alle Striche zu Ende,
