@@ -79,6 +79,7 @@ const FEHLER = {
   NUR_LEITUNG: 'Das darf nur die Filialleitung.',
   ROLLE_UNGUELTIG: 'Die Rolle ist ungültig.',
   SCHULFERIEN_NICHT_GEFUNDEN: 'Diese Schulferien gibt es nicht (mehr).',
+  SICHERUNG_NEUER: 'Die Sicherung stammt aus einer neueren PEP-Version. Bitte zuerst das Datenbank-Schema aktualisieren.',
   SICHERUNG_UNGUELTIG: 'Die Datei ist keine gültige PEP-Sicherung oder wurde verändert (Prüfsumme stimmt nicht).',
   START_NICHT_ERSTE: 'Ein Startsaldo geht nur als erste Buchung eines Mitarbeiters. Für spätere Änderungen bitte eine manuelle Buchung anlegen.',
   STUNDENREGEL_UNGUELTIG: 'Die Stundenregel ist ungültig.',

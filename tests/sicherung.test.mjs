@@ -3,8 +3,10 @@
 // Quelle A: volle Filiale (Stammdaten, Plan, Kommentar, Vorlage, Wochenwerte, Abwesenheiten mit Wiederholung und
 // Urlaubstool-Freigabe, IST mit leerer Zeile, KW 45 und 46 abgeschlossen, Journal mit Start-, Wochen-, Korrektur- und
 // manueller Buchung), dazu eine leere Zweitfiliale (Einspielen in derselben Datenbank).
-// Ziel Z: eigene Datenbank wie ein neues Projekt. chef und vize gibt es dort im Urlaubstool, aushilfe nicht; die
-// Umfrage und ihre Teilnehmer haben dieselben Ids wie in A (wie nach dem Einspielen der Urlaubstool-Sicherung).
+// Ziel Z: eigene Datenbank wie ein neues Projekt. chef und vize gibt es dort im Urlaubstool, aushilfe nicht. Die
+// Umfrage kommt wie im Ernstfall über die Sicherung des Urlaubstools (org_sicherung / org_sicherung_einspielen) und
+// bekommt dabei NEUE Ids; vorher liegen dort schon zwei Umfragen (eine mit gleichem Titel, aber anderem Jahr), damit
+// keine Id zufällig gleich ist.
 // Stichtag heute = Mo 16.11.2026 (KW 47); KW 45 = 02.–08.11., KW 46 = 09.–15.11.2026.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
@@ -50,6 +52,8 @@ const VERWEIS = { mitarbeiter_id: 'mitarbeiter', bereich_id: 'bereiche', code_id
   wiederholung_id: 'wiederholungen', freigabe_id: 'urlaub_freigaben' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function kanonisch(s) {
+  const umfrage = (id) => (s.urlaub.umfragen[id] ? `U:${s.urlaub.umfragen[id].titel}/${s.urlaub.umfragen[id].jahr}` : `U?${id}`);
+  const teilnehmer = (id) => (s.urlaub.teilnehmer[id] ? `T:${s.urlaub.teilnehmer[id].name}` : `T?${id}`);
   const pos = {};
   for (const [t, zeilen] of Object.entries(s.tabellen)) pos[t] = new Map(zeilen.map((z, i) => [z.id, i]));
   const wert = (t, k, v) => {
@@ -63,6 +67,11 @@ function kanonisch(s) {
   return Object.fromEntries(Object.entries(s.tabellen).map(([t, zeilen]) => [t, zeilen.map((z) => Object.fromEntries(
     Object.entries(z).filter(([k]) => !(t === 'protokoll' && k === 'id')).map(([k, v]) => {
       if (t === 'protokoll' && ['vorher', 'nachher', 'schluessel'].includes(k)) return [k, v];
+      if (t === 'urlaub_umfragen' && k === 'umfrage_id') return [k, umfrage(v)];
+      if (k === 'urlaub_mitarbeiter_id') return [k, teilnehmer(v)];
+      if (t === 'urlaub_freigaben' && k === 'wunsch') {
+        return [k, { ...v, umfrage_id: umfrage(v.umfrage_id), urlaub_mitarbeiter_id: teilnehmer(v.urlaub_mitarbeiter_id) }];
+      }
       if (t === 'vorlagen' && k === 'daten') {
         return [k, v.map((e) => ({ ...e, mitarbeiter_id: wert(t, 'mitarbeiter_id', e.mitarbeiter_id),
           bereich_id: wert(t, 'bereich_id', e.bereich_id) }))];
@@ -130,6 +139,7 @@ before(async () => {
   await q('select public.pep_urlaub_zuordnung_setzen($1, $2)', [tAnna.id, anna]);
   await q('select public.pep_urlaub_zuordnung_setzen($1, $2)', [tBen.id, ben]);
   await abgeben(db, tBen.code, { [frage]: [48] });
+  await abgeben(db, tAnna.code, { [frage]: [47] }); // bleibt offen
   await q('select public.pep_urlaub_freigeben($1, null, null, $2::jsonb, null) as r', [ben, JSON.stringify(
     { umfrage_id: umfrage, urlaub_mitarbeiter_id: tBen.id, art: 'kw', kw: 48, datum: null })]);
   // Startsalden, IST (Mittwoch KW 45 bei Cem leer gemacht → ist_leer), Bestätigen, Abschluss KW 45 und 46
@@ -148,10 +158,19 @@ before(async () => {
   // Zahlen im Protokoll, die der Browser beim Weiterreichen umschreiben würde (37.50 → 37.5, 17 Stellen → 16)
   await db.query(`insert into pep.protokoll (filiale_id, aktion, tabelle, nachher)
     values ($1, 'test', 'test', '{"a": 37.50, "b": 6.6666666666666667, "c": [1.10, 2]}')`, [g.fil]);
+  // Protokoll älter als 12 Monate: nicht in der Sicherung
+  await db.query(`insert into pep.protokoll (filiale_id, zeit, aktion, tabelle)
+    values ($1, now() - interval '13 months', 'alt', 'test')`, [g.fil]);
+  // Sicherung des Urlaubstools (die Leitung ist Organisatorin der Umfrage)
+  const urlaubDatei = (await als(db, 'authenticated', leitung, 'select public.org_sicherung($1) as r', [umfrage]))[0].r;
   // Zweitfiliale in derselben Datenbank, leer
   const zweit = await pepBenutzer(db, 'zweit');
   const fil2 = await filiale(db, zweit, { name: 'Netto Zweitfiliale', nummer: '9999' });
   A = { db, ...g, anna, ben, cem, aushilfe, umfrage, tAnna, tBen, zweit, fil2 };
+  const offeneWuensche = async (adb, nutzer) =>
+    (await als(adb, 'authenticated', nutzer, 'select public.pep_startseite() as r'))[0].r.offene_wuensche;
+  A.offeneWuensche = await offeneWuensche(db, leitung);
+  assert.equal(A.offeneWuensche, 1, 'in der Quelle ist nur Annas Wunsch offen');
 
   sA = await sichern(db, leitung);
 
@@ -161,24 +180,24 @@ before(async () => {
   const zchef = await pepBenutzer(zdb, 'chef');
   const zfil = await filiale(zdb, zchef, { name: 'Netto Neu', nummer: '7777', bundesland: 'HE' });
   await organisator(zdb, 'vize');
-  // Urlaubstool mit denselben Ids wie in A
-  await zdb.query(`insert into urlaub.umfragen (id, organisator_id, titel, frist) overriding system value
-    values ($1, $2, 'Urlaub 2026', now())`, [umfrage, zchef]);
-  await zdb.query("select urlaub.standard_urlaubsfrage($1, 2026, 'BY')", [umfrage]);
-  for (const [t, name] of [[tAnna, 'Test, Anna'], [tBen, 'Muster, Ben']]) {
-    await zdb.query('insert into urlaub.mitarbeiter (id, umfrage_id, name) overriding system value values ($1, $2, $3)',
-      [t.id, umfrage, name]);
+  // Urlaubstool wie nach einem Datenverlust: erst andere Umfragen (gleicher Titel, anderes Jahr; anderer Titel), dann
+  // die Sicherung der Umfrage aus A – sie bekommt neue Ids für Umfrage und Teilnehmer.
+  for (const [titel, jahr] of [['Urlaub 2026', 2027], ['Urlaub 2025', 2025]]) {
+    const u = await umfrageAnlegen(zdb, zchef, { titel, jahr });
+    for (const name of ['Test, Anna', 'Muster, Ben', 'Platzhalter, Gustav']) await umfrageMitarbeiter(zdb, u, name);
   }
-  for (const t of ['umfragen', 'mitarbeiter']) {
-    await zdb.query(`select setval(pg_get_serial_sequence('urlaub.${t}', 'id'), (select max(id) from urlaub.${t}))`);
-  }
+  const zUmfrage = (await als(zdb, 'authenticated', zchef, 'select public.org_sicherung_einspielen($1::jsonb) as r',
+    [JSON.stringify(urlaubDatei)]))[0].r.id;
+  const zTeilnehmer = Object.fromEntries((await zdb.query('select name, id from urlaub.mitarbeiter where umfrage_id = $1',
+    [zUmfrage])).rows.map((t) => [t.name, t.id]));
+  assert.notEqual(zUmfrage, umfrage);
+  assert.notEqual(zTeilnehmer['Test, Anna'], tAnna.id);
+  assert.notEqual(zTeilnehmer['Muster, Ben'], tBen.id);
   const dritt = await pepBenutzer(zdb, 'dritt');
   const zfil3 = await filiale(zdb, dritt, { name: 'Netto Dritt', nummer: '3333' });
-  // Eine Umfrage von chef (nicht von dritt), nirgends eingeschaltet, mit einem Teilnehmer
-  const fremdeUmfrage = await umfrageAnlegen(zdb, zchef, { titel: 'Fremd 2026', jahr: 2026 });
-  const fremderTeilnehmer = await umfrageMitarbeiter(zdb, fremdeUmfrage, 'Fremd, Frieda');
   const zvize = (await zdb.query(`select user_id from urlaub.organisatoren where benutzername = 'vize'`)).rows[0].user_id;
-  Z = { db: zdb, chef: zchef, fil: zfil, dritt, fil3: zfil3, vize: zvize, fremdeUmfrage, fremderTeilnehmer };
+  Z = { db: zdb, chef: zchef, fil: zfil, dritt, fil3: zfil3, vize: zvize, umfrage: zUmfrage, teilnehmer: zTeilnehmer,
+    offeneWuensche };
 });
 
 // ------------------------------------------------------------ Format
@@ -223,6 +242,17 @@ test('pep_sicherung: Format, Abschnitte, Anzahlen, Prüfsumme über tabellen; Ei
   assert.deepEqual(s[0].anzahl, sA.anzahl);
   const prot = (await A.db.query("select tabelle from pep.protokoll where aktion = 'sichern'")).rows;
   assert.deepEqual(prot, [{ tabelle: 'sicherungen' }]);
+  // Protokoll nur der letzten 12 Monate
+  const ab = Date.parse(sA.protokoll_ab);
+  assert.ok(Date.now() - ab > 360 * 864e5 && Date.now() - ab < 370 * 864e5, sA.protokoll_ab);
+  assert.ok(!sA.tabellen.protokoll.some((x) => x.aktion === 'alt'), 'altes Protokoll ausgelassen');
+  assert.ok(sA.tabellen.protokoll.every((x) => Date.parse(x.zeit) >= ab));
+  // Urlaubstool: Merkmale zum Wiederfinden in einem anderen Projekt
+  assert.deepEqual(sA.urlaub, {
+    umfragen: { [A.umfrage]: { titel: 'Urlaub 2026', jahr: 2026, organisator: 'chef' } },
+    teilnehmer: { [A.tAnna.id]: { umfrage_id: A.umfrage, name: 'Test, Anna' },
+      [A.tBen.id]: { umfrage_id: A.umfrage, name: 'Muster, Ben' } },
+  });
 });
 
 test('Vollständigkeit: jede Tabelle des Schemas pep ist gesichert oder ausdrücklich ausgenommen; Ids und jsonb eingeordnet', async () => {
@@ -243,7 +273,7 @@ test('Vollständigkeit: jede Tabelle des Schemas pep ist gesichert oder ausdrüc
   const JSON_SPALTEN = {
     'vorlagen.daten': 'mitarbeiter_id und bereich_id werden umgeschlüsselt (pep.sicherung_vorlage)',
     'einstellungen.wert': 'Werte ohne Ids',
-    'urlaub_freigaben.wunsch': 'Ids des Urlaubstools als Schnappschuss (ohne Fremdschlüssel, wie im Schema)',
+    'urlaub_freigaben.wunsch': 'Ids des Urlaubstools, beim Einspielen über Titel/Jahr und Namen umgeschlüsselt (pep.sicherung_wunsch)',
     'protokoll.vorher': 'Schnappschuss mit den Ids der Quelle',
     'protokoll.nachher': 'Schnappschuss mit den Ids der Quelle',
   };
@@ -254,6 +284,11 @@ test('Vollständigkeit: jede Tabelle des Schemas pep ist gesichert oder ausdrüc
         assert.ok(s.ziel_tabelle, `${t}.${s.spalte}: Id ohne Fremdschlüssel wird beim Einspielen nicht umgeschlüsselt`);
       }
       if (s.typ === 'jsonb') assert.ok(JSON_SPALTEN[`${t}.${s.spalte}`], `${t}.${s.spalte}: jsonb-Spalte nicht eingeordnet`);
+      // Einspiel-Reihenfolge: das Ziel eines Fremdschlüssels steht vor der verweisenden Tabelle
+      if (s.ziel_schema === 'pep' && gesichert.includes(s.ziel_tabelle) && s.ziel_tabelle !== t) {
+        assert.ok(gesichert.indexOf(s.ziel_tabelle) < gesichert.indexOf(t),
+          `${t}.${s.spalte} → ${s.ziel_tabelle}: Ziel muss in pep.sicherung_tabellen() davor stehen`);
+      }
     }
   }
 });
@@ -302,6 +337,12 @@ test('manipulierte oder fremde Datei → SICHERUNG_UNGUELTIG (Format, Version, P
   faelle.push(['Filiale ohne Namen', d]);
   d = await neuePruefsumme(A.db, { ...kopie(), filiale: { name: 'X', nummer: '1', bundesland: 'XX' } });
   faelle.push(['Bundesland ungültig', d]);
+  d = kopie();
+  d.tabellen.zeitkonto_buchungen.at(-1).saldo_nach += 1;
+  faelle.push(['Journal: saldo_nach passt nicht zur Kette (Prüfsumme neu)', await neuePruefsumme(A.db, d)]);
+  d = kopie();
+  d.tabellen.zeitkonto_buchungen[0].stunden += 0.5;
+  faelle.push(['Journal: stunden passen nicht zur Kette (Prüfsumme neu)', await neuePruefsumme(A.db, d)]);
   faelle.push(['Liste statt Objekt', [1, 2]]);
   faelle.push(['Zahl', 5]);
   for (const [name, datei] of faelle) {
@@ -378,6 +419,9 @@ test('Rundlauf: in leere Filiale eines neuen Projekts einspielen, erneut sichern
   assert.equal(letzter.tabelle, 'sicherungen');
   assert.equal(letzter.user_id, '@chef');
   assert.deepEqual(letzter.nachher.eingespielt, r.eingespielt);
+  // urlaub_umfragen/urlaub_zuordnung sind nach den Ids des Urlaubstools sortiert, die im Ziel andere sind
+  const sortiert = (zeilen) => [...zeilen].sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
+  for (const t of ['urlaub_umfragen', 'urlaub_zuordnung']) { ist[t] = sortiert(ist[t]); soll[t] = sortiert(soll[t]); }
   for (const t of Object.keys(soll)) assert.deepEqual(ist[t], soll[t], t);
   assert.notEqual(sZ.pruefsumme, sA.pruefsumme);
 
@@ -397,6 +441,20 @@ test('Rundlauf: in leere Filiale eines neuen Projekts einspielen, erneut sichern
     const z = (await als(Z.db, 'authenticated', Z.chef, sql))[0].r;
     assert.deepEqual(ohneIds(z), ohneIds(a), sql);
   }
+  // Urlaubstool mit den neuen Ids: Umfrage eingeschaltet, Teilnehmer den richtigen Mitarbeitern zugeordnet, der
+  // genehmigte Wunsch bleibt genehmigt (nicht wieder offen), Annas Wunsch bleibt offen
+  assert.deepEqual((await Z.db.query('select umfrage_id from pep.urlaub_umfragen where filiale_id = $1', [Z.fil])).rows,
+    [{ umfrage_id: Z.umfrage }]);
+  assert.deepEqual((await Z.db.query(`select t.id, t.name as teilnehmer, m.name as mitarbeiter from pep.urlaub_zuordnung z
+      join urlaub.mitarbeiter t on t.id = z.urlaub_mitarbeiter_id join pep.mitarbeiter m on m.id = z.mitarbeiter_id
+     where z.filiale_id = $1 order by t.name`, [Z.fil])).rows,
+  [{ id: Z.teilnehmer['Muster, Ben'], teilnehmer: 'Muster, Ben', mitarbeiter: 'Muster, Ben' },
+    { id: Z.teilnehmer['Test, Anna'], teilnehmer: 'Test, Anna', mitarbeiter: 'Test, Anna' }]);
+  const wunsch = (await Z.db.query('select pep.wunsch_json($1, $2, $3, $4, null) as w',
+    [Z.umfrage, Z.teilnehmer['Muster, Ben'], 'kw', 48])).rows[0].w;
+  assert.equal((await Z.db.query('select pep.wunsch_vorhanden($1) as v', [wunsch])).rows[0].v, true);
+  assert.equal((await Z.db.query('select (pep.freigabe_zum_wunsch($1, $2)).status as s', [Z.fil, wunsch])).rows[0].s, 'genehmigt');
+  assert.equal(await Z.offeneWuensche(Z.db, Z.chef), A.offeneWuensche);
   // Nach dem Einspielen ist die Filiale nicht mehr leer
   await wirft(einspielen(Z.db, Z.chef, sA, '2558'), 'FILIALE_NICHT_LEER');
   // vize darf sich jetzt anmelden und liest dieselbe Filiale
@@ -433,8 +491,10 @@ test('Einspielen in derselben Datenbank: belegte Umfragen und Teilnehmer, Benutz
   const r = await einspielen(A.db, A.zweit, sA, '2558');
   assert.equal(r.eingespielt.mitarbeiter, 3);
   assert.equal(r.eingespielt.zeitkonto_buchungen, sA.anzahl.zeitkonto_buchungen);
-  // Umfrage und Teilnehmer gehören schon zur ersten Filiale (Primärschlüssel umfrage_id bzw. urlaub_mitarbeiter_id)
-  assert.deepEqual(r.ausgelassen, { urlaub_umfragen: 1, urlaub_zuordnung: 2, benutzer: 3 });
+  // Die Umfrage gehört chef, nicht zweit (Einschalten ginge auch nicht): Schaltung, Zuordnungen und die Ids im Wunsch
+  // der Freigabe werden nicht zugeordnet; die Freigabe selbst kommt mit
+  assert.deepEqual(r.ausgelassen, { urlaub_umfragen: 1, urlaub_zuordnung: 2, wunsch_nicht_zugeordnet: 1, benutzer: 3 });
+  assert.equal(r.eingespielt.urlaub_freigaben, 1);
   assert.equal(r.eingespielt.urlaub_umfragen, undefined);
   assert.deepEqual(await saldi(A.db, A.fil2), await saldi(A.db, A.fil));
   // Die erste Filiale ist unverändert
@@ -442,16 +502,30 @@ test('Einspielen in derselben Datenbank: belegte Umfragen und Teilnehmer, Benutz
   assert.equal((await A.db.query('select count(*)::int as n from pep.zeitkonto_vormerkungen')).rows[0].n, 0);
 });
 
-test('unbekannte Tabellen und Spalten (spätere Stufe) gemeldet und ausgelassen; fehlende und fremde Umfragen gezählt', async () => {
+test('Datei einer neueren Stufe (Tabelle mit Zeilen, Spalte mit Werten) → SICHERUNG_NEUER, schon in der Vorschau', async () => {
+  const vorher = await zaehlen(Z.db);
+  const mitTabelle = JSON.parse(JSON.stringify(sA));
+  mitTabelle.tabellen.zukunft = [{ id: 1, filiale_id: A.fil, wert: 'x' }];
+  const mitSpalte = JSON.parse(JSON.stringify(sA));
+  mitSpalte.tabellen.mitarbeiter[1].neue_spalte = 'x';
+  for (const d of [mitTabelle, mitSpalte]) {
+    const datei = await neuePruefsumme(Z.db, d);
+    await wirft(pruefen(Z.db, Z.dritt, datei), 'SICHERUNG_NEUER');
+    await wirft(einspielen(Z.db, Z.dritt, datei, '2558'), 'SICHERUNG_NEUER');
+  }
+  assert.deepEqual(await zaehlen(Z.db), vorher);
+});
+
+test('ältere Datei (fehlende Einstellung und Spalte), leere unbekannte Teile; fremde und fehlende Umfragen gezählt', async () => {
   const d = JSON.parse(JSON.stringify(sA));
-  d.tabellen.zukunft = [{ id: 1, filiale_id: A.fil, wert: 'x' }];
-  for (const m of d.tabellen.mitarbeiter) m.neue_spalte = 'x';
-  // Umfrage 999999 gibt es nicht; die fremde gehört chef, nicht dritt (Einschalten ginge auch nicht). Teilnehmer: einer
-  // fehlt, der andere gehört zur fremden, hier nicht eingeschalteten Umfrage.
-  d.tabellen.urlaub_umfragen = [{ ...d.tabellen.urlaub_umfragen[0], umfrage_id: 999999 },
-    { ...d.tabellen.urlaub_umfragen[0], umfrage_id: Z.fremdeUmfrage }];
-  d.tabellen.urlaub_zuordnung[0].urlaub_mitarbeiter_id = 999999;
-  d.tabellen.urlaub_zuordnung[1].urlaub_mitarbeiter_id = Z.fremderTeilnehmer.id;
+  // Neuere Stufe, aber ohne Inhalt: gemeldet, eingespielt wird trotzdem
+  d.tabellen.zukunft = [];
+  for (const m of d.tabellen.mitarbeiter) m.neue_spalte = null;
+  // Ältere Stufe: eine Einstellung und die Spalte gutschrift fehlen
+  d.tabellen.einstellungen = d.tabellen.einstellungen.filter((e) => e.schluessel !== 'zeitkonto_warnfaktor');
+  for (const c of d.tabellen.abwesenheitscodes) delete c.gutschrift;
+  // Eine Umfrage ohne Eintrag im Abschnitt urlaub (fehlt im Ziel). Die Umfrage der Datei gehört chef, nicht dritt.
+  d.tabellen.urlaub_umfragen.push({ ...d.tabellen.urlaub_umfragen[0], umfrage_id: 999999 });
   const datei = await neuePruefsumme(Z.db, d);
   const v = await pruefen(Z.db, Z.dritt, datei);
   assert.deepEqual(v.unbekannt, { tabellen: ['zukunft'], spalten: { mitarbeiter: ['neue_spalte'] } });
@@ -460,73 +534,83 @@ test('unbekannte Tabellen und Spalten (spätere Stufe) gemeldet und ausgelassen;
   assert.deepEqual(r.unbekannt, v.unbekannt);
   assert.equal(r.eingespielt.mitarbeiter, 3);
   // chef und vize gehören zur ersten Filiale, aushilfe gibt es nicht
-  assert.deepEqual(r.ausgelassen, { urlaub_umfragen: 2, urlaub_zuordnung: 2, benutzer: 3,
+  assert.deepEqual(r.ausgelassen, { urlaub_umfragen: 2, urlaub_zuordnung: 2, wunsch_nicht_zugeordnet: 1, benutzer: 3,
     benutzerverweise: sA.tabellen.plan_bloecke.filter((b) => b.angelegt_von === A.aushilfe).length
       + sA.tabellen.protokoll.filter((p) => p.user_id === A.aushilfe).length });
   assert.deepEqual(await saldi(Z.db, Z.fil3), await saldi(A.db, A.fil));
   assert.equal((await Z.db.query('select count(*)::int as n from pep.urlaub_umfragen where filiale_id = $1', [Z.fil3])).rows[0].n, 0);
+  // Grundausstattung ergänzt die fehlende Einstellung (Standardwert), ändert sonst nichts; gutschrift = Standard true
+  const e = (await Z.db.query("select schluessel, wert from pep.einstellungen where filiale_id = $1 order by 1", [Z.fil3])).rows;
+  assert.equal(e.length, sA.anzahl.einstellungen);
+  assert.deepEqual(e.find((x) => x.schluessel === 'zeitkonto_warnfaktor').wert, 1);
+  assert.deepEqual(e.find((x) => x.schluessel === 'ist_ab').wert, sA.tabellen.einstellungen.find((x) => x.schluessel === 'ist_ab').wert);
+  assert.equal((await Z.db.query('select count(*)::int as n from pep.bereiche where filiale_id = $1', [Z.fil3])).rows[0].n,
+    sA.anzahl.bereiche);
+  assert.equal((await Z.db.query('select count(*)::int as n from pep.abwesenheitscodes where filiale_id = $1 and gutschrift',
+    [Z.fil3])).rows[0].n, sA.anzahl.abwesenheitscodes);
 });
 
 // ------------------------------------------------------------ Größe
 
-test('Größe und Laufzeit: ein Jahr mit 18 Mitarbeitern (Plan, IST, Abwesenheiten, Journal, Protokoll)', { timeout: 600000 }, async (t) => {
+// Bestand von `jahre` Jahren bis Sa 26.12.2026 direkt per SQL (die Funktionen dafür einzeln aufzurufen dauert in PGlite
+// zu lange). Annahmen: 18 Mitarbeiter mit Vertrag, je Woche 5 Arbeitstage (ein freier Tag Mo–Sa), Plan und IST mit je
+// 3 Blöcken (Arbeit, Pause, Arbeit), alle Tage Mo–Sa bestätigt, je Jahr 30 Urlaubs- und 10 Krankheitstage je
+// Mitarbeiter, jede Woche abgeschlossen mit einer Journalzeile je Mitarbeiter; Protokoll: 3 Einträge je Planzeile
+// (malen, Pause, Änderung), 1 je IST-Zeile, 1 je Abwesenheitstag, Zeitpunkt so weit vor jetzt wie der Tag vor dem
+// 04.01.2027 (heute im Test) – nur die letzten 12 Monate kommen in die Sicherung.
+async function groesseMessen(jahre) {
   const db = await neueDatenbank();
   await heuteSetzen(db, '2027-01-04');
   const leitung = await pepBenutzer(db, 'chef');
   const fil = await filiale(db, leitung);
   const leer = await pepBenutzer(db, 'leer');
   await filiale(db, leer, { name: 'Netto Leer', nummer: '1' });
-  // Bestand direkt per SQL (die Funktionen dafür einzeln aufzurufen dauert in PGlite zu lange). Annahmen:
-  // 18 Mitarbeiter mit Vertrag, je Woche 5 Arbeitstage (ein freier Tag Mo–Sa), Plan und IST mit je 3 Blöcken
-  // (Arbeit, Pause, Arbeit), alle Tage Mo–Sa bestätigt, 30 Urlaubs- und 10 Krankheitstage je Mitarbeiter,
-  // 52 abgeschlossene Wochen mit je einer Journalzeile, Protokoll: 3 Einträge je Planzeile (malen, Pause, Änderung),
-  // 1 je IST-Zeile, 1 je Abwesenheitstag.
-  await db.query(`
-    insert into pep.mitarbeiter (filiale_id, name, personalnummer, eintritt)
-    select $1, 'Jahr, Person ' || lpad(i::text, 2, '0'), (90000 + i)::text, '2020-01-01' from generate_series(1, 18) i;
-    `, [fil]);
-  await db.query(`
-    insert into pep.vertraege (mitarbeiter_id, gueltig_ab, vertragsart, wochenstunden)
-    select id, '2026-01-01', 'vollzeit', 37.5 from pep.mitarbeiter where filiale_id = $1`, [fil]);
+  const start = new Date(Date.parse('2025-12-29T00:00:00Z') - (jahre - 1) * 364 * 864e5).toISOString().slice(0, 10);
+  const zeit = (spalte) => `now() - ('2027-01-04'::date - ${spalte}) * interval '1 day'`;
+  await db.query(`insert into pep.mitarbeiter (filiale_id, name, personalnummer, eintritt)
+    select $1, 'Jahr, Person ' || lpad(i::text, 2, '0'), (90000 + i)::text, '2020-01-01' from generate_series(1, 18) i`, [fil]);
+  await db.query(`insert into pep.vertraege (mitarbeiter_id, gueltig_ab, vertragsart, wochenstunden)
+    select id, '2020-01-01', 'vollzeit', 37.5 from pep.mitarbeiter where filiale_id = $1`, [fil]);
   await db.query(`
     with tage as (
       select m.id as m, d::date as datum
-        from pep.mitarbeiter m, generate_series('2025-12-29'::date, '2026-12-26'::date, interval '1 day') d
+        from pep.mitarbeiter m, generate_series($3::date, '2026-12-26'::date, interval '1 day') d
        where m.filiale_id = $1 and extract(isodow from d) <= 6 and (extract(isodow from d)::int - 1) <> m.id % 6),
     bloecke as (
       select m, datum, v::time as von, b::time as bis, k
         from tage, (values ('07:00', '11:00', 'KA'), ('11:00', '11:30', 'PA'), ('11:30', '15:30', 'OG')) x (v, b, k))
     insert into pep.plan_bloecke (filiale_id, mitarbeiter_id, datum, von, bis, bereich_id, angelegt_von)
     select $1, b.m, b.datum, b.von, b.bis, r.id, $2 from bloecke b join pep.bereiche r on r.filiale_id = $1 and r.kuerzel = b.k`,
-  [fil, leitung]);
+  [fil, leitung, start]);
   await db.query(`insert into pep.ist_bloecke (filiale_id, mitarbeiter_id, datum, von, bis, bereich_id, angelegt_von)
     select filiale_id, mitarbeiter_id, datum, von, bis, bereich_id, angelegt_von from pep.plan_bloecke where filiale_id = $1`, [fil]);
   await db.query(`insert into pep.ist_tage (filiale_id, mitarbeiter_id, datum, bestaetigt_von)
-    select $1, m.id, d::date, $2 from pep.mitarbeiter m, generate_series('2025-12-29'::date, '2026-12-26'::date, interval '1 day') d
-     where m.filiale_id = $1 and extract(isodow from d) <= 6`, [fil, leitung]);
+    select $1, m.id, d::date, $2 from pep.mitarbeiter m, generate_series($3::date, '2026-12-26'::date, interval '1 day') d
+     where m.filiale_id = $1 and extract(isodow from d) <= 6`, [fil, leitung, start]);
   await db.query(`insert into pep.abwesenheiten (filiale_id, mitarbeiter_id, code_id, datum, stunden, quelle, angelegt_von)
-    select $1, m.id, c.id, '2026-02-02'::date + (n * 7 + (m.id % 5))::int, 6.25, 'manuell', $2
-      from pep.mitarbeiter m, generate_series(0, 39) n, pep.abwesenheitscodes c
-     where m.filiale_id = $1 and c.filiale_id = $1 and c.code = case when n < 30 then 'U' else 'KM' end`, [fil, leitung]);
+    select $1, m.id, c.id, '2026-02-02'::date - 364 * j + (n * 7 + (m.id % 5))::int, 6.25, 'manuell', $2
+      from pep.mitarbeiter m, generate_series(0, $3::int - 1) j, generate_series(0, 39) n, pep.abwesenheitscodes c
+     where m.filiale_id = $1 and c.filiale_id = $1 and c.code = case when n < 30 then 'U' else 'KM' end`, [fil, leitung, jahre]);
   await db.query(`insert into pep.wochen_abschluesse (filiale_id, montag, abgeschlossen_von)
-    select $1, d::date, $2 from generate_series('2025-12-29'::date, '2026-12-21'::date, interval '7 days') d`, [fil, leitung]);
+    select $1, d::date, $2 from generate_series($3::date, '2026-12-21'::date, interval '7 days') d`, [fil, leitung, start]);
   await db.query(`insert into pep.zeitkonto_buchungen (filiale_id, mitarbeiter_id, datum, art, stunden, saldo_nach, grund, angelegt_von)
     select $1, m.id, a.montag, 'woche', 0.25, 0.25 * row_number() over (partition by m.id order by a.montag), null, $2
       from pep.mitarbeiter m join pep.wochen_abschluesse a on a.filiale_id = m.filiale_id
      where m.filiale_id = $1 order by m.id, a.montag`, [fil, leitung]);
-  await db.query(`insert into pep.protokoll (filiale_id, user_id, aktion, tabelle, schluessel, vorher, nachher)
-    select $1, $2, 'setzen', 'plan_bloecke', t.mitarbeiter_id || ':' || t.datum,
+  await db.query(`insert into pep.protokoll (filiale_id, zeit, user_id, aktion, tabelle, schluessel, vorher, nachher)
+    select $1, ${zeit('t.datum')}, $2, 'setzen', 'plan_bloecke', t.mitarbeiter_id || ':' || t.datum,
            case when n > 1 then t.zeile end, t.zeile
       from (select mitarbeiter_id, datum, jsonb_agg(pep.block_json(von, bis, bereich_id) order by von) as zeile
               from pep.plan_bloecke where filiale_id = $1 group by mitarbeiter_id, datum) t, generate_series(1, 3) n`,
   [fil, leitung]);
-  await db.query(`insert into pep.protokoll (filiale_id, user_id, aktion, tabelle, schluessel, vorher, nachher)
-    select $1, $2, 'setzen', 'ist_bloecke', t.mitarbeiter_id || ':' || t.datum, '[]', t.zeile
+  await db.query(`insert into pep.protokoll (filiale_id, zeit, user_id, aktion, tabelle, schluessel, vorher, nachher)
+    select $1, ${zeit('t.datum')}, $2, 'setzen', 'ist_bloecke', t.mitarbeiter_id || ':' || t.datum, '[]', t.zeile
       from (select mitarbeiter_id, datum, jsonb_agg(pep.block_json(von, bis, bereich_id) order by von) as zeile
               from pep.ist_bloecke where filiale_id = $1 group by mitarbeiter_id, datum) t`, [fil, leitung]);
-  await db.query(`insert into pep.protokoll (filiale_id, user_id, aktion, tabelle, schluessel, vorher, nachher)
-    select $1, $2, 'anlegen', 'abwesenheiten', a.id::text, null, to_jsonb(a) from pep.abwesenheiten a where a.filiale_id = $1`,
-  [fil, leitung]);
+  await db.query(`insert into pep.protokoll (filiale_id, zeit, user_id, aktion, tabelle, schluessel, vorher, nachher)
+    select $1, ${zeit('a.datum')}, $2, 'anlegen', 'abwesenheiten', a.id::text, null, to_jsonb(a)
+      from pep.abwesenheiten a where a.filiale_id = $1`, [fil, leitung]);
+  const protokollGesamt = (await db.query('select count(*)::int as n from pep.protokoll where filiale_id = $1', [fil])).rows[0].n;
 
   let t0 = performance.now();
   const text = (await als(db, 'authenticated', leitung, 'select public.pep_sicherung()::text as r'))[0].r;
@@ -543,11 +627,20 @@ test('Größe und Laufzeit: ein Jahr mit 18 Mitarbeitern (Plan, IST, Abwesenheit
   const mb = (n) => (n / 1048576).toFixed(2);
   const anteile = Object.entries(datei.tabellen).map(([k, z]) => [k, Buffer.byteLength(JSON.stringify(z), 'utf8')])
     .sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${k} ${mb(n)} MB`).join(', ');
-  const meldung = `Jahr, 18 Mitarbeiter: ${zeilen} Zeilen, ${(bytes / 1048576).toFixed(2)} MB `
-    + `(${Object.entries(datei.anzahl).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(', ')}); `
-    + `pep_sicherung ${Math.round(msSichern)} ms, pep_sicherung_pruefen ${Math.round(msPruefen)} ms, `
-    + `pep_sicherung_einspielen ${Math.round(msEinspielen)} ms (PGlite); größte Teile: ${anteile}`;
-  t.diagnostic(meldung);
-  console.log(meldung);
+  const meldung = `${jahre} ${jahre === 1 ? 'Jahr' : 'Jahre'}, 18 Mitarbeiter: ${zeilen} Zeilen, ${mb(bytes)} MB `
+    + `(${Object.entries(datei.anzahl).filter(([, n]) => n > 0).map(([k, n]) => `${k} ${n}`).join(', ')}; `
+    + `Protokoll gesamt ${protokollGesamt}); pep_sicherung ${Math.round(msSichern)} ms, `
+    + `pep_sicherung_pruefen ${Math.round(msPruefen)} ms, pep_sicherung_einspielen ${Math.round(msEinspielen)} ms (PGlite); `
+    + `größte Teile: ${anteile}`;
   for (const [k, n] of Object.entries(datei.anzahl)) if (n > 0) assert.equal(r.eingespielt[k], n, k);
+  return { meldung, protokoll: datei.anzahl.protokoll, protokollGesamt };
+}
+
+test('Größe und Laufzeit: ein und zwei Jahre mit 18 Mitarbeitern (Protokoll nur 12 Monate)', { timeout: 600000 }, async (t) => {
+  const eins = await groesseMessen(1);
+  const zwei = await groesseMessen(2);
+  for (const m of [eins.meldung, zwei.meldung]) { t.diagnostic(m); console.log(m); }
+  // Im zweiten Jahr bleibt das Protokoll der Datei etwa gleich groß (nur die letzten 12 Monate)
+  assert.ok(zwei.protokollGesamt > 1.9 * eins.protokollGesamt);
+  assert.ok(Math.abs(zwei.protokoll - eins.protokoll) < 0.05 * eins.protokoll, `${zwei.protokoll} / ${eins.protokoll}`);
 });

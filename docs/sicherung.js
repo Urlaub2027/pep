@@ -16,13 +16,14 @@ const TABELLEN = [
   ['mitarbeiter', 'Mitarbeiter'], ['vertraege', 'Verträge'], ['abwesenheiten', 'Abwesenheitstage'],
   ['plan_bloecke', 'Plan-Blöcke'], ['ist_bloecke', 'IST-Blöcke'], ['ist_tage', 'bestätigte IST-Zeilen'],
   ['wochen_abschluesse', 'abgeschlossene Wochen'], ['zeitkonto_buchungen', 'Zeitkonto-Buchungen'],
-  ['protokoll', 'Protokolleinträge'],
+  ['protokoll', 'Protokolleinträge (letzte 12 Monate)'],
 ];
 const AUSGELASSEN = {
   benutzer: 'Benutzer (im Urlaubstool unbekannt oder schon einer anderen Filiale zugeordnet)',
   benutzerverweise: 'Verweise auf Benutzer, die es hier nicht gibt (bleiben leer)',
-  urlaub_umfragen: 'Urlaubstool-Umfragen (fehlen hier, gehören einem anderen Organisator oder einer anderen Filiale)',
-  urlaub_zuordnung: 'Zuordnungen von Umfrage-Teilnehmern (deren Umfrage ist hier nicht eingeschaltet)',
+  urlaub_umfragen: 'Urlaubstool-Umfragen (hier nicht mit gleichem Titel und Jahr gefunden, nicht deine oder schon einer anderen Filiale)',
+  urlaub_zuordnung: 'Zuordnungen von Umfrage-Teilnehmern (Teilnehmer nicht gefunden oder Umfrage nicht eingeschaltet)',
+  wunsch_nicht_zugeordnet: 'Urlaubsfreigaben ohne passende Umfrage hier (Freigabe und Urlaubstage sind da, der Wunsch erscheint aber nicht als erledigt)',
 };
 
 const tageZwischen = (von, bis) => Math.round((Date.parse(`${bis}T00:00:00Z`) - Date.parse(`${von}T00:00:00Z`)) / 864e5);
@@ -140,7 +141,9 @@ export function zeichneSicherung(box, { aufruf, nachEinspielen, abschnitt }) {
       bestaetigung), element('button', { type: 'submit' }, 'Einspielen'));
     vorschau.replaceChildren(kopf, anzahlListe(p.anzahl), ...unbekanntHinweis(p.unbekannt),
       element('p', { class: 'hinweis-gelb', 'data-ziel-leer': 'ja' },
-        'Diese Filiale ist leer. Name, Nummer, Bundesland, Bereiche, Codes, Zeiten und Einstellungen werden durch die der Datei ersetzt.'),
+        'Diese Filiale ist leer. Durch die Daten der Datei ersetzt werden: Name, Nummer und Bundesland der Filiale, Bereiche, ',
+        'Codes, Öffnungs- und Rahmenzeiten, abweichende Tage, Einstellungen, Schulferien, Wochenwerte der Vorausplanung, ',
+        'Vorlagen und die eingeschalteten Urlaubstool-Umfragen samt Zuordnungen.'),
       formular);
   }
 

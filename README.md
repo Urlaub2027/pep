@@ -94,20 +94,28 @@ Schritte und Grenzen: [ANLEITUNG.md](ANLEITUNG.md), Abschnitt „Sicherung“.
 
 - **Format** (`version: 1`, im Kopf des Abschnitts „Sicherung“ in `schema.sql`):
   `filiale`, `benutzer` (Benutzername und Rolle), `konten` (user_id → Benutzername),
-  `tabellen` (jede Tabelle mit allen Spalten, nach Primärschlüssel), `anzahl` und
-  `pruefsumme` = md5 über den Text von `tabellen`. Zahlen stehen in der Form, die
-  JavaScript schreibt, damit die Prüfsumme `JSON.parse`/`JSON.stringify` im Browser übersteht.
+  `tabellen` (jede Tabelle mit allen Spalten, nach Primärschlüssel; `protokoll` nur ab
+  `protokoll_ab` = jetzt − 12 Monate), `anzahl`, `urlaub` (Titel, Jahr und Organisator
+  jeder Umfrage, Name jedes Teilnehmers) und `pruefsumme` = md5 über den Text von
+  `tabellen`. Zahlen stehen in der Form, die JavaScript schreibt, damit die Prüfsumme
+  `JSON.parse`/`JSON.stringify` im Browser übersteht. Geprüft wird auch die Kette des
+  Journals (`saldo_nach` = vorheriges + `stunden`).
 - **Vollständigkeit:** `pep.sicherung_tabellen()` (gesichert, in Einspiel-Reihenfolge)
   und `pep.sicherung_ausnahmen()` (mit Grund: `sicherungen`, `zeitkonto_vormerkungen`,
   `filialen` und `benutzer` als eigene Abschnitte). `tests/sicherung.test.mjs` schlägt
   fehl, wenn eine Tabelle des Schemas `pep` in keiner der beiden Listen steht, wenn eine
-  `…_id`-Spalte kein Fremdschlüssel ist oder eine jsonb-Spalte nicht eingeordnet ist.
+  `…_id`-Spalte kein Fremdschlüssel ist, eine jsonb-Spalte nicht eingeordnet ist oder ein
+  Fremdschlüssel-Ziel in der Liste nach der verweisenden Tabelle steht.
   **Neue Tabelle in einer späteren Stufe → dort eintragen.**
 - **Einspielen:** neue Ids; Verweise zwischen pep-Tabellen über die Fremdschlüssel im
   Katalog umgeschlüsselt, dazu die Ids in `vorlagen.daten`; Benutzer über den
   Benutzernamen; die Nachbuch-Trigger laufen nicht (`pep.einspielen`), das Journal kommt
-  mit seinen Werten. Unbekannte Tabellen und Spalten (Datei einer späteren Stufe) meldet
-  die Vorschau, eingespielt werden sie nicht.
+  mit seinen Werten. Urlaubstool-Verweise (Schaltung, Zuordnung, Ids im Wunsch einer
+  Freigabe) über Organisator/Titel/Jahr bzw. Namen, weil das Urlaubstool beim eigenen
+  Einspielen neue Ids vergibt; erlaubt sind nur Umfragen nach `pep.umfrage_erlaubt`
+  (dieselbe Regel wie beim Einschalten). Eine Datei einer neueren Stufe (unbekannte Tabelle
+  mit Zeilen oder Spalte mit Werten) lehnt schon die Vorschau ab (`SICHERUNG_NEUER`);
+  einer älteren fehlende Einstellungen ergänzt `pep.grundausstattung`.
 
 ## Verhältnis zum Urlaubstool
 
@@ -123,7 +131,7 @@ npm install
 npm test
 ```
 
-Stand Stufe 2: **359 Tests, alle grün** (rund 35 s). Die zwei Startbestand-Tests
+Stand Stufe 2: **360 Tests, alle grün** (rund 35 s). Die zwei Startbestand-Tests
 lesen `privat/stammdaten-aschaffenburg.sql` und werden ohne diese Datei
 übersprungen; alle anderen Tests laufen in jedem Checkout.
 

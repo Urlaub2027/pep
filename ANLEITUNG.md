@@ -598,7 +598,9 @@ pausiert. Dagegen ruft GitHub alle zwei Tage von selbst eine harmlose Funktion
 
 Supabase sichert im kostenlosen Tarif nichts. Darum hat PEP eine eigene
 Sicherungsdatei mit allen Daten der Filiale: Mitarbeiter, Verträge, Abwesenheiten,
-Plan, IST, Zeitkonto-Journal, Abschlüsse, Einstellungen und Protokoll.
+Plan, IST, Zeitkonto-Journal, Abschlüsse und Einstellungen. Das **Protokoll** (wer hat
+wann was geändert) ist nur für die **letzten 12 Monate** dabei; ältere Einträge fehlen
+nach einem Einspielen.
 
 **Herunterladen (jede Woche, nur Leitung).** Einstellungen → Sicherung →
 „Sicherung herunterladen“. Die Datei heißt `PEP-Sicherung-2558-<Datum>.json`.
@@ -607,8 +609,8 @@ Plan, IST, Zeitkonto-Journal, Abschlüsse, Einstellungen und Protokoll.
   nicht per E-Mail verschicken** und nicht in ein öffentliches Verzeichnis legen.
 - Ein paar ältere Dateien aufheben, damit auch eine Sicherung von vor einem Fehler da ist.
 - Die Startseite erinnert daran: Ab 8 Tagen ohne Sicherung ist die Zeile gelb.
-- Ein Jahr mit 18 Mitarbeitern ergibt eine Datei von rund 16 MB (gemessen mit
-  erfundenen Daten, siehe Bekannte Grenzen).
+- Ein Jahr mit 18 Mitarbeitern ergibt eine Datei von rund 16 MB, zwei Jahre rund 24 MB
+  (gemessen mit erfundenen Daten, siehe Bekannte Grenzen).
 - **Das Urlaubstool hat seine eigene Sicherung je Umfrage** (dort herunterladen).
   Die PEP-Sicherung enthält nur, welche Umfragen die Filiale liest
   und wie die Teilnehmer zugeordnet sind, nicht die Umfragen selbst.
@@ -630,10 +632,17 @@ lässt sich so nicht überschreiben.
      einspielt, bleibt Leitung.
    - Steht in einem Eintrag ein Benutzer, den es hier nicht gibt (z. B. „angelegt von“),
      bleibt das Feld leer.
-   - **Urlaubstool-Umfragen** kommen nur mit, wenn es sie hier gibt, sie der Leitung
-     gehören, die einspielt (wie beim Einschalten), und keine andere Filiale sie nutzt;
-     **Teilnehmer-Zuordnungen** nur zu eingeschalteten Umfragen. Sonst danach unter
-     Einstellungen → Urlaubstool die Umfrage einschalten und die Teilnehmer zuordnen.
+   - **Urlaubstool-Umfragen** sucht PEP über Organisator, Titel und Jahr, die Teilnehmer
+     über ihren Namen. Die Nummern (Ids) im Urlaubstool sind nach dessen eigenem
+     Einspielen andere, darum nicht über die Nummer. Eingeschaltet wird eine Umfrage nur,
+     wenn sie der Leitung gehört, die einspielt (wie beim Einschalten von Hand), und keine
+     andere Filiale sie nutzt. Was nicht eindeutig gefunden wird, zählt als ausgelassen:
+     danach unter Einstellungen → Urlaubstool die Umfrage einschalten und die Teilnehmer
+     zuordnen. Genehmigte Urlaubstage bleiben in jedem Fall erhalten; nur wenn die Umfrage
+     fehlt, erscheint der Wunsch dazu wieder als offen.
+   - Stammt die Datei aus einer **neueren PEP-Version** (sie enthält Daten, die diese
+     Datenbank noch nicht kennt), lehnt PEP sie schon in der Vorschau ab. Dann zuerst
+     `supabase/schema.sql` in der neuesten Fassung einspielen.
 
 Das Zeitkonto kommt genau so zurück, wie es war: alle Buchungen mit Saldo, Grund und
 Zeitpunkt, alle abgeschlossenen Wochen und der Start der IST-Erfassung. Beim
@@ -642,8 +651,10 @@ Einspielen bucht PEP keine automatischen Korrekturen.
 **Nach einem Datenverlust in ein neues Supabase-Projekt:**
 
 1. Neues Supabase-Projekt anlegen. Zuerst das **Urlaubstool** dort einrichten (wie in
-   seiner Anleitung), die Organisatoren mit **denselben Benutzernamen** wie vorher
-   anlegen und die Umfragen aus den Sicherungen des Urlaubstools einspielen.
+   seiner Anleitung) und die Organisatoren mit **denselben Benutzernamen** wie vorher
+   anlegen. Die Umfragen aus den Sicherungen des Urlaubstools spielt **die Leitung ein,
+   die danach auch die PEP-Sicherung einspielt**, und zwar **mit unverändertem Titel**:
+   PEP findet sie über Organisator, Titel und Jahr wieder.
 2. Im SQL-Editor den Inhalt von `supabase/schema.sql` ausführen.
 3. Im SQL-Editor die erste Leitung festlegen:
    `select pep.start_leitung('<benutzername>');`
@@ -687,9 +698,12 @@ Einspielen bucht PEP keine automatischen Korrekturen.
   Zum Ausprobieren also nie in eine zweite Filiale des echten Projekts einspielen.
 - Im Protokoll stehen nach dem Einspielen die alten Einträge mit den Nummern (Ids) der
   alten Datenbank; die übrigen Daten bekommen neue Nummern.
-- Größe: Ein Jahr mit 18 Mitarbeitern ergibt mit erfundenen Daten rund 16 MB, knapp die
-  Hälfte davon Protokoll. Die Datei enthält immer alle Jahre, wächst also mit. Ob Supabase eine so große Datei beim Einspielen in einem
-  Stück annimmt und ob das Zeitlimit einer Anfrage reicht, ist **nicht geprüft**
-  (in der Testdatenbank dauerte das Einspielen rund 2 s). Siehe Handprüf-Checkliste.
-- Die Prüfsumme erkennt eine beschädigte oder von Hand geänderte Datei. Gegen
-  absichtliche Fälschung schützt sie nicht; deshalb die Datei nicht aus der Hand geben.
+- Das Protokoll ist nur für die letzten 12 Monate in der Datei.
+- Größe (erfundene Daten, 18 Mitarbeiter): ein Jahr rund 16 MB, zwei Jahre rund 24 MB.
+  Plan, IST und Zeitkonto enthält die Datei immer für alle Jahre, sie wächst also um
+  rund 8 MB je Jahr. Ob Supabase eine so große Datei beim Einspielen in einem Stück
+  annimmt und ob das Zeitlimit einer Anfrage reicht, ist **nicht geprüft** (in der
+  Testdatenbank dauerte das Einspielen 2,5 s bzw. 4 s). Siehe Handprüf-Checkliste.
+- Die Datei ist gegen Beschädigung geschützt (Prüfsumme, Prüfung der Zeitkonto-Salden),
+  nicht gegen absichtliche Fälschung. Deshalb bleibt sie als Datei auf dem PC oder
+  USB-Stick und wird nicht weitergegeben.

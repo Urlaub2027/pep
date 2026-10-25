@@ -2220,6 +2220,19 @@ begin
 end;
 $$;
 
+-- Darf die Filiale diese Umfrage einschalten? Heute: nur Umfragen des angemeldeten Benutzers (Organisator) mit
+-- Urlaubswochen-Frage. Einzige Stelle der Regel (Einschalten und Einspielen einer Sicherung); p_filiale_id für eine
+-- spätere Erweiterung (Umfragen aller PEP-Benutzer der Filiale).
+create or replace function pep.umfrage_erlaubt(p_filiale_id bigint, p_umfrage_id bigint)
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select exists (select 1 from urlaub.umfragen u
+                   join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
+                  where u.id = p_umfrage_id and u.organisator_id = auth.uid())
+$$;
+
 create or replace function public.pep_urlaub_umfrage_schalten(p_umfrage_id bigint, p_aktiv boolean)
 returns void
 language plpgsql
@@ -2234,13 +2247,12 @@ begin
   end if;
   -- Einschalten nur für die eigenen Umfragen; Ausschalten darf die Leitung der Filiale,
   -- solange die Umfrage für die Filiale eingeschaltet ist (auch wenn der Eigentümer weg ist).
-  if not exists (select 1 from urlaub.umfragen u
-                   join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
-                  where u.id = p_umfrage_id
-                    and case when p_aktiv then u.organisator_id = v_b.user_id
-                             else exists (select 1 from pep.urlaub_umfragen s
-                                           where s.umfrage_id = u.id and s.filiale_id = v_b.filiale_id)
-                         end) then
+  if not (case when p_aktiv then pep.umfrage_erlaubt(v_b.filiale_id, p_umfrage_id)
+               else exists (select 1 from urlaub.umfragen u
+                              join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
+                              join pep.urlaub_umfragen s on s.umfrage_id = u.id and s.filiale_id = v_b.filiale_id
+                             where u.id = p_umfrage_id)
+          end) then
     raise exception 'UMFRAGE_NICHT_GEFUNDEN';
   end if;
   if p_aktiv then
@@ -6356,19 +6368,30 @@ $$;
 --                                                  Tabellenzeile mit ALLEN Spalten (auch Spalten späterer Stufen),
 --                                                  sortiert nach Primärschlüssel,
 --     anzahl:     {"<tabelle>": n},
+--     protokoll_ab: Zeitpunkt; protokoll enthält nur Einträge ab hier (die letzten 12 Monate),
+--     urlaub:     {umfragen: {"<alte umfrage_id>": {titel, jahr, organisator}},   organisator = Benutzername,
+--                  teilnehmer: {"<alte urlaub_mitarbeiter_id>": {umfrage_id, name}}}  jahr aus der Urlaubswochen-Frage,
 --     pruefsumme: md5 über den Text von tabellen }
 -- Prüfsumme: jsonb ordnet die Schlüssel fest und gibt Text immer gleich aus, die Zeilen stehen in fester Reihenfolge.
 -- Zahlen stehen in der kürzesten Form (über float8, so wie JavaScript sie schreibt): Der Browser liest die Antwort mit
 -- JSON.parse und speichert sie mit JSON.stringify, aus 37.50 würde sonst 37.5 und die Prüfsumme stimmte nicht mehr.
 -- pep_sicherung_pruefen rechnet sie darum über p_daten -> 'tabellen' als jsonb nach, nicht über den Dateitext. Sie
 -- erkennt beschädigte oder von Hand geänderte Dateien; gegen absichtliche Fälschung schützt md5 nicht.
+-- Geprüft wird außerdem die Kette des Journals je Mitarbeiter (saldo_nach = vorheriges saldo_nach + stunden).
 -- Einspielen: neue Ids, alle Verweise zwischen pep-Tabellen umgeschlüsselt (Fremdschlüssel aus dem Katalog, dazu die
--- Ids in vorlagen.daten); user_id über den Benutzernamen im Urlaubstool, sonst leer und gezählt; Verweise auf Umfragen und
--- Teilnehmer des Urlaubstools nur, wenn es sie hier gibt und keine andere Filiale sie belegt, sonst ausgelassen und
--- gezählt (eine Umfrage außerdem nur, wenn sie der Leitung gehört, die einspielt – wie beim Einschalten).
--- Unbekannte Tabellen und Spalten (Datei einer späteren Stufe) werden gemeldet und nicht eingespielt; fehlt
--- eine Spalte in der Datei (ältere Stufe), gilt ihr Standardwert. Das Protokoll kommt mit: vorher, nachher und
--- schluessel bleiben ein Schnappschuss mit den Ids der Quelle.
+-- Ids in vorlagen.daten); user_id über den Benutzernamen im Urlaubstool, sonst leer und gezählt.
+-- Urlaubstool: Dessen eigene Sicherung (urlaub.umfrage_aus_json) vergibt beim Einspielen NEUE Ids. Umfragen werden
+-- darum über Organisator (Benutzername), Titel und Jahr gefunden, Teilnehmer über die Umfrage und den Namen
+-- (pep.name_normal); nur eindeutige Treffer und nur Umfragen, die die Filiale einschalten darf (pep.umfrage_erlaubt).
+-- Damit werden urlaub_umfragen.umfrage_id, urlaub_zuordnung.urlaub_mitarbeiter_id und die Ids in
+-- urlaub_freigaben.wunsch umgeschlüsselt (sonst erschienen genehmigte Wünsche wieder als offen). Ohne Treffer:
+-- Schaltung und Zuordnung ausgelassen und gezählt; die Freigabe bleibt (sie trägt die U-Tage und die Entscheidung),
+-- ihr Wunsch behält die alten Ids und zählt als wunsch_nicht_zugeordnet.
+-- Version: Tabellen mit Zeilen oder Spalten mit Werten, die diese Fassung nicht kennt (Datei einer neueren Stufe),
+-- lehnen Vorschau und Einspielen ab (SICHERUNG_NEUER); unbekannte leere Tabellen und nur leere Spalten werden gemeldet
+-- und übergangen. Fehlt eine Spalte in der Datei (ältere Stufe), gilt ihr Standardwert; fehlen Einstellungen oder
+-- Rahmen-Tage, ergänzt pep.grundausstattung sie. Das Protokoll kommt mit: vorher, nachher und schluessel bleiben ein
+-- Schnappschuss mit den Ids der Quelle.
 
 create table if not exists pep.sicherungen (
   id           bigint generated always as identity primary key,
@@ -6531,6 +6554,40 @@ begin
               where jsonb_typeof(z) <> 'object') then
     raise exception 'SICHERUNG_UNGUELTIG';
   end if;
+  -- Journal: je Mitarbeiter in id-Reihenfolge saldo_nach = vorheriges saldo_nach (am Anfang 0) + stunden (± 0,01).
+  begin
+    if exists (select 1 from (
+                 select (z ->> 'stunden')::numeric as stunden, (z ->> 'saldo_nach')::numeric as saldo_nach,
+                        lag((z ->> 'saldo_nach')::numeric, 1, 0::numeric)
+                          over (partition by z ->> 'mitarbeiter_id' order by (z ->> 'id')::bigint) as vorher
+                   from jsonb_array_elements(coalesce(p_daten -> 'tabellen' -> 'zeitkonto_buchungen', '[]'::jsonb)) z) k
+                where k.stunden is null or k.saldo_nach is null or abs(k.vorher + k.stunden - k.saldo_nach) > 0.01) then
+      raise exception 'SICHERUNG_UNGUELTIG';
+    end if;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    raise exception 'SICHERUNG_UNGUELTIG';
+  end;
+end;
+$$;
+
+-- Neuere Stufe? Tabellen mit Zeilen oder Spalten mit Werten, die diese Fassung nicht kennt → SICHERUNG_NEUER (sie
+-- gingen beim Einspielen verloren). Unbekannte leere Tabellen und nur leere Spalten meldet pep.sicherung_unbekannt.
+create or replace function pep.sicherung_nicht_neuer(p_daten jsonb)
+returns void
+language plpgsql stable
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from jsonb_each(p_daten -> 'tabellen') t
+              where t.key <> all (pep.sicherung_tabellen()) and jsonb_array_length(t.value) > 0)
+     or exists (select 1 from jsonb_each(p_daten -> 'tabellen') t
+                 cross join lateral (select distinct e.key as schluessel
+                                       from jsonb_array_elements(t.value) z cross join lateral jsonb_each(z) e
+                                      where jsonb_typeof(e.value) <> 'null') k
+                where t.key = any (pep.sicherung_tabellen())
+                  and not exists (select 1 from pep.sicherung_spalten(t.key) s where s.spalte = k.schluessel)) then
+    raise exception 'SICHERUNG_NEUER';
+  end if;
 end;
 $$;
 
@@ -6577,6 +6634,61 @@ as $$
     from jsonb_array_elements(p_daten) with ordinality e (v, i)
 $$;
 
+-- Namen vergleichbar machen (wie die Vorschläge in pep_urlaub_zuordnung): Leerraum zusammenfassen, Kleinschreibung.
+create or replace function pep.name_normal(p_text text)
+returns text
+language sql stable
+set search_path = ''
+as $$
+  select lower(regexp_replace(urlaub.trim_alles(p_text), '\s+', ' ', 'g'))
+$$;
+
+-- Abschnitt urlaub der Datei: jede Umfrage und jeder Teilnehmer, auf den tabellen verweist (Schaltung, Zuordnung,
+-- Wünsche der Freigaben), mit den Merkmalen, über die das Einspielen sie in einem anderen Projekt wiederfindet.
+create or replace function pep.sicherung_urlaub(p_tabellen jsonb)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  with tn as (
+    select (z ->> 'urlaub_mitarbeiter_id')::bigint as id from jsonb_array_elements(p_tabellen -> 'urlaub_zuordnung') z
+    union
+    select (z #>> '{wunsch,urlaub_mitarbeiter_id}')::bigint from jsonb_array_elements(p_tabellen -> 'urlaub_freigaben') z
+  ), teilnehmer as (
+    select t.id, t.umfrage_id, t.name from urlaub.mitarbeiter t where t.id in (select tn.id from tn)
+  ), umf as (
+    select (z ->> 'umfrage_id')::bigint as id from jsonb_array_elements(p_tabellen -> 'urlaub_umfragen') z
+    union
+    select (z #>> '{wunsch,umfrage_id}')::bigint from jsonb_array_elements(p_tabellen -> 'urlaub_freigaben') z
+    union
+    select t.umfrage_id from teilnehmer t
+  )
+  select jsonb_build_object(
+    'umfragen', coalesce((select jsonb_object_agg(u.id, jsonb_build_object('titel', u.titel, 'jahr', f.jahr,
+                                                                           'organisator', o.benutzername))
+                            from urlaub.umfragen u
+                            left join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
+                            left join urlaub.organisatoren o on o.user_id = u.organisator_id
+                           where u.id in (select umf.id from umf)), '{}'::jsonb),
+    'teilnehmer', coalesce((select jsonb_object_agg(t.id, jsonb_build_object('umfrage_id', t.umfrage_id, 'name', t.name))
+                              from teilnehmer t), '{}'::jsonb))
+$$;
+
+-- Wunsch einer Freigabe mit den Ids dieses Projekts (p_ids -> 'urlaub.umfragen' / 'urlaub.mitarbeiter': alt → neu);
+-- null, wenn Umfrage oder Teilnehmer hier nicht eindeutig gefunden wurden.
+create or replace function pep.sicherung_wunsch(p_wunsch jsonb, p_ids jsonb)
+returns jsonb
+language sql immutable
+set search_path = ''
+as $$
+  select case when p_ids -> 'urlaub.umfragen' ? (p_wunsch ->> 'umfrage_id')
+               and p_ids -> 'urlaub.mitarbeiter' ? (p_wunsch ->> 'urlaub_mitarbeiter_id')
+    then p_wunsch || jsonb_build_object(
+           'umfrage_id', (p_ids -> 'urlaub.umfragen' ->> (p_wunsch ->> 'umfrage_id'))::bigint,
+           'urlaub_mitarbeiter_id', (p_ids -> 'urlaub.mitarbeiter' ->> (p_wunsch ->> 'urlaub_mitarbeiter_id'))::bigint)
+  end
+$$;
+
 -- Nur Leitung: Sicherungsdatei der eigenen Filiale (Format oben). Schreibt einen Eintrag in pep.sicherungen und ins
 -- Protokoll (Datum der letzten Sicherung für die Startseite).
 create or replace function public.pep_sicherung()
@@ -6596,13 +6708,17 @@ declare
   v_uuids    uuid[];
   v_daten    jsonb;
   v_id       bigint;
+  -- Protokoll nur der letzten 12 Monate (Entscheidung dtn/Controller: die Datei wächst sonst mit jedem Jahr um das
+  -- ganze Protokoll; gemessen knapp die Hälfte der Größe).
+  v_ab       timestamptz := now() - interval '12 months';
 begin
   select * into v_f from pep.filialen where id = v_b.filiale_id;
   select coalesce(array_agg(b.user_id), '{}') into v_uuids from pep.benutzer b where b.filiale_id = v_f.id;
   foreach v_t in array pep.sicherung_tabellen() loop
-    execute format('select coalesce(jsonb_agg(%s order by %s), ''[]''::jsonb) from pep.%I x where %s',
-                   pep.sicherung_zeile(v_t), pep.sicherung_ordnung(v_t), v_t, pep.sicherung_bedingung(v_t))
-      into v_zeilen using v_f.id;
+    execute format('select coalesce(jsonb_agg(%s order by %s), ''[]''::jsonb) from pep.%I x where %s%s',
+                   pep.sicherung_zeile(v_t), pep.sicherung_ordnung(v_t), v_t, pep.sicherung_bedingung(v_t),
+                   case when v_t = 'protokoll' then ' and x.zeit >= $2' else '' end)
+      into v_zeilen using v_f.id, v_ab;
     v_tabellen := v_tabellen || jsonb_build_object(v_t, v_zeilen);
     v_anzahl := v_anzahl || jsonb_build_object(v_t, jsonb_array_length(v_zeilen));
     for v_s in select s.spalte from pep.sicherung_spalten(v_t) s where s.typ = 'uuid' loop
@@ -6623,6 +6739,8 @@ begin
                          where o.user_id = any (v_uuids)), '{}'::jsonb),
     'tabellen', v_tabellen,
     'anzahl', v_anzahl,
+    'protokoll_ab', v_ab,
+    'urlaub', pep.sicherung_urlaub(v_tabellen),
     'pruefsumme', md5(v_tabellen::text));
   insert into pep.sicherungen (filiale_id, erstellt_von, anzahl) values (v_f.id, v_b.user_id, v_anzahl)
   returning id into v_id;
@@ -6633,7 +6751,8 @@ end;
 $$;
 
 -- Nur Leitung, schreibt nichts: Vorschau vor dem Einspielen {gueltig, erstellt_am, filiale, anzahl, ziel_leer,
--- unbekannt}; SICHERUNG_UNGUELTIG bei falschem Format, falscher Version oder Prüfsumme.
+-- unbekannt}; SICHERUNG_UNGUELTIG bei falschem Format, falscher Version, Prüfsumme oder Journal-Kette,
+-- SICHERUNG_NEUER bei einer Datei einer neueren Stufe.
 create or replace function public.pep_sicherung_pruefen(p_daten jsonb)
 returns jsonb
 language plpgsql stable
@@ -6644,6 +6763,7 @@ declare
   v_b pep.benutzer := pep.leitung();
 begin
   perform pep.sicherung_gueltig(p_daten);
+  perform pep.sicherung_nicht_neuer(p_daten);
   return jsonb_build_object(
     'gueltig', true,
     'erstellt_am', p_daten -> 'erstellt_am',
@@ -6661,8 +6781,8 @@ $$;
 -- Die Nachbuch-Trigger laufen nicht (pep.einspielen): Journal, saldo_nach und Abschlüsse kommen mit ihren Werten aus
 -- der Datei, Zeitstempel ebenso. Benutzer der Datei werden der Filiale zugeordnet, wenn es den Benutzernamen im
 -- Urlaubstool gibt und er keiner anderen Filiale gehört; wer einspielt, bleibt Leitung.
--- Antwort {eingespielt: {tabelle: n, benutzer: n}, ausgelassen: {tabelle: n, benutzer: n, benutzerverweise: n},
--- unbekannt} (nur Einträge > 0); ein Protokolleintrag sicherung_eingespielt.
+-- Antwort {eingespielt: {tabelle: n, benutzer: n}, ausgelassen: {tabelle: n, benutzer: n, benutzerverweise: n,
+-- wunsch_nicht_zugeordnet: n}, unbekannt} (nur Einträge > 0); ein Protokolleintrag sicherung_eingespielt.
 create or replace function public.pep_sicherung_einspielen(p_daten jsonb, p_bestaetigung text)
 returns jsonb
 language plpgsql
@@ -6698,6 +6818,7 @@ declare
   v_ben_aus    int := 0;
 begin
   perform pep.sicherung_gueltig(p_daten);
+  perform pep.sicherung_nicht_neuer(p_daten);
   select * into v_alt from pep.filialen where id = v_f for update;
   if not pep.sicherung_ziel_leer(v_f) then
     raise exception 'FILIALE_NICHT_LEER';
@@ -6729,6 +6850,31 @@ begin
     from jsonb_each_text(coalesce(p_daten -> 'konten', '{}'::jsonb)) k
     join urlaub.organisatoren o on o.benutzername = k.value;
 
+  -- Urlaubstool: alte → neue Ids über Organisator, Titel und Jahr bzw. Umfrage und Name (nur eindeutige Treffer, nur
+  -- Umfragen, die die Filiale einschalten darf). Liegt in v_ids unter 'urlaub.umfragen' / 'urlaub.mitarbeiter'.
+  select coalesce(jsonb_object_agg(k.key, x.ids[1]), '{}'::jsonb) into v_karte
+    from jsonb_each(coalesce(p_daten #> '{urlaub,umfragen}', '{}'::jsonb)) k
+    cross join lateral (
+      select array_agg(u.id) as ids
+        from urlaub.umfragen u
+        join urlaub.organisatoren o on o.user_id = u.organisator_id
+        join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
+       where o.benutzername = k.value ->> 'organisator'
+         and pep.name_normal(u.titel) = pep.name_normal(k.value ->> 'titel')
+         and f.jahr = (k.value ->> 'jahr')::int
+         and pep.umfrage_erlaubt(v_f, u.id)) x
+   where cardinality(x.ids) = 1;
+  v_ids := v_ids || jsonb_build_object('urlaub.umfragen', v_karte);
+  select coalesce(jsonb_object_agg(k.key, x.ids[1]), '{}'::jsonb) into v_karte
+    from jsonb_each(coalesce(p_daten #> '{urlaub,teilnehmer}', '{}'::jsonb)) k
+    cross join lateral (
+      select array_agg(t.id) as ids
+        from urlaub.mitarbeiter t
+       where t.umfrage_id = (v_ids -> 'urlaub.umfragen' ->> (k.value ->> 'umfrage_id'))::bigint
+         and pep.name_normal(t.name) = pep.name_normal(k.value ->> 'name')) x
+   where cardinality(x.ids) = 1;
+  v_ids := v_ids || jsonb_build_object('urlaub.mitarbeiter', v_karte);
+
   foreach v_t in array pep.sicherung_tabellen() loop
     v_zeilen := coalesce(p_daten -> 'tabellen' -> v_t, '[]'::jsonb);
     continue when jsonb_array_length(v_zeilen) = 0;
@@ -6751,24 +6897,36 @@ begin
         if v_s.nicht_null then
           v_beding := v_beding || format('$2 -> %L ? (z.r ->> %L)', v_s.ziel_tabelle, v_s.spalte);
         end if;
+      elsif v_t = 'urlaub_umfragen' and v_s.spalte = 'umfrage_id' then
+        -- Umfrage über die Karte oben (gefunden und erlaubt, wie pep_urlaub_umfrage_schalten); belegt eine andere
+        -- Filiale sie schon, greift on conflict
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || '($2 -> ''urlaub.umfragen'' ->> (z.r ->> ''umfrage_id''))::bigint'::text;
+        v_beding := v_beding || '$2 -> ''urlaub.umfragen'' ? (z.r ->> ''umfrage_id'')'::text;
+        v_konflikt := true;
+      elsif v_t = 'urlaub_zuordnung' and v_s.spalte = 'urlaub_mitarbeiter_id' then
+        -- Teilnehmer über die Karte; zuordnen nur zu eingeschalteten Umfragen (wie pep_urlaub_zuordnung_setzen)
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || '($2 -> ''urlaub.mitarbeiter'' ->> (z.r ->> ''urlaub_mitarbeiter_id''))::bigint'::text;
+        v_beding := v_beding || ('exists (select 1 from urlaub.mitarbeiter t join pep.urlaub_umfragen s on s.umfrage_id = t.umfrage_id'
+          || ' where t.id = ($2 -> ''urlaub.mitarbeiter'' ->> (z.r ->> ''urlaub_mitarbeiter_id''))::bigint and s.filiale_id = $4)');
+        v_konflikt := true;
       elsif v_s.ziel_schema is not null then
-        -- Verweis ins Urlaubstool: nur, wenn es den Datensatz hier gibt und keine andere Filiale ihn belegt (on
-        -- conflict). Umfragen und Teilnehmer mit denselben Regeln wie pep_urlaub_umfrage_schalten und
-        -- pep_urlaub_zuordnung_setzen: einschalten nur eigene Umfragen (Organisator = wer einspielt), zuordnen nur
-        -- Teilnehmer eingeschalteter Umfragen. Sonst könnte eine selbst gebaute Datei fremde Umfragen lesbar machen.
+        -- Sonstiger Verweis ins Urlaubstool (spätere Stufe): nur, wenn es den Datensatz hier gibt
         v_spalten := v_spalten || v_s.spalte;
         v_werte := v_werte || format('p.%I', v_s.spalte);
-        v_beding := v_beding || case
-          when v_t = 'urlaub_umfragen' and v_s.spalte = 'umfrage_id' then
-            'exists (select 1 from urlaub.umfragen u join urlaub.fragen f on f.umfrage_id = u.id and f.typ = ''urlaubswochen'''
-            || ' where u.id = p.umfrage_id and u.organisator_id = $5)'
-          when v_t = 'urlaub_zuordnung' and v_s.spalte = 'urlaub_mitarbeiter_id' then
-            'exists (select 1 from urlaub.mitarbeiter t join pep.urlaub_umfragen s on s.umfrage_id = t.umfrage_id'
-            || ' where t.id = p.urlaub_mitarbeiter_id and s.filiale_id = $4)'
-          else format('(p.%1$I is null or exists (select 1 from %2$I.%3$I u where u.%4$I = p.%1$I))',
-                      v_s.spalte, v_s.ziel_schema, v_s.ziel_tabelle, v_s.ziel_spalte)
-        end;
+        v_beding := v_beding || format('(p.%1$I is null or exists (select 1 from %2$I.%3$I u where u.%4$I = p.%1$I))',
+                                       v_s.spalte, v_s.ziel_schema, v_s.ziel_tabelle, v_s.ziel_spalte);
         v_konflikt := true;
+      elsif v_t = 'urlaub_freigaben' and v_s.spalte = 'wunsch' then
+        -- Wunsch mit den Ids dieses Projekts; ohne Treffer bleibt er unverändert (gezählt)
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || 'coalesce(pep.sicherung_wunsch(p.wunsch, $2), p.wunsch)'::text;
+        select count(*) into v_n from jsonb_array_elements(v_zeilen) r
+         where pep.sicherung_wunsch(r -> 'wunsch', v_ids) is null;
+        if v_n > 0 then
+          v_aus := v_aus || jsonb_build_object('wunsch_nicht_zugeordnet', v_n);
+        end if;
       elsif v_s.typ = 'uuid' then
         -- Benutzer: über den Benutzernamen; unbekannt → leer (gezählt)
         v_spalten := v_spalten || v_s.spalte;
@@ -6801,7 +6959,7 @@ begin
                    array_to_string(v_werte, ', '), v_t,
                    case when cardinality(v_beding) > 0 then 'where ' || array_to_string(v_beding, ' and ') else '' end,
                    case when v_konflikt then 'on conflict do nothing' else '' end)
-      using v_zeilen, v_ids, v_konten, v_f, v_b.user_id;
+      using v_zeilen, v_ids, v_konten, v_f;
     get diagnostics v_n = row_count;
     if v_n > 0 then
       v_ein := v_ein || jsonb_build_object(v_t, v_n);
@@ -6828,6 +6986,11 @@ begin
   if v_ben_ein > 0 then
     v_ein := v_ein || jsonb_build_object('benutzer', v_ben_ein);
   end if;
+  -- Datei einer älteren Stufe: fehlende Einstellungen und Rahmen-Tage ergänzen (idempotent; Bereiche und Codes legt
+  -- die Grundausstattung nur in einer Filiale ohne Bereiche bzw. Codes an, hier also nicht). Fehlende Spalten haben
+  -- ihren Standardwert. ACHTUNG für spätere Stufen: Eine neue Spalte NOT NULL OHNE Standardwert scheitert beim
+  -- Einspielen älterer Dateien (null) – dann einen Standardwert vergeben oder hier ergänzen.
+  perform pep.grundausstattung(v_f);
   if v_ben_aus > 0 then
     v_aus := v_aus || jsonb_build_object('benutzer', v_ben_aus);
   end if;
