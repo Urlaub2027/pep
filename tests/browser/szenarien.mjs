@@ -1382,6 +1382,60 @@ await szenario('Vorausplanung: tippen und sofort blättern (langsame Verbindung)
   gleich(await c.werte((x) => document.querySelector(x).value, f), '75.000', 'Feld zeigt den neuen Wert');
 });
 
+await szenario('Einsatzplan: erster Strich abgelehnt, zweiter wartet, Wochenwechsel, dann Rückgängig', async () => {
+  // Hanna hat keine Kasse-Kompetenz: der KA-Strich scheitert, der BB-Strich danach (wartet in derselben Zeile) gelingt.
+  // Während beide laufen, wechselt die Seite die Woche. Rückgängig muss Hannas Zeile von vorher herstellen, nicht leeren.
+  const hanna = ID[7];
+  await epTag(MI);
+  const vorher = await bloecke(hanna, MI);
+  pruefe(vorher.length > 0, 'Hanna ist am Mittwoch geplant', vorher);
+  s.verzoegere(800);
+  try {
+    const p = async (von, sc = false) => zellPunkt(epZelle(hanna, von), sc);
+    await pinsel('KA');
+    const a = await p('08:00', true);
+    await c.ziehe(a, await p('08:30'));
+    await pinsel('BB');
+    await c.ziehe(await p('09:00'), await p('09:30'));
+    // Die Woche wechselt, bevor die (langsame) Antwort auf den ersten Strich kommt.
+    s.verzoegere(0);
+    await c.klick('#ansicht-einsatzplan [aria-label="Nächste Woche"]');
+    await c.warteAuf(() => document.querySelector('#ansicht-einsatzplan .ep-kw')?.textContent === 'KW 47', { text: 'KW 47', ms: 5000 });
+    await ruhe();
+  } finally {
+    s.verzoegere(0);
+  }
+  gleich(await text('#ansicht-einsatzplan .ep-kw'), 'KW 47', 'Woche gewechselt');
+  gleich((await bloecke(hanna, MI)).sort(), [...vorher, 'BB 09:00-10:00'].sort(), 'DB: nur der BB-Strich gespeichert');
+  await c.klick({ text: 'Rückgängig', in: '#ansicht-einsatzplan .ep-knoepfe', sel: 'button' });
+  await ruhe();
+  gleich(await bloecke(hanna, MI), vorher, 'Rückgängig stellt Hannas Zeile her (nicht leer)');
+  gleich(await c.werte(() => document.querySelector('#ansicht-einsatzplan .ep-datum').value), MI, 'Rückgängig springt zum Mittwoch');
+}, { erlaubeHttp: ['KOMPETENZ_FEHLT'] });
+
+await szenario('Einsatzplan: Rückgängig während des Speicherns, danach noch ein Strich', async () => {
+  // Strich A läuft (langsam), Klick auf Rückgängig, dann Strich B. Rückgängig wartet auf beide und nimmt B zurück
+  // (den letzten Strich); A bleibt.
+  await epTag(MI);
+  await pinsel('KA');
+  const vorher = await bloecke(MIA, MI);
+  await epStrich(MIA, '06:00', '06:30'); // Strich 0, schnell: Rückgängig ist damit sicher aktiv
+  s.verzoegere(800);
+  try {
+    const p = async (von, sc = false) => zellPunkt(epZelle(MIA, von), sc);
+    const a = await p('17:00', true);
+    await c.ziehe(a, await p('17:30'));
+    await c.klick({ text: 'Rückgängig', in: '#ansicht-einsatzplan .ep-knoepfe', sel: 'button' });
+    await c.ziehe(await p('19:00'), await p('19:30'));
+    await ruhe();
+    await c.warteAuf(() => !document.querySelector('#ansicht-einsatzplan td.ep-z.wartet'), { text: 'Markierung weg', ms: 8000 });
+    await ruhe();
+  } finally {
+    s.verzoegere(0);
+  }
+  gleich((await bloecke(MIA, MI)).sort(), [...vorher, 'KA 06:00-07:00', 'KA 17:00-18:00'].sort(), 'Strich 0 und A bleiben, B zurückgenommen');
+});
+
 // ---------------------------------------------------------------- Stellvertretung
 
 await szenario('Stellvertretung: Rechte in allen Reitern', async () => {

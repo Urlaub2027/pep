@@ -488,16 +488,20 @@ async function beiPointerAuf(e) {
   const s = { mitarbeiter, datum, von, bis };
   const bereichId = pinsel === 'radieren' ? null : Number(pinsel);
   const zeiger = { x: e.clientX, y: e.clientY };
+  // Zeile beim Loslassen: Schnappschuss, falls bis zum Senden keine Antwort der Zeile kommt (voriger Strich abgelehnt).
+  // Bis dahin kann die Seite schon eine andere Woche zeigen, dann fehlt die Zeile in `woche`.
+  const vorherBeimZiehen = gespeicherteZeile(mitarbeiter, s.datum);
   wartend.push(s);
   zeigeWartende();
-  await einreihen(`${mitarbeiter}|${s.datum}`, () => sendeStrich(s, bereichId, zeiger));
+  await einreihen(`${mitarbeiter}|${s.datum}`, () => sendeStrich(s, bereichId, zeiger, vorherBeimZiehen));
 }
 
 // Schickt einen Strich, wenn die vorige Antwort seiner Zeile eingearbeitet ist. Der Rückgängig-Schnappschuss ist die
-// Zeile in diesem Moment, damit ein „Rückgängig“ genau diesen einen Strich zurücknimmt.
-async function sendeStrich(s, bereichId, zeiger) {
+// Zeile in diesem Moment (letzte Antwort der Zeile, sonst die Zeile beim Loslassen), damit ein „Rückgängig“ genau
+// diesen einen Strich zurücknimmt.
+async function sendeStrich(s, bereichId, zeiger, vorherBeimZiehen) {
   const schluessel = `${s.mitarbeiter}|${s.datum}`;
-  const vorher = stand.get(schluessel) ?? gespeicherteZeile(s.mitarbeiter, s.datum);
+  const vorher = stand.get(schluessel) ?? vorherBeimZiehen;
   try {
     const antwort = await aufruf('pep_plan_malen', {
       p_mitarbeiter_id: s.mitarbeiter, p_datum: s.datum, p_von: s.von, p_bis: s.bis, p_bereich_id: bereichId,
@@ -563,7 +567,8 @@ function uebernehme(antwort, ids) {
 
 async function rueckgaengig() {
   // Erst die offenen Striche abwarten: ihr Eintrag kommt mit der Antwort, und „Rückgängig“ gilt dem letzten Strich.
-  await Promise.all([...ketten.values()]);
+  // Schleife: ein Strich, der während des Wartens dazukommt, wird ebenfalls abgewartet.
+  while (ketten.size) await Promise.all([...ketten.values()]);
   const eintrag = stapel.holen();
   rahmen.rueckgaengig.disabled = stapel.leer();
   if (!eintrag) return;
