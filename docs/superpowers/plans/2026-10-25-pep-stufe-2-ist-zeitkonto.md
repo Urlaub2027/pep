@@ -208,3 +208,22 @@ Druckbilder: **Wocheneinsatz-IST** (A4 quer) je Mitarbeiter Soll, je Tag „07:0
 - [ ] **Step 2:** Volllauf grün, keine Konsolenfehler; Fotos angesehen.
 - [ ] **Step 3: Doku.** ANLEITUNG: Abschnitte „IST-Erfassung“ und „Zeitkonto“ (Ablauf: Tage bestätigen → Woche buchen; Korrekturen; Startsaldo aus tegut eintragen), Handprüf-Punkte, Bekannte Grenzen (kein Zeitzuschlag in Spätzuschlag, Wochen nur in Reihenfolge abschließbar). README: Module, Testanzahl, Umstellung auf Stufe 2 (Schema erneut ausführen).
 - [ ] **Step 4:** `npm test` grün, Namensprüfung (0 Treffer echter Namen, nur Zählung). **Step 5: Commit** `Browser-Szenarien und Anleitung für IST und Zeitkonto`.
+
+---
+
+### Task 10: Hilfe auf jeder Seite („?“-Knopf)
+
+Auftrag dtn 25.10.2026: Erklärung der Funktionen und der Bedienung direkt in der Anwendung, über einen Fragezeichen-Knopf je Seite.
+
+**Files:** Create `docs/hilfe-texte.js` (alle Texte, reine Daten), `docs/hilfe-leiste.js` (Knopf und Leiste); Modify `docs/index.html` (Platz für den Knopf je Ansicht oder ein gemeinsamer Knopf in der Reiterleiste, der die aktive Ansicht kennt), `docs/app.js` (aktive Ansicht melden), `docs/style.css`, `tests/hilfe-texte.test.mjs`, `tests/browser/szenarien.mjs`, `ANLEITUNG.md` (Hinweis auf das „?“).
+
+**Interfaces:**
+- Produces `HILFE` in `docs/hilfe-texte.js`: `{ <ansicht>: { titel, wozu: string, schritte: string[], gut_zu_wissen: string[] } }` für `start`, `abwesenheiten`, `vorausplanung`, `einsatzplan` (mit eigenem Teil für den IST-Modus: `einsatzplan_ist`), `zeitkonto`, `mitarbeiter`, `einstellungen`; Texte aus der ANLEITUNG verdichtet, Alltagsdeutsch, kurze Sätze, höchstens etwa 180 Wörter je Ansicht.
+- Produces `oeffneHilfe(ansicht)` in `docs/hilfe-leiste.js`.
+
+Verhalten: runder Knopf „?“ (mit `aria-label="Hilfe zu dieser Seite"`) rechts in der Reiterleiste, öffnet für die aktive Ansicht (im Einsatzplan je nach Modus Plan oder IST) eine Leiste von rechts, am Tablet bildschirmfüllend, mit Überschrift, „Wozu dient diese Seite“, „So geht's“ (nummerierte Schritte), „Gut zu wissen“ (Liste) und „Schließen“; Escape und Klick daneben schließen. Beim ersten Besuch einer Ansicht erscheint einmal ein kleiner Hinweis „Tipp: Das ? erklärt diese Seite“ (gemerkt in `localStorage` mit try/catch). Nur Text und `element()`, kein `innerHTML`.
+
+- [ ] **Step 1: Failing test** `tests/hilfe-texte.test.mjs`: jede Ansicht aus der Ansichtenliste von `docs/app.js` (außer `login`, `filiale`, `druck`) hat einen Eintrag mit nicht leerem `wozu`, mindestens zwei `schritte` und einem `gut_zu_wissen`; kein Text enthält „TODO“; Wortzahl je Ansicht ≤ 200; kein echter Mitarbeitername.
+- [ ] **Step 2–3:** FAIL, umsetzen (Texte gegen den tatsächlichen Stand aller Reiter prüfen, auch IST und Zeitkonto aus Task 5–8).
+- [ ] **Step 4:** Browser-Szenario: auf jedem Reiter „?“ öffnen, Überschrift passt zur Ansicht, Escape schließt; Tablet einmal; Tipp erscheint nur beim ersten Besuch. Fotos der Leiste am PC und Tablet ansehen. `npm test` und Browser-Test grün.
+- [ ] **Step 5: Commit** `Hilfe-Knopf mit Erklärung je Seite`.

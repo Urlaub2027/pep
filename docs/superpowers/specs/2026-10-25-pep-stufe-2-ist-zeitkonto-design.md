@@ -28,6 +28,9 @@ Ziele:
   „Fortbildung“. Die Ersatzsuche schließt nur Kandidaten aus, die durch die Übernahme einen **neuen** Ruhezeit- oder
   Höchstarbeitszeit-Verstoß bekämen (bestehende Verstöße schließen nicht mehr aus).
 
+- Hilfe in der Anwendung **[dtn, 25.10.2026]**: ein „?“-Knopf je Seite öffnet eine kurze Erklärung (Wozu, So geht's,
+  Gut zu wissen), Texte aus der ANLEITUNG verdichtet, einmaliger Tipp beim ersten Besuch.
+
 Nicht-Ziele (spätere Stufen): Bedarfsplanung Kasse/Lieferzeiten, halbautomatischer Vorschlag, Mitarbeiter-App,
 mehrere Filialen, Umwandlung von Zeitzuschlag in Spätzuschlag (Netto-Regel offen **[Filialleiter]**), Lohnexport,
 Buchung beim Aushändigen eines Ausdrucks (Handoff-Idee, zu unklar).
