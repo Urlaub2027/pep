@@ -312,18 +312,20 @@ function stundenblatt(daten) {
         element('td', { class: `zahl${w.saldo.startsWith('−') ? ' minus' : ''}` }, w.saldo),
         element('td', {}, w.hinweis)))
         : element('tr', {}, element('td', { colspan: 9 }, 'Ohne Vertrag in diesen Wochen.'))));
+    // Legende und Unterschriften in einem Block, der nicht umbricht: sonst kann die Unterschrift allein auf eine
+    // neue Seite rutschen (bei mehreren Seiten stehen beide auf der letzten Seite der Person).
     return element('div', { class: 'dr-seite dr-hoch' }, tage, element('h3', { class: 'dr-zwischentitel' }, 'Wochen'), wochen,
-      element('p', { class: 'dr-fuss dr-legende' },
+      element('div', { class: 'dr-sb-ende' }, element('p', { class: 'dr-fuss dr-legende' },
         'Jeder Mitarbeiter beginnt auf einer neuen Seite. '
         + 'Nur bestätigtes IST: Anwesend = erster Beginn bis letztes Ende (Pausen eingeschlossen), Arbeitszeit ohne Pause. '
         + 'Abwesenheit „ohne Gutschrift“ (z. B. ZA) zählt nicht in der Summe. '
         + '„offen“ = noch nicht bestätigt, ohne Stunden. Wochen ganz, auch Tage außerhalb des Zeitraums. '
         + 'Saldo = gebuchtes Zeitkonto nach dem Sonntag der Woche; die Diff einer nicht abgeschlossenen Woche ist darin '
         + 'noch nicht enthalten.'),
-      // Unterschriften am Ende der Person: bei mehreren Seiten nur auf ihrer letzten (bricht nicht auseinander).
+      // Unterschriften am Ende der Person: bei mehreren Seiten nur auf ihrer letzten.
       element('div', { class: 'dr-unterschriften' },
         element('div', { class: 'dr-unterschrift' }, 'Datum, Unterschrift Mitarbeiter/in'),
-        element('div', { class: 'dr-unterschrift' }, 'Datum, Unterschrift Filialleitung')));
+        element('div', { class: 'dr-unterschrift' }, 'Datum, Unterschrift Filialleitung'))));
   });
 }
 
