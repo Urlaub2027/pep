@@ -40,3 +40,28 @@ test('Stufe-0-Datenbank mit Daten → aktuelles Schema zweimal: Daten bleiben, K
   assert.deepEqual(bedeutungen, { KA: 'kasse', VP: 'vp' });
   for (const t of ['plan_bloecke', 'plan_kommentare', 'wochen', 'vorlagen']) assert.ok(tabellen.includes(t), t);
 });
+
+test('MoPro-Farbe: altes Grau #F5F5F5 (auch klein geschrieben) wird beim Schema-Lauf Creme, eigene Farbe bleibt', async () => {
+  const db = await neueDatenbank();
+  const filialen = [];
+  for (const [name, nummer] of [['Filiale A', '9001'], ['Filiale B', '9002'], ['Filiale C', '9003']]) {
+    filialen.push(await filiale(db, await pepBenutzer(db, `leitung${nummer}`), { name, nummer }));
+  }
+  const mo = async (f) => (await db.query("select farbe from pep.bereiche where filiale_id = $1 and kuerzel = 'MO'", [f])).rows[0].farbe;
+  assert.equal(await mo(filialen[0]), '#FEEFB3', 'neue Filiale bekommt gleich die neue Farbe');
+  // Stand vor dem Update: Startfarbe Grau; Einstellungen speichern Farben aus <input type=color> klein geschrieben.
+  await db.query("update pep.bereiche set farbe = '#F5F5F5' where filiale_id = $1 and kuerzel = 'MO'", [filialen[0]]);
+  await db.query("update pep.bereiche set farbe = '#f5f5f5' where filiale_id = $1 and kuerzel = 'MO'", [filialen[1]]);
+  await db.query("update pep.bereiche set farbe = '#336699' where filiale_id = $1 and kuerzel = 'MO'", [filialen[2]]);
+  // Ein anderer Bereich mit #F5F5F5 bleibt, wie er ist.
+  await db.query("update pep.bereiche set farbe = '#F5F5F5' where filiale_id = $1 and kuerzel = 'RE'", [filialen[0]]);
+
+  await db.exec(SCHEMA);
+  await db.exec(SCHEMA);
+
+  assert.equal(await mo(filialen[0]), '#FEEFB3');
+  assert.equal(await mo(filialen[1]), '#FEEFB3');
+  assert.equal(await mo(filialen[2]), '#336699', 'von der Leitung gewählte Farbe bleibt');
+  const re = (await db.query("select farbe from pep.bereiche where filiale_id = $1 and kuerzel = 'RE'", [filialen[0]])).rows[0].farbe;
+  assert.equal(re, '#F5F5F5', 'nur MoPro wird umgefärbt');
+});

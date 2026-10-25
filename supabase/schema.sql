@@ -243,7 +243,7 @@ begin
       (p_filiale_id, 'OG', 'Obst',          '#9BE38A', 'bereich',  false, true,  2,  null),
       (p_filiale_id, 'BB', 'Backen',        '#F3C96B', 'bereich',  false, true,  3,  null),
       (p_filiale_id, 'TS', 'TroSo',         '#D9B38C', 'bereich',  false, true,  4,  null),
-      (p_filiale_id, 'MO', 'MoPro',         '#F5F5F5', 'bereich',  false, true,  5,  null),
+      (p_filiale_id, 'MO', 'MoPro',         '#FEEFB3', 'bereich',  false, true,  5,  null), -- Milchcreme
       (p_filiale_id, 'TK', 'TK',            '#B8C4FF', 'bereich',  false, true,  6,  null),
       (p_filiale_id, 'FÜ', 'Führung',       '#2E7D4F', 'bereich',  false, true,  7,  null),
       (p_filiale_id, 'RE', 'Reinigung',     '#C9C9C9', 'bereich',  false, true,  8,  null),
@@ -4465,6 +4465,13 @@ $$;
 
 -- Bestehende Filialen nachrüsten (zweiter Schema-Lauf nach einem Update).
 select pep.grundausstattung(id) from pep.filialen;
+
+-- MoPro: die frühere Startfarbe #F5F5F5 war vom leeren Feld kaum zu unterscheiden. Nur Filialen, in denen MO noch
+-- dieses Grau hat, bekommen die neue Startfarbe (klein geschrieben zählt mit: die Einstellungen speichern die Farbe
+-- aus <input type=color> klein, auch wenn nur ein anderes Feld des Bereichs geändert wurde). Eine von der Leitung
+-- gewählte Farbe bleibt; ein zweiter Lauf ändert nichts mehr.
+update pep.bereiche set farbe = '#FEEFB3'
+ where kuerzel = 'MO' and upper(farbe) = '#F5F5F5';
 
 -- ---------------------------------------------------------------------------
 -- Vorausplanung: sechs Wochen mit Soll, Verfügbar und Überhang (Spec 10)
