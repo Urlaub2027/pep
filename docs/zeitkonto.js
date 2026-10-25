@@ -259,9 +259,9 @@ function zeichneTabelle() {
     rahmen.tabelle.replaceChildren(element('p', { class: 'hinweis' }, 'In dieser Woche hat niemand einen Vertrag.'));
     return;
   }
-  const s = wochenSumme(liste);
   const laufend = laeuft();
   const vor = vorStart();
+  const s = wochenSumme(liste, { vorStart: vor });
   const grau = laufend || vor;
   const nichtGebucht = !vor && liste.some((m) => m.gebucht === false);
   const kopf = element('tr', {}, element('th', { scope: 'col' }, 'Mitarbeiter'),
@@ -274,7 +274,8 @@ function zeichneTabelle() {
     zahlZelle(stundenDE(s.soll)), zahlZelle(stundenDE(s.ist)), zahlZelle(stundenDE(s.abwesend)),
     zahlZelle(stundenDE(s.feiertag)),
     Object.assign(zahlZelle(vorzeichen(s.diff), grau ? 'vorlaeufig' : vorzeichenKlasse(s.diff)),
-      { title: nichtGebucht ? 'Summe ohne die nicht gebuchten Diffs' : '' }),
+      { title: vor ? 'Vor dem Start der IST-Erfassung – nichts gebucht'
+        : nichtGebucht ? 'Summe ohne die nicht gebuchten Diffs' : '' }),
     element('td'), element('td'), element('td'), element('td'));
   rahmen.tabelle.replaceChildren(
     element('div', { class: 'tabelle-scroll' },

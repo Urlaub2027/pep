@@ -3218,21 +3218,23 @@ begin
         left join lateral pep.wochenvertrag(m.id, v_mo) v on true), '[]'::jsonb),
     'bloecke', case when p_ist then pep.ist_bloecke_antwort(v_f, v_mo, v_so, null)
                     else pep.bloecke_antwort(v_f, v_mo, v_so, null) end,
-    -- Im IST-Modus zusätzlich zaehlt: die Abwesenheit geht in abwesend der Wochenrechnung ein – Code mit gutschrift an
-    -- einem Tag aus pep.zeitkonto_tage ohne Feiertagsgutschrift, dieselbe Regel wie pep.zeitkonto_woche und
-    -- pep.stundenblatt_person (ZA und U an einem geschlossenen Feiertag zählen nicht). Der Wocheneinsatz-IST druckt sie
-    -- dann wie das Stundenblatt als „ZA (ohne Gutschrift)“.
+    -- Im IST-Modus zusätzlich zaehlt: die Abwesenheit geht in abwesend der Wochenrechnung ein (abwesenheit_zaehlt aus
+    -- pep.zeitkonto_tage, dieselbe Regel wie pep.zeitkonto_woche und pep.stundenblatt_person: ZA und U an einem
+    -- geschlossenen Feiertag zählen nicht). Der Wocheneinsatz-IST druckt sie dann wie das Stundenblatt als „ZA (ohne Gutschrift)“.
     'abwesenheiten', coalesce((
       select jsonb_agg(jsonb_build_object(
                'mitarbeiter_id', a.mitarbeiter_id, 'datum', to_char(a.datum, 'YYYY-MM-DD'),
                'code', c.code, 'name', c.name, 'farbe', c.farbe, 'sperrt', c.sperrt, 'stunden', a.stunden,
                'von', to_char(a.von, 'HH24:MI'), 'bis', to_char(a.bis, 'HH24:MI'))
-             || case when p_ist then jsonb_build_object('zaehlt', c.gutschrift and exists (
-                       select 1 from pep.zeitkonto_tage(a.mitarbeiter_id, v_mo) k where k.tag = a.datum and not k.feiertag))
-                     else '{}'::jsonb end
+             || case when p_ist then jsonb_build_object('zaehlt', coalesce(z.abwesenheit_zaehlt, false)) else '{}'::jsonb end
              order by a.datum, a.mitarbeiter_id)
         from pep.abwesenheiten a
         join pep.abwesenheitscodes c on c.id = a.code_id
+        -- je Mitarbeiter mit Abwesenheit einmal für die Woche (nicht je Abwesenheit); im Plan-Modus leer
+        left join (select k.abwesenheit_id, k.abwesenheit_zaehlt
+                     from (select distinct x.mitarbeiter_id from pep.abwesenheiten x
+                            where p_ist and x.filiale_id = v_f and x.datum between v_mo and v_so) mm
+                     cross join lateral pep.zeitkonto_tage(mm.mitarbeiter_id, v_mo) k) z on z.abwesenheit_id = a.id
        where a.filiale_id = v_f and a.datum between v_mo and v_so), '[]'::jsonb),
     'kommentare', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -5564,21 +5566,34 @@ alter table pep.wochen_abschluesse  enable row level security;
 
 -- Die Tage Mo–So einer Woche, an denen der Mitarbeiter beschäftigt ist (Vertrag mit gueltig_ab ≤ Tag, eintritt ≤ Tag,
 -- austritt leer oder ≥ Tag), mit feiertag = dieser Tag bekommt die Feiertagsgutschrift (Mo–Sa, gesetzlicher Feiertag,
--- Filiale geschlossen). Einzige Stelle für soll-Tage, Feiertagsgutschrift und die Tage, deren Abwesenheit zählt.
-create or replace function pep.zeitkonto_tage(p_mitarbeiter_id bigint, p_montag date)
-returns table (tag date, feiertag boolean)
+-- Filiale geschlossen), und der Abwesenheit des Tages (höchstens eine je Tag: unique (mitarbeiter_id, datum)).
+-- Einzige Stelle für soll-Tage, Feiertagsgutschrift und die Regel „anrechenbare Abwesenheit“: abwesenheit_zaehlt =
+-- Code mit gutschrift an einem beschäftigten Tag ohne Feiertagsgutschrift (die Feiertagsgutschrift hat Vorrang, sonst
+-- zählte ein Feiertag doppelt; ZA zählt nie). Nutzer: pep.zeitkonto_woche (Summe abwesend), pep.stundenblatt_person
+-- und pep.woche_antwort (IST-Modus) über abwesenheit_id je Abwesenheit; eine Abwesenheit ohne Zeile (Tag nicht
+-- beschäftigt) zählt nicht.
+-- Neue Rückgabespalten (Endreview): Postgres ändert den Rückgabetyp nicht per „create or replace“.
+drop function if exists pep.zeitkonto_tage(bigint, date);
+create function pep.zeitkonto_tage(p_mitarbeiter_id bigint, p_montag date)
+returns table (tag date, feiertag boolean, abwesenheit_id bigint, abwesenheit_stunden numeric, abwesenheit_zaehlt boolean)
 language sql stable
 set search_path = ''
 as $$
-  select t.tag,
-         extract(isodow from t.tag) <= 6 and pep.feiertag(m.filiale_id, t.tag) is not null
-           and not (select x.geoeffnet from pep.tag_status(m.filiale_id, t.tag) x)
-    from pep.mitarbeiter m
-    cross join lateral (select p_montag + i as tag from generate_series(0, 6) i) t
-   where m.id = p_mitarbeiter_id
-     and (m.eintritt is null or m.eintritt <= t.tag) and (m.austritt is null or m.austritt >= t.tag)
-     and exists (select 1 from pep.vertraege v where v.mitarbeiter_id = p_mitarbeiter_id and v.gueltig_ab <= t.tag)
-   order by t.tag
+  select d.tag, d.feiertag, a.id, a.stunden, coalesce(c.gutschrift and not d.feiertag, false)
+    from (select t.tag,
+                 extract(isodow from t.tag) <= 6 and pep.feiertag(m.filiale_id, t.tag) is not null
+                   and not (select x.geoeffnet from pep.tag_status(m.filiale_id, t.tag) x) as feiertag
+            from pep.mitarbeiter m
+            cross join lateral (select p_montag + i as tag from generate_series(0, 6) i) t
+           where m.id = p_mitarbeiter_id
+             and (m.eintritt is null or m.eintritt <= t.tag) and (m.austritt is null or m.austritt >= t.tag)
+             and exists (select 1 from pep.vertraege v where v.mitarbeiter_id = p_mitarbeiter_id and v.gueltig_ab <= t.tag)
+          -- offset 0: Ohne ihn zieht der Planer die Unterabfrage hoch und rechnet feiertag (pep.feiertag, pep.tag_status)
+          -- je Verwendung neu (gemessen: 20 Mitarbeiter 11 ms statt 6 ms).
+          offset 0) d
+    left join pep.abwesenheiten a on a.mitarbeiter_id = p_mitarbeiter_id and a.datum = d.tag
+    left join pep.abwesenheitscodes c on c.id = a.code_id
+   order by d.tag
 $$;
 
 -- G1: Wochenrechnung eines Mitarbeiters (p_montag = Montag der ISO-Woche, Tage Mo–So). NULL ohne Vertrag in der Woche
@@ -5624,14 +5639,9 @@ begin
   end if;
 
   select (count(*) filter (where extract(isodow from t.tag) <= 6))::int, (count(*) filter (where t.feiertag))::int,
-         coalesce(sum(a.stunden) filter (where not t.feiertag), 0)
+         coalesce(sum(t.abwesenheit_stunden) filter (where t.abwesenheit_zaehlt), 0)
     into v_tage, v_ftage, v_abw
-    from pep.zeitkonto_tage(p_mitarbeiter_id, p_montag) t
-    left join lateral (
-      select sum(ab.stunden) as stunden
-        from pep.abwesenheiten ab
-        join pep.abwesenheitscodes c on c.id = ab.code_id
-       where ab.mitarbeiter_id = p_mitarbeiter_id and ab.datum = t.tag and c.gutschrift) a on true;
+    from pep.zeitkonto_tage(p_mitarbeiter_id, p_montag) t;
 
   v_soll := round(v_v.wochenstunden * v_tage / 6, 2);
   v_ft := v_ftage * round(v_v.wochenstunden
@@ -6305,9 +6315,8 @@ $$;
 -- Ein Mitarbeiter im Stundenblatt: je Tag von p_von bis p_bis die Werte aus dem bestätigten IST, je berührter Woche die
 -- Wochenrechnung (pep.zeitkonto_woche) mit dem Saldo nach allen Buchungen bis zu ihrem Sonntag.
 -- Tag: vor_start (vor pep.ist_ab) trägt keine Werte. Sonst: abwesend = Abwesenheit des Tages {code, stunden, zaehlt}
--- (ein Eintrag, kein IST); zaehlt = sie geht in abwesend der Wochenrechnung ein – Code mit gutschrift an einem Tag aus
--- pep.zeitkonto_tage (beschäftigt) ohne Feiertagsgutschrift, also dieselbe Regel wie pep.zeitkonto_woche über dieselbe
--- Funktion (ZA und U an einem geschlossenen Feiertag zählen nicht). feiertag = Name, wenn die Filiale an einem
+-- (ein Eintrag, kein IST); zaehlt = sie geht in abwesend der Wochenrechnung ein (abwesenheit_zaehlt aus
+-- pep.zeitkonto_tage, dieselbe Regel wie pep.zeitkonto_woche: ZA und U an einem geschlossenen Feiertag zählen nicht). feiertag = Name, wenn die Filiale an einem
 -- Feiertag geschlossen ist; offen = offene IST-Zeile nach pep.ist_zeilen (dann keine Stunden, auch nicht das schon
 -- erfasste IST: nur Bestätigtes gilt). Nur an bestätigten Tagen (pep.ist_tage): anwesend_von/bis = frühester Beginn /
 -- spätestes Ende der IST-Blöcke (Pausen eingeschlossen, Mitternacht '24:00'), spannen = zusammenhängende Zeiten
@@ -6344,8 +6353,14 @@ as $$
   ), wochen as (
     select d::date as mo, m.filiale_id, m.ist_ab
       from m, generate_series(date_trunc('week', p_von::timestamp), p_bis::timestamp, interval '7 days') d
-  ), zk_tage as ( -- beschäftigte Tage mit Feiertagsgutschrift-Merkmal, wie in pep.zeitkonto_woche
-    select k.tag, k.feiertag from wochen w cross join lateral pep.zeitkonto_tage(p_mitarbeiter_id, w.mo) k
+  ), zk_tage as ( -- abwesenheit_zaehlt aus pep.zeitkonto_tage, dieselbe Regel wie pep.zeitkonto_woche; nur Wochen mit
+    -- einer Abwesenheit, deren Code gutschrift hat (ohne gutschrift zählt keine – reine Abkürzung)
+    select k.abwesenheit_id, k.abwesenheit_zaehlt
+      from wochen w
+      cross join lateral pep.zeitkonto_tage(p_mitarbeiter_id, w.mo) k
+     where k.abwesenheit_zaehlt
+       and exists (select 1 from pep.abwesenheiten a join pep.abwesenheitscodes c on c.id = a.code_id
+                    where a.mitarbeiter_id = p_mitarbeiter_id and a.datum between w.mo and w.mo + 6 and c.gutschrift)
   )
   select jsonb_build_object(
     'id', m.id, 'name', m.name, 'personalnummer', m.personalnummer,
@@ -6386,10 +6401,10 @@ as $$
                    group by x.insel) i) sp on true
         left join lateral (
           select jsonb_build_object('code', c.code, 'stunden', ab.stunden,
-                                    'zaehlt', c.gutschrift and exists (select 1 from zk_tage k
-                                                                       where k.tag = ab.datum and not k.feiertag)) as abwesend
+                                    'zaehlt', coalesce(k.abwesenheit_zaehlt, false)) as abwesend
             from pep.abwesenheiten ab
             join pep.abwesenheitscodes c on c.id = ab.code_id
+            left join zk_tage k on k.abwesenheit_id = ab.id
            where ab.mitarbeiter_id = p_mitarbeiter_id and ab.datum = t.tag and not t.vor_start
            limit 1) a on true),
     'wochen', coalesce((

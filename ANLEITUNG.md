@@ -743,6 +743,9 @@ Einspielen bucht PEP keine automatischen Korrekturen.
 - Deaktivierte Mitarbeiter und solche, deren Austritt vor der Woche liegt, bekommen
   beim Abschluss keine Zeile – und damit auch keine automatischen Korrekturen für
   diese Woche.
+- Wer nach einem Wochenabschluss deaktiviert wird, bekommt für die schon gebuchten
+  Wochen keine automatischen Korrekturen mehr (etwa nach Änderung eines Teilers); dann
+  von Hand korrigieren.
 - Wer nachträglich angelegt wird und einen Vertrag rückwirkend bekommt, erhält für
   schon abgeschlossene Wochen keine automatischen Korrekturen. Das bei Bedarf mit
   „Korrektur von Hand“ nachbuchen.

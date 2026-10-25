@@ -44,8 +44,9 @@ function ortsDatum(zeitstempel) {
 
 // Summenzeile der Wochentabelle über alle angezeigten Mitarbeiter. Die Diff zählt nur, wo sie gebucht ist bzw. beim
 // Abschluss gebucht wird (pep_zeitkonto_woche.gebucht; fehlt das Feld, wie gebucht): Die Summe soll zeigen, was ins
-// Zeitkonto geht, nicht die Diff von Inaktiven oder nach dem Abschluss Angelegten.
-export function wochenSumme(mitarbeiter) {
+// Zeitkonto geht, nicht die Diff von Inaktiven oder nach dem Abschluss Angelegten. vorStart (Woche vor dem Start der
+// IST-Erfassung, pep_zeitkonto_woche.vor_ist_start): nichts wird gebucht, Diff null (Anzeige „–“ statt einer 0,00).
+export function wochenSumme(mitarbeiter, { vorStart = false } = {}) {
   const summe = { soll: 0, ist: 0, abwesend: 0, feiertag: 0, diff: 0 };
   for (const m of mitarbeiter ?? []) {
     for (const k of Object.keys(summe)) {
@@ -53,6 +54,7 @@ export function wochenSumme(mitarbeiter) {
     }
   }
   for (const k of Object.keys(summe)) summe[k] = rund(summe[k]);
+  if (vorStart) summe.diff = null;
   return summe;
 }
 

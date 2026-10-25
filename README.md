@@ -136,7 +136,7 @@ npm install
 npm test
 ```
 
-Stand Stufe 2: **384 Tests, alle grün** (rund 37 s). Die zwei Startbestand-Tests
+Stand Stufe 2: **386 Tests, alle grün** (rund 37 s). Die zwei Startbestand-Tests
 lesen `privat/stammdaten-aschaffenburg.sql` und werden ohne diese Datei
 übersprungen; alle anderen Tests laufen in jedem Checkout.
 

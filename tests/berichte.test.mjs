@@ -258,6 +258,29 @@ describe('pep_stundenblatt', () => {
     await wirft(blatt(null, '2027-01-09', null), 'DATUM_UNGUELTIG');
   });
 
+  test('eine Regel für anrechenbare Abwesenheit: Summe zaehlt je Woche = abwesend der Wochenrechnung = pep.zeitkonto_tage', async () => {
+    // KW 1/2027 ganz: Anna U Di; Ben Teil-KM Di, U am geschlossenen Feiertag (zählt nicht), ZA Fr (zählt nicht)
+    const r = await blatt(null, '2027-01-04', '2027-01-10');
+    for (const m of r.mitarbeiter) {
+      for (const w of m.wochen) {
+        const tage = m.tage.filter((x) => x.datum >= w.montag && x.datum <= new Date(Date.parse(`${w.montag}T00:00:00Z`) + 6 * 864e5).toISOString().slice(0, 10));
+        const summe = tage.reduce((n, x) => n + (x.abwesend?.zaehlt ? x.abwesend.stunden : 0), 0);
+        assert.equal(Math.round(summe * 100) / 100, w.abwesend, `${m.name} ${w.montag}`);
+        const zk = (await s.db.query('select pep.zeitkonto_woche($1, $2::date) as z', [m.id, w.montag])).rows[0].z;
+        assert.equal(Number(zk.abwesend), w.abwesend, `${m.name}: zeitkonto_woche`);
+        const h = (await s.db.query(`select coalesce(sum(abwesenheit_stunden) filter (where abwesenheit_zaehlt), 0)::float8 as n,
+            count(*) filter (where abwesenheit_id is not null and not abwesenheit_zaehlt)::int as nicht
+          from pep.zeitkonto_tage($1::bigint, $2::date)`, [m.id, w.montag])).rows[0];
+        assert.equal(h.n, w.abwesend, `${m.name}: pep.zeitkonto_tage`);
+        assert.equal(h.nicht, tage.filter((x) => x.abwesend && !x.abwesend.zaehlt).length, `${m.name}: nicht zählend`);
+      }
+    }
+    // pep_ist_woche (IST-Modus) nutzt dieselbe Regel
+    const ist = await s.json(s.leitung, 'select public.pep_ist_woche(2027, 1) as r');
+    const benIst = ist.abwesenheiten.filter((a) => a.mitarbeiter_id === ben2).map((a) => [a.datum, a.code, a.zaehlt]);
+    assert.deepEqual(benIst, [['2027-01-05', 'KM', true], ['2027-01-06', 'U', false], ['2027-01-08', 'ZA', false]]);
+  });
+
   test('fremde Filiale: fremder Mitarbeiter → MITARBEITER_NICHT_GEFUNDEN, NULL zeigt nur die eigenen', async () => {
     await wirft(blatt(fremd2, '2027-01-04', '2027-01-10'), 'MITARBEITER_NICHT_GEFUNDEN');
     await wirft(blatt(anna2, '2027-01-04', '2027-01-10', chef3), 'MITARBEITER_NICHT_GEFUNDEN');
