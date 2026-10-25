@@ -370,7 +370,7 @@ test('pep_einsatzplan_woche(2026, 46): 7 Tage, Sonntag geoeffnet = false, Mitarb
 test('pep_einsatzplan_woche().kennzahlen hat alle Felder aus Task 9', async () => {
   const w = await woche();
   assert.deepEqual(Object.keys(w.kennzahlen).sort(), ['abwesend', 'davon_urlaub', 'geplant', 'jahr', 'kw', 'montag',
-    'planumsatz', 'soll', 'stundenleistung', 'stundenvorgabe', 'stundenvorgabe_manuell', 'ueberhang', 'verfuegbar',
+    'planumsatz', 'soll', 'stundenleistung', 'stundenleistung_eigen', 'stundenvorgabe', 'stundenvorgabe_manuell', 'ueberhang', 'verfuegbar',
     'vertragsstunden', 'vorgabe_quelle'].sort());
 });
 

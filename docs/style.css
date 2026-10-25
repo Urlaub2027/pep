@@ -455,6 +455,9 @@ th { background: var(--hell); font-weight: 600; }
 .pd-luecke { font-weight: 600; color: var(--ok); white-space: nowrap; }
 .pd-luecke.ueber { color: var(--text-2); }
 .pd-kandidat small { color: var(--text-2); }
+.pd-uebernahme { font-size: 0.9rem; }
+.pd-uebernahme.ueber { color: var(--netto-rot); font-weight: 600; }
+.pd-pause { color: var(--text-2); font-size: 0.9rem; }
 .pd-hinweis { justify-self: start; padding: 1px 6px; font-size: 0.85rem; background: var(--hinweis); border-left: 3px solid var(--netto-gelb); border-radius: 3px; }
 
 /* Eckdaten-Fenster (plan-dialoge.js): Abschnitte in zwei Spalten, schmal in einer; der Dialog scrollt in sich */
@@ -572,6 +575,9 @@ th { background: var(--hell); font-weight: 600; }
 .ep-pinsel { gap: 4px; }
 .ep-pinsel .chip { gap: 5px; padding: 0 9px; font-size: 0.85rem; }
 .ep-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+/* „wird gespeichert …“ erst nach 300 ms zeigen, damit es bei schneller Antwort nicht flackert */
+.ep-speichert { align-self: center; font-size: 0.85rem; color: var(--text-2); opacity: 0; animation: ep-einblenden 0s 300ms forwards; }
+@keyframes ep-einblenden { to { opacity: 1; } }
 .ep-werkzeug .hinweis-gelb { margin: 0; }
 
 /* Raster links, Seitenleiste ab 1600 px rechts, sonst darunter */
@@ -646,7 +652,8 @@ th { background: var(--hell); font-weight: 600; }
   cursor: pointer;
 }
 .ep-ersatz:hover { color: #fff; background: var(--netto-rot); }
-.ep-tabelle td.ep-z.markiert { background-image: linear-gradient(rgba(255, 229, 0, .65), rgba(255, 229, 0, .65)); box-shadow: inset 0 2px 0 var(--schwarz), inset 0 -2px 0 var(--schwarz); }
+/* Gezogener Strich; „wartet“: Antwort steht noch aus (hinter dem vorigen Strich der Zeile), sieht gleich aus */
+.ep-tabelle td.ep-z.markiert, .ep-tabelle td.ep-z.wartet { background-image: linear-gradient(rgba(255, 229, 0, .65), rgba(255, 229, 0, .65)); box-shadow: inset 0 2px 0 var(--schwarz), inset 0 -2px 0 var(--schwarz); }
 
 /* Malen: waagerechtes Ziehen malt, senkrechtes Wischen scrollt weiter (Tablet). Kopf und Fußzeilen scrollen quer. */
 .malt .ep-tabelle { touch-action: auto; }
@@ -725,6 +732,8 @@ table.vorausplanung td { padding: 6px var(--a2); }
 .eingabe-mit-einheit { display: flex; align-items: center; gap: 4px; }
 .eingabe-mit-einheit input { width: 100%; min-width: 0; height: 36px; padding: 0 8px; border: 1px solid var(--linie-stark); border-radius: 6px; font: inherit; }
 .eingabe-mit-einheit .einheit { color: var(--text-2); font-size: 0.85rem; }
+/* Platzhalter wie „Standard 200“ etwas kleiner, damit die Zahl auch in schmalen Spalten (Tablet) ganz zu sehen ist */
+.eingabe-mit-einheit input::placeholder { font-size: 0.8em; }
 table.vorausplanung td.plus { color: var(--ok); font-weight: 700; }
 table.vorausplanung td.vorgabe strong { display: block; font-size: 1.1rem; }
 table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); font-weight: 400; }

@@ -1,7 +1,7 @@
 // Reine Plan-Logik (kein DOM). Eingabe `woche` = Antwort von public.pep_einsatzplan_woche.
 // Blöcke sind Abschnitte: dieselbe id kann mehrfach vorkommen, jeder Abschnitt hat sein eigenes
 // `unbesetzt`. Unbesetzte Abschnitte zählen nirgends (F2).
-import { minuten, uhrzeit, plusTage, kwVorZurueck } from './zeit.js';
+import { minuten, uhrzeit, plusTage, kwVorZurueck, stundenText } from './zeit.js';
 import { WOCHENTAGE } from './hilfe.js';
 
 const stunden = (b) => (minuten(b.bis) - minuten(b.von)) / 60;
@@ -150,13 +150,37 @@ export function tageText(von, bis) {
   return von === bis ? tagKurz(von) : `${tagKurz(von)}–${tagKurz(bis)}`;
 }
 
-// Offene Wochenstunden eines Ersatzes (luecke = Soll − geplant, F6): „noch 12,5 h offen“, „Woche voll“, „1,25 h über Soll“.
+// Offene Wochenstunden eines Ersatzes (luecke = Soll − geplant, F6): „noch 12,50 h offen“, „Woche voll“, „1,25 h über Soll“.
+// Zahlen wie überall im Ersatz- und Eckdaten-Fenster mit zwei Stellen (stundenText).
 export function lueckeText(luecke) {
   const n = Math.round(Number(luecke) * 100) / 100 || 0;
-  const zahl = (x) => String(x).replace('.', ',');
-  if (n > 0) return `noch ${zahl(n)} h offen`;
-  if (n < 0) return `${zahl(-n)} h über Soll`;
+  if (n > 0) return `noch ${stundenText(n)} h offen`;
+  if (n < 0) return `${stundenText(-n)} h über Soll`;
   return 'Woche voll';
+}
+
+// Unbesetzte Blöcke im Ersatz-Fenster (Antwort von pep_ersatz_kandidaten, [{von, bis, bereich_id}]): Pausen stehen
+// nicht als eigener Block da, sondern als „inkl. Pause 12:30–13:00“ (der Ersatz übernimmt die Schicht samt Pause).
+// stunden = Arbeitsstunden der Übernahme ohne Pause, wie pep.arbeitsstunden (F4). Ist nur eine Pause unbesetzt,
+// bleibt sie als Block stehen (0 h).
+export function ersatzBloecke(unbesetzt, pauseIds) {
+  const pausen = alsMenge(pauseIds);
+  const istPause = (b) => pausen.has(b.bereich_id);
+  const arbeit = (unbesetzt ?? []).filter((b) => !istPause(b));
+  const pause = (unbesetzt ?? []).filter(istPause);
+  if (!arbeit.length) return { arbeit: pause, pauseText: '', stunden: 0 };
+  const pauseText = pause.length
+    ? `inkl. ${pause.length === 1 ? 'Pause' : 'Pausen'} ${pause.map((b) => `${b.von}–${b.bis}`).join(', ')}` : '';
+  return { arbeit, pauseText, stunden: arbeit.reduce((summe, b) => summe + stunden(b), 0) };
+}
+
+// Was die Übernahme von den offenen Wochenstunden eines Kandidaten verbraucht (luecke = Soll − geplant vor der
+// Übernahme): „Übernahme 8,00 h · danach noch 2,00 h offen“ bzw. „… danach 1,50 h über Soll“ (ueber = true).
+export function uebernahmeText(stundenUebernahme, luecke) {
+  const h = Math.round(Number(stundenUebernahme) * 100) / 100 || 0;
+  const rest = Math.round((Number(luecke) - h) * 100) / 100 || 0;
+  const danach = rest > 0 ? `danach noch ${stundenText(rest)} h offen` : rest < 0 ? `danach ${stundenText(-rest)} h über Soll` : 'danach Woche voll';
+  return { text: `Übernahme ${stundenText(h)} h · ${danach}`, ueber: rest < 0 };
 }
 
 // ---------------------------------------------------------------- Eckdaten

@@ -45,7 +45,12 @@ let zug = null; // laufendes Ziehen: { mitarbeiter, zellen, start, ende, pointer
 let hervor = null; // in der Regelprüfung angeklickter Eintrag
 let wunschTag = null; // Wochentag-Index (0 = Mo), der nach dem Blättern gewählt bleibt
 const stapel = rueckgaengigStapel(20);
-const laufend = new Set(); // „mitarbeiter|datum“ mit offener Anfrage: dort startet kein neuer Strich
+// Striche und Rückgängig laufen je Zeile („mitarbeiter|datum“) nacheinander: der nächste Aufruf startet erst, wenn die
+// Antwort des vorigen eingearbeitet ist (sonst könnte eine ältere Antwort eine neuere überschreiben). Ein Strich, der
+// wartet, bleibt markiert („wird gespeichert …“).
+const ketten = new Map(); // Schlüssel → Promise der letzten Aufgabe der Zeile (lehnt nie ab)
+const stand = new Map(); // Schlüssel → Zeile nach der letzten Antwort, solange die Kette läuft (Rückgängig-Schnappschuss)
+const wartend = []; // gezogene, noch nicht beantwortete Striche: { mitarbeiter, datum, von, bis }
 const rahmen = {}; // Container: kopf, raster, seite
 
 const darfZeichnen = () => ich?.rolle === 'leitung' || ich?.rolle === 'stellvertretung';
@@ -201,6 +206,7 @@ function zeichneKopf() {
     type: 'button', class: 'knopf', disabled: stapel.leer(), onclick: rueckgaengig,
     title: 'Letzten Strich zurücknehmen (bis zu 20 Schritte)',
   }, '↶ Rückgängig');
+  rahmen.speichert = element('span', { class: 'ep-speichert', role: 'status', hidden: !wartend.length }, 'wird gespeichert …');
   rahmen.kopf.replaceChildren(element('div', { class: 'karte werkzeugleiste ep-werkzeug' },
     element('div', { class: 'werkzeug-zeile' },
       element('div', { class: 'monatsnavi' },
@@ -212,7 +218,7 @@ function zeichneKopf() {
       element('div', { class: 'ep-tage', role: 'group', 'aria-label': 'Tag' }, woche.tage.map(tagesReiter))),
     element('div', { class: 'werkzeug-zeile' },
       pinselLeiste(),
-      element('div', { class: 'ep-knoepfe' }, rahmen.rueckgaengig,
+      element('div', { class: 'ep-knoepfe' }, rahmen.speichert, rahmen.rueckgaengig,
         aktionsKnopf('kopieren', 'Kopieren'), aktionsKnopf('vorlagen', 'Vorlagen'),
         aktionsKnopf('krank', 'Krank/ZA'), aktionsKnopf('drucken', 'Drucken')))));
 }
@@ -369,6 +375,7 @@ function zeichneRaster() {
   const leer = woche.mitarbeiter.length ? null
     : element('p', { class: 'hinweis' }, 'In dieser Woche ist niemand beschäftigt. Mitarbeiter und Verträge pflegt der Reiter „Mitarbeiter“.');
   rahmen.raster.replaceChildren(...[element('div', { class: 'raster-scroll ep-scroll' }, tabelle), leer].filter(Boolean));
+  zeigeWartende();
   passeHoeheAn();
 }
 
@@ -397,7 +404,32 @@ function zeichneZeilen(ids) {
   tabelle.querySelector('tfoot').replaceWith(abdeckungsZeilen(sp, oeffnung));
   for (const x of tabelle.querySelectorAll('.hervor, .hervor-zelle')) x.classList.remove('hervor', 'hervor-zelle');
   hervor = null;
+  zeigeWartende();
   zeichneSeite();
+}
+
+// Wartende Striche des angezeigten Tages markieren (auch nach dem Neuzeichnen einer Zeile) und den Hinweis zeigen.
+function zeigeWartende() {
+  if (rahmen.speichert) rahmen.speichert.hidden = !wartend.length;
+  for (const td of rahmen.raster?.querySelectorAll('td.ep-z.wartet') ?? []) td.classList.remove('wartet');
+  for (const w of wartend) {
+    if (w.datum !== datum) continue;
+    for (const td of rahmen.raster.querySelectorAll(`tbody tr[data-mitarbeiter="${w.mitarbeiter}"] td.ep-z`)) {
+      if (td.dataset.von >= w.von && td.dataset.von < w.bis) td.classList.add('wartet');
+    }
+  }
+}
+
+// Hängt eine Aufgabe an die Kette ihrer Zeile; ist die Kette danach leer, gilt wieder der Stand in `woche`.
+function einreihen(schluessel, aufgabe) {
+  const lauf = (ketten.get(schluessel) ?? Promise.resolve()).then(aufgabe).catch(zeigeFehler);
+  ketten.set(schluessel, lauf);
+  lauf.then(() => {
+    if (ketten.get(schluessel) !== lauf) return;
+    ketten.delete(schluessel);
+    stand.delete(schluessel);
+  });
+  return lauf;
 }
 
 // ---------------------------------------------------------------- Malen (Pointer-Events)
@@ -430,7 +462,6 @@ function beiPointerAb(e) {
   const td = e.target.closest?.('td.ep-z');
   if (!td) return;
   const tr = td.parentElement;
-  if (laufend.has(`${tr.dataset.mitarbeiter}|${datum}`)) return; // erst die Antwort des vorigen Strichs abwarten
   zug = {
     mitarbeiter: Number(tr.dataset.mitarbeiter), zellen: [...tr.querySelectorAll('td.ep-z')],
     start: Number(td.dataset.i), ende: Number(td.dataset.i), pointerId: e.pointerId,
@@ -454,34 +485,46 @@ async function beiPointerAuf(e) {
   const { mitarbeiter, start, ende } = zug;
   raeumeAuf();
   const { von, bis } = strich(spalten(), start, ende);
-  const tagDesStrichs = datum;
-  const vorher = gespeicherteZeile(mitarbeiter, tagDesStrichs);
-  const schluessel = `${mitarbeiter}|${tagDesStrichs}`;
-  laufend.add(schluessel);
+  const s = { mitarbeiter, datum, von, bis };
+  const bereichId = pinsel === 'radieren' ? null : Number(pinsel);
+  const zeiger = { x: e.clientX, y: e.clientY };
+  // Zeile beim Loslassen: Schnappschuss, falls bis zum Senden keine Antwort der Zeile kommt (voriger Strich abgelehnt).
+  // Bis dahin kann die Seite schon eine andere Woche zeigen, dann fehlt die Zeile in `woche`.
+  const vorherBeimZiehen = gespeicherteZeile(mitarbeiter, s.datum);
+  wartend.push(s);
+  zeigeWartende();
+  await einreihen(`${mitarbeiter}|${s.datum}`, () => sendeStrich(s, bereichId, zeiger, vorherBeimZiehen));
+}
+
+// Schickt einen Strich, wenn die vorige Antwort seiner Zeile eingearbeitet ist. Der Rückgängig-Schnappschuss ist die
+// Zeile in diesem Moment (letzte Antwort der Zeile, sonst die Zeile beim Loslassen), damit ein „Rückgängig“ genau
+// diesen einen Strich zurücknimmt.
+async function sendeStrich(s, bereichId, zeiger, vorherBeimZiehen) {
+  const schluessel = `${s.mitarbeiter}|${s.datum}`;
+  const vorher = stand.get(schluessel) ?? vorherBeimZiehen;
   try {
     const antwort = await aufruf('pep_plan_malen', {
-      p_mitarbeiter_id: mitarbeiter, p_datum: tagDesStrichs, p_von: von, p_bis: bis,
-      p_bereich_id: pinsel === 'radieren' ? null : Number(pinsel),
+      p_mitarbeiter_id: s.mitarbeiter, p_datum: s.datum, p_von: s.von, p_bis: s.bis, p_bereich_id: bereichId,
     });
-    if (!antwort) return; // Vorschau ohne Datenbank
-    if (inWoche(tagDesStrichs)) {
-      uebernehme(antwort, [mitarbeiter]);
-      if (JSON.stringify(gespeicherteZeile(mitarbeiter, tagDesStrichs)) !== JSON.stringify(vorher)) {
-        stapel.merken({ mitarbeiterId: mitarbeiter, datum: tagDesStrichs, bloecke: vorher });
-      }
-      if (tagDesStrichs === datum) zeichneZeilen([mitarbeiter]);
-      else zeichneSeite(); // Tag inzwischen gewechselt: Wochenstunden trotzdem aktuell halten
-    } else {
-      // Woche inzwischen gewechselt: die Antwort gehört nicht zu den geladenen Daten, Rückgängig gilt trotzdem.
-      stapel.merken({ mitarbeiterId: mitarbeiter, datum: tagDesStrichs, bloecke: vorher });
+    wartend.splice(wartend.indexOf(s), 1);
+    if (!antwort) { zeigeWartende(); return; } // Vorschau ohne Datenbank
+    const nachher = zeileAus(antwort.bloecke ?? [], s.mitarbeiter, s.datum);
+    stand.set(schluessel, nachher);
+    if (JSON.stringify(nachher) !== JSON.stringify(vorher)) {
+      stapel.merken({ mitarbeiterId: s.mitarbeiter, datum: s.datum, bloecke: vorher });
     }
     rahmen.rueckgaengig.disabled = stapel.leer();
+    if (inWoche(s.datum)) {
+      uebernehme(antwort, [s.mitarbeiter]);
+      if (s.datum === datum) zeichneZeilen([s.mitarbeiter]);
+      else { zeigeWartende(); zeichneSeite(); } // Tag inzwischen gewechselt: Wochenstunden trotzdem aktuell halten
+    } else zeigeWartende(); // Woche inzwischen gewechselt: die Antwort gehört nicht zu den geladenen Daten
   } catch (fehler) {
+    if (wartend.includes(s)) wartend.splice(wartend.indexOf(s), 1);
+    zeigeWartende();
     if (fehler.behandelt) return;
-    sperreAmZeiger(fehlerText(fehler.message), e.clientX, e.clientY);
+    sperreAmZeiger(fehlerText(fehler.message), zeiger.x, zeiger.y);
     meldung(fehlerText(fehler.message));
-  } finally {
-    laufend.delete(schluessel);
   }
 }
 
@@ -496,9 +539,12 @@ function sperreAmZeiger(text, x, y) {
 }
 
 // Gespeicherte Blöcke einer Zeile (Abschnitte derselben id wieder zusammengesetzt), wie pep_plan_zeile_setzen sie nimmt.
-function gespeicherteZeile(mid, d) {
+const gespeicherteZeile = (mid, d) => zeileAus(woche.bloecke, mid, d);
+
+// Dasselbe aus einer Liste von Abschnitten (Woche oder Antwort eines Strichs).
+function zeileAus(segmente, mid, d) {
   const bloecke = new Map();
-  for (const s of segmenteVon(mid, d)) {
+  for (const s of segmente.filter((x) => x.mitarbeiter_id === mid && x.datum === d)) {
     const b = bloecke.get(s.id);
     if (!b) bloecke.set(s.id, { von: s.von, bis: s.bis, bereich_id: s.bereich_id });
     else {
@@ -520,16 +566,19 @@ function uebernehme(antwort, ids) {
 }
 
 async function rueckgaengig() {
+  // Erst die offenen Striche abwarten: ihr Eintrag kommt mit der Antwort, und „Rückgängig“ gilt dem letzten Strich.
+  // Schleife: ein Strich, der während des Wartens dazukommt, wird ebenfalls abgewartet.
+  while (ketten.size) await Promise.all([...ketten.values()]);
   const eintrag = stapel.holen();
   rahmen.rueckgaengig.disabled = stapel.leer();
   if (!eintrag) return;
   const schluessel = `${eintrag.mitarbeiterId}|${eintrag.datum}`;
-  laufend.add(schluessel);
-  try {
+  await einreihen(schluessel, async () => {
     const antwort = await aufruf('pep_plan_zeile_setzen', {
       p_mitarbeiter_id: eintrag.mitarbeiterId, p_datum: eintrag.datum, p_bloecke: eintrag.bloecke,
     });
     if (!antwort) return;
+    stand.set(schluessel, zeileAus(antwort.bloecke ?? [], eintrag.mitarbeiterId, eintrag.datum));
     if (inWoche(eintrag.datum)) {
       uebernehme(antwort, [eintrag.mitarbeiterId]);
       if (eintrag.datum === datum) zeichneZeilen([eintrag.mitarbeiterId]);
@@ -538,11 +587,7 @@ async function rueckgaengig() {
       springeZu(eintrag.datum); // Strich aus einer anderen Woche: dorthin wechseln, damit man sieht, was zurückging
     }
     meldung(`Rückgängig: ${nameVon(eintrag.mitarbeiterId) || 'Zeile'}, ${datumDE(eintrag.datum)}`, 'ok');
-  } catch (fehler) {
-    zeigeFehler(fehler);
-  } finally {
-    laufend.delete(schluessel);
-  }
+  });
 }
 
 // ---------------------------------------------------------------- Seitenleiste

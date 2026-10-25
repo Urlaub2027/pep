@@ -74,7 +74,8 @@ async function speichere(index, feld, roh, eingabefeld, anzeige) {
 
 // ---------------------------------------------------------------- Zeilen
 
-const eingabeZeile = (titel, hinweis, feld, anzeige, einheit) => ({
+// platzhalter(w): grauer Text im leeren Feld (z. B. der wirksame Standardwert), optional.
+const eingabeZeile = (titel, hinweis, feld, anzeige, einheit, platzhalter = null) => ({
   titel, hinweis,
   fuellen(td, w, i) {
     let e = td.querySelector('input');
@@ -86,6 +87,7 @@ const eingabeZeile = (titel, hinweis, feld, anzeige, einheit) => ({
       e.addEventListener('change', () => speichere(i, feld, e.value, e, anzeige));
       td.replaceChildren(element('div', { class: 'eingabe-mit-einheit' }, e, element('span', { class: 'einheit' }, einheit)));
     }
+    if (platzhalter) e.placeholder = platzhalter(w);
     if (document.activeElement !== e) e.value = zahlDE(anzeige(w));
   },
 });
@@ -100,8 +102,11 @@ const wertZeile = (titel, hinweis, text, klasse = () => '') => ({
 
 const ZEILEN = [
   eingabeZeile('Planumsatz', 'von Hand eingetragen', 'planumsatz', (w) => w.planumsatz, '€'),
+  // Feld = eigener Wert der Woche (leer ohne); der Standard steht nur als Platzhalter da, damit ein getippter Wert
+  // (auch gleich dem Standard) gespeichert wird und nicht mit dem Standard mitwandert.
   eingabeZeile('Stundenleistung', 'Euro Umsatz je Arbeitsstunde; leer = Standard aus den Einstellungen',
-    'stundenleistung_eur_pro_h', (w) => w.stundenleistung, '€/h'),
+    'stundenleistung_eur_pro_h', (w) => w.stundenleistung_eigen, '€/h',
+    (w) => (w.stundenleistung_eigen == null && w.stundenleistung != null ? `Standard ${zahlDE(w.stundenleistung)}` : 'Standard')),
   wertZeile('Soll-Stunden', 'Planumsatz ÷ Stundenleistung, auf halbe Stunden gerundet', (w) => stunden(w.soll)),
   wertZeile('Vertragsstunden', 'Summe der Wochenstunden aller Beschäftigten dieser Woche', (w) => stunden(w.vertragsstunden)),
   wertZeile('Abwesend', 'Urlaub, Krank, Zeitausgleich u. a. in dieser Woche', (w) => stunden(w.abwesend)),

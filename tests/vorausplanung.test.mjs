@@ -46,6 +46,22 @@ test('Planumsatz 60 050 → 300,25 auf halbe Stunden gerundet = 300.5; Wochen-St
   assert.equal(v.planumsatz, 60050, 'ein Feld ändern lässt die anderen stehen');
 });
 
+test('stundenleistung_eigen: eigener Wochenwert oder null; stundenleistung bleibt der wirksame Wert', async () => {
+  const ohne = await woche(2027, 10);
+  assert.equal(ohne.stundenleistung_eigen, null, 'ohne eigenen Wert null');
+  assert.equal(ohne.stundenleistung, 200, 'wirksam: Standard aus den Einstellungen');
+  // 200 von Hand eingetragen (gleich dem Standard) ist ein eigener Wert
+  const gleich = await speichern(2027, 10, { stundenleistung_eur_pro_h: 200 });
+  assert.equal(gleich.stundenleistung_eigen, 200);
+  assert.equal(gleich.stundenleistung, 200);
+  const eigen = await speichern(2027, 10, { stundenleistung_eur_pro_h: 215 });
+  assert.equal(eigen.stundenleistung_eigen, 215);
+  assert.equal(eigen.stundenleistung, 215);
+  const leer = await speichern(2027, 10, { stundenleistung_eur_pro_h: null });
+  assert.equal(leer.stundenleistung_eigen, null, 'Leeren setzt wieder auf null');
+  assert.equal(leer.stundenleistung, 200);
+});
+
 test('ohne Planumsatz: soll und Überhang null, Vorgabe = verfügbar, Quelle verfuegbar', async () => {
   const w = await woche(2026, 48);
   assert.equal(w.planumsatz, null);

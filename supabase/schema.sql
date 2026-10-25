@@ -243,7 +243,7 @@ begin
       (p_filiale_id, 'OG', 'Obst',          '#9BE38A', 'bereich',  false, true,  2,  null),
       (p_filiale_id, 'BB', 'Backen',        '#F3C96B', 'bereich',  false, true,  3,  null),
       (p_filiale_id, 'TS', 'TroSo',         '#D9B38C', 'bereich',  false, true,  4,  null),
-      (p_filiale_id, 'MO', 'MoPro',         '#F5F5F5', 'bereich',  false, true,  5,  null),
+      (p_filiale_id, 'MO', 'MoPro',         '#F7C6DA', 'bereich',  false, true,  5,  null), -- Erdbeerjoghurt
       (p_filiale_id, 'TK', 'TK',            '#B8C4FF', 'bereich',  false, true,  6,  null),
       (p_filiale_id, 'FÜ', 'Führung',       '#2E7D4F', 'bereich',  false, true,  7,  null),
       (p_filiale_id, 'RE', 'Reinigung',     '#C9C9C9', 'bereich',  false, true,  8,  null),
@@ -2922,6 +2922,7 @@ begin
     'montag', to_char(v_mo, 'YYYY-MM-DD'),
     'planumsatz', v_w.planumsatz,
     'stundenleistung', v_leistung,
+    'stundenleistung_eigen', v_w.stundenleistung_eur_pro_h, -- eigener Wert der Woche; null = Standard aus den Einstellungen
     'soll', v_soll,
     'vertragsstunden', v_vertrag,
     'abwesend', v_abw,
@@ -4464,6 +4465,13 @@ $$;
 
 -- Bestehende Filialen nachrüsten (zweiter Schema-Lauf nach einem Update).
 select pep.grundausstattung(id) from pep.filialen;
+
+-- MoPro: die frühere Startfarbe #F5F5F5 war vom leeren Feld kaum zu unterscheiden. Nur Filialen, in denen MO noch
+-- dieses Grau hat, bekommen die neue Startfarbe (klein geschrieben zählt mit: die Einstellungen speichern die Farbe
+-- aus <input type=color> klein, auch wenn nur ein anderes Feld des Bereichs geändert wurde). Eine von der Leitung
+-- gewählte Farbe bleibt; ein zweiter Lauf ändert nichts mehr.
+update pep.bereiche set farbe = '#F7C6DA'
+ where kuerzel = 'MO' and upper(farbe) = '#F5F5F5';
 
 -- ---------------------------------------------------------------------------
 -- Vorausplanung: sechs Wochen mit Soll, Verfügbar und Überhang (Spec 10)

@@ -4,3 +4,4 @@ node_modules/
 privat/
 tests/vorschau/*.png
 tests/vorschau/*.pdf
+tests/browser/fotos/

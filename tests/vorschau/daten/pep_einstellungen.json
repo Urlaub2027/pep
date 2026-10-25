@@ -178,7 +178,7 @@
  "benutzer": [
   {
    "rolle": "leitung",
-   "user_id": "778224ab-45ea-411d-b9af-f209c6f091b1",
+   "user_id": "4a963232-0e15-48d9-bdfe-b68a5467896d",
    "anzeigename": "chef",
    "benutzername": "chef"
   }
@@ -233,7 +233,7 @@
    "art": "bereich",
    "name": "MoPro",
    "aktiv": true,
-   "farbe": "#F5F5F5",
+   "farbe": "#F7C6DA",
    "kuerzel": "MO",
    "position": 5,
    "bedeutung": null,
