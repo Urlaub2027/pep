@@ -468,3 +468,28 @@ test('Erster Abschluss nur in der Startwoche (ist_ab): KW 45 vor KW 44 → VORWO
   assert.deepEqual(await D.abschluss(2026, 45), { gebucht: 0 });
   await wirft(D.abschluss(2026, 44), 'WOCHE_GEBUCHT');
 });
+
+test('gebucht: Inaktiver ohne Austritt und nach dem Abschluss Angelegter → Diff grau, nicht im Saldo aktuell; Regel wie der Abschluss', async () => {
+  // Eigene Datenbank: Anna aktiv, Ina inaktiv ohne Austritt, beide ohne IST (Diff −37,5); Paul erst nach dem Abschluss.
+  const D = await aufbau(HEUTE, KW46);
+  const anna = await D.ma('Voll, Anna');
+  const ina = await D.ma('Inaktiv, Ina');
+  await D.speichern(ina, { aktiv: false });
+  await D.wocheBestaetigen(KW46);
+  const zeile = async (id) => (await D.zkWoche(2026, 46)).mitarbeiter.find((m) => m.id === id);
+  const werte = async (id) => { const m = await zeile(id); return [m.gebucht, Number(m.diff), Number(m.saldo_aktuell)]; };
+  // Offene Woche: gebucht = der Abschluss würde die Person buchen
+  assert.deepEqual(await werte(anna), [true, -37.5, -37.5]);
+  assert.deepEqual(await werte(ina), [false, -37.5, 0], 'inaktiv: Diff nicht im Saldo aktuell');
+  const offen = (await D.zkWoche(2026, 46)).mitarbeiter;
+  assert.deepEqual(await D.abschluss(2026, 46), { gebucht: offen.filter((m) => m.gebucht).length },
+    'gebucht der offenen Woche = Zeilen des Abschlusses');
+  // Abgeschlossene Woche: gebucht = Zeile woche vorhanden
+  assert.deepEqual(await werte(anna), [true, -37.5, -37.5]);
+  assert.deepEqual(await werte(ina), [false, -37.5, 0]);
+  assert.deepEqual(await D.zeilen(ina), []);
+  // Nach dem Abschluss angelegt, Vertrag seit 01.01.: Diff ohne Buchung
+  const paul = await D.ma('Spaet, Paul');
+  assert.deepEqual(await werte(paul), [false, -37.5, 0]);
+  assert.deepEqual(await D.zeilen(paul), []);
+});

@@ -208,9 +208,9 @@ describe('pep_stundenblatt', () => {
 
     assert.deepEqual(a.wochen, [
       { montag: '2026-12-28', kw: 53, jahr: 2026, soll: 37.5, ist: 0, abwesend: 0, feiertag: 6.25, diff: -31.25,
-        saldo_nach: -3.5, abgeschlossen: false, vor_ist_start: true },
+        saldo_nach: -3.5, abgeschlossen: false, vor_ist_start: true, gebucht: false },
       { montag: '2027-01-04', kw: 1, jahr: 2027, soll: 37.5, ist: 10, abwesend: 6.25, feiertag: 6.25, diff: -15,
-        saldo_nach: -1.5, abgeschlossen: false, vor_ist_start: false },
+        saldo_nach: -1.5, abgeschlossen: false, vor_ist_start: false, gebucht: true },
     ]);
     // Arbeitszeit der Tage = IST der Woche (dieselbe Rechnung pep.arbeitsstunden)
     const summe = a.tage.filter((x) => x.datum >= '2027-01-04').reduce((n, x) => n + (x.arbeitszeit ?? 0), 0);
@@ -242,6 +242,8 @@ describe('pep_stundenblatt', () => {
       'ohne Inaktive, ohne Vertrag erst nach dem Zeitraum, ohne Ausgetretene');
     const c = await blatt(cem2, '2027-01-04', '2027-01-04');
     assert.deepEqual(c.mitarbeiter.map((m) => m.id), [cem2]);
+    // inaktiv ohne Austritt: der Abschluss bucht Cem nicht (pep.wird_gebucht), die Woche heißt „nicht gebucht“
+    assert.deepEqual(c.mitarbeiter[0].wochen.map((w) => [w.montag, w.abgeschlossen, w.gebucht]), [['2027-01-04', false, false]]);
     assert.deepEqual(await blatt(null, '2027-01-01', '2027-01-10', s.stellv), r);
   });
 

@@ -2380,6 +2380,71 @@ await szenario('Hilfe: „?“ auf jedem Reiter, Escape, Klick daneben, IST, Tab
   await pause(300);
 });
 
+await szenario('Zeitkonto: nach dem Abschluss angelegt → Diff grau „nicht gebucht“, nicht im Saldo und nicht in der Summe', async () => {
+  // Vorbereitung (auch im gefilterten Lauf): KW 45 und KW 46 abgeschlossen
+  if (!(await abschluesse()).includes(TAGE[0])) {
+    await bestaetigeTage([...K45, ...TAGE]);
+    for (const kw of [45, 46]) {
+      if (!(await abschluesse()).includes(kw === 45 ? K45[0] : TAGE[0])) {
+        const r = await s.rpc('pep_wochenabschluss', { p_jahr: 2026, p_kw: kw }, B.leitung);
+        if (r.status !== 200) throw new Error(`pep_wochenabschluss KW ${kw}: ${r.json?.message}`);
+      }
+    }
+  }
+  const nils = (await s.rpc('pep_mitarbeiter_speichern', { p_id: null, p_daten: { name: 'Nachtrag, Nils' } }, B.leitung)).json;
+  await s.rpc('pep_vertrag_speichern', { p_mitarbeiter_id: nils, p_daten:
+    { vertragsart: 'vollzeit', wochenstunden: 37.5, gueltig_ab: '2026-01-01' } }, B.leitung);
+  const woche = (await s.rpc('pep_zeitkonto_woche', { p_jahr: 2026, p_kw: 46 }, B.leitung)).json;
+  const n = woche.mitarbeiter.find((m) => m.id === nils);
+  gleich([n.gebucht, Number(n.diff), Number(n.saldo_aktuell)], [false, -37.5, 0], 'DB: Nils nicht gebucht, Saldo ohne Diff');
+  gleich(await journalDB(nils), [], 'DB: Nils ohne Buchung');
+  await alsBenutzer('chef');
+  await reiter('zeitkonto');
+  await c.klick({ text: 'Vorwoche', in: '#ansicht-zeitkonto', sel: 'button', genau: true });
+  await ruhe();
+  gleich(await zkWoche(), 'KW 46/2026', 'KW 46 (abgeschlossen)');
+  const zeile = await c.werte((id) => {
+    const r = document.querySelector(`#ansicht-zeitkonto tr[data-mitarbeiter="${id}"]`);
+    const td = [...r.querySelectorAll('td')];
+    return { diff: td[5].textContent, marke: td[5].querySelector('.zk-nicht-gebucht-marke')?.textContent ?? null,
+      grau: td[5].classList.contains('vorlaeufig'), title: td[5].title, aktuell: td[7].textContent };
+  }, nils);
+  gleich([zeile.diff, zeile.marke, zeile.grau, zeile.aktuell], ['−37,50nicht gebucht', 'nicht gebucht', true, '0,00'],
+    'Nils: Diff grau mit „nicht gebucht“, Saldo aktuell ohne Diff');
+  pruefe(zeile.title.startsWith('nicht gebucht: inaktiv oder beim Abschluss nicht dabei'), 'Tooltip erklärt den Grund', zeile.title);
+  gleich(await anzahl('#ansicht-zeitkonto .zk-nicht-gebucht-marke'), 1, 'nur Nils ist nicht gebucht');
+  const summe = Math.round(woche.mitarbeiter.filter((m) => m.gebucht).reduce((x, m) => x + Number(m.diff), 0) * 100) / 100;
+  const fuss = await c.werte(() => [...document.querySelectorAll('#ansicht-zeitkonto tfoot td')][5].textContent);
+  gleich(zahlDE(fuss), summe, 'Summe Diff ohne die nicht gebuchte Diff');
+  pruefe((await text('#ansicht-zeitkonto .zk-legende-nicht-gebucht'))?.includes('inaktiv oder beim Abschluss nicht dabei'),
+    'Legende unter der Tabelle', await text('#ansicht-zeitkonto .zk-fuss'));
+  await c.foto(`${FOTOS}zeitkonto-nicht-gebucht.png`);
+  // Ausdrucke: Wocheneinsatz-IST und Stundenblatt nennen die Woche ebenso „nicht gebucht“
+  await druckStub();
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-drucken"]');
+  await warteDialog('Drucken');
+  await dKnopf('Wocheneinsatz-IST KW 46');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .dr-wochenist'), { text: 'Wocheneinsatz-IST' });
+  const druckZeile = (name) => c.werte((n) => {
+    const tr = [...document.querySelectorAll('#ansicht-druck .dr-wochenist tbody tr')].find((r) => r.cells[0].textContent.startsWith(n));
+    return tr ? [...tr.cells].slice(-3).map((td) => [td.textContent, td.classList.contains('dr-nicht-gebucht')]) : null;
+  }, name);
+  gleich(await druckZeile('Nachtrag, Nils'), [['−37,50nicht gebucht', true], ['0,00', false], ['0,00', false]],
+    'Wocheneinsatz-IST: Diff „nicht gebucht“, Saldo ohne Diff');
+  gleich((await druckZeile('Muster, Ben'))[0], ['+2,50', false], 'Wocheneinsatz-IST: gebuchte Diff wie bisher');
+  await druckAufraeumen();
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-drucken"]');
+  await warteDialog('Drucken');
+  await dKnopf('Stundenblatt');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .dr-stundenblatt'), { text: 'Stundenblatt' });
+  const hinweis = await c.werte(() => {
+    const seite = [...document.querySelectorAll('#ansicht-druck .dr-seite')].find((x) => x.querySelector('.dr-person')?.textContent.startsWith('Nachtrag, Nils'));
+    return seite ? [...seite.querySelectorAll('.dr-stundenblatt-wochen tbody tr')].map((tr) => [tr.cells[0].textContent, [...tr.cells].at(-1).textContent]) : null;
+  });
+  gleich(hinweis, [['KW 46/2026', 'nicht gebucht']], 'Stundenblatt: Woche „nicht gebucht“');
+  await druckAufraeumen();
+});
+
 // ================================================================ Ende
 
 const ok = ergebnisse.filter((e) => e.ok).length;

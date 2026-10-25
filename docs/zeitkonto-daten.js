@@ -42,11 +42,15 @@ function ortsDatum(zeitstempel) {
   return `${d.getFullYear()}-${zwei(d.getMonth() + 1)}-${zwei(d.getDate())}`;
 }
 
-// Summenzeile der Wochentabelle über alle angezeigten Mitarbeiter.
+// Summenzeile der Wochentabelle über alle angezeigten Mitarbeiter. Die Diff zählt nur, wo sie gebucht ist bzw. beim
+// Abschluss gebucht wird (pep_zeitkonto_woche.gebucht; fehlt das Feld, wie gebucht): Die Summe soll zeigen, was ins
+// Zeitkonto geht, nicht die Diff von Inaktiven oder nach dem Abschluss Angelegten.
 export function wochenSumme(mitarbeiter) {
   const summe = { soll: 0, ist: 0, abwesend: 0, feiertag: 0, diff: 0 };
   for (const m of mitarbeiter ?? []) {
-    for (const k of Object.keys(summe)) summe[k] += Number(m[k] ?? 0);
+    for (const k of Object.keys(summe)) {
+      if (k !== 'diff' || m.gebucht !== false) summe[k] += Number(m[k] ?? 0);
+    }
   }
   for (const k of Object.keys(summe)) summe[k] = rund(summe[k]);
   return summe;

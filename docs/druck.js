@@ -237,11 +237,15 @@ function wochenIst({ ist, zeitkonto }) {
     text.replace(' / ', '\n').replace(/, /g, '\n'));
   const zahlZelle = (n, mitVz = false) => element('td', { class: `zahl${n < 0 ? ' minus' : ''}` },
     n == null ? '' : mitVz ? vorzeichen(n) : zahl(n));
+  // Diff, die der Abschluss nicht bucht bzw. nicht gebucht hat (inaktiv, beim Abschluss nicht dabei): grau, markiert.
+  const diffZelle = (z) => (z.gebucht === false && !vor
+    ? element('td', { class: 'zahl dr-nicht-gebucht' }, vorzeichen(z.diff), element('small', {}, 'nicht gebucht'))
+    : zahlZelle(z.diff, true));
   const reihen = zeilen.map((z) => element('tr', {},
     element('th', { class: 'dr-name' }, z.name, z.personalnummer ? element('small', {}, z.personalnummer) : null),
     zahlZelle(z.soll),
     tage.map((t) => zelle(z.tage[t.i])),
-    zahlZelle(z.ist), zahlZelle(z.spaet), zahlZelle(z.diff, true), zahlZelle(z.saldo_vorwoche, true),
+    zahlZelle(z.ist), zahlZelle(z.spaet), diffZelle(z), zahlZelle(z.saldo_vorwoche, true),
     zahlZelle(z.saldo_aktuell, true)));
   const summe = (feld) => zeilen.reduce((s, z) => s + (z[feld] ?? 0), 0);
   return element('div', { class: 'dr-seite' },
@@ -262,7 +266,8 @@ function wochenIst({ ist, zeitkonto }) {
       'Je Tag das bestätigte IST: Zeiten, darunter Arbeitsstunden ohne Pause und (P Pause); Abwesenheit als Code/Stunden; '
       + '„offen“ = noch nicht bestätigt (zählt nicht); „–“ = geschlossen oder nicht gearbeitet. '
       + 'IST = bestätigte Arbeitszeit ohne Pausen; Spät = davon ab der Spätgrenze; '
-      + 'Diff = IST + Abwesend + Feiertag − Soll (Führung: Plus erst über der Grenze); Saldo = Zeitkonto.'));
+      + 'Diff = IST + Abwesend + Feiertag − Soll (Führung: Plus erst über der Grenze); Saldo = Zeitkonto. '
+      + 'Diff „nicht gebucht“: inaktiv oder beim Abschluss nicht dabei, zählt nicht im Saldo.'));
 }
 
 // ---------------------------------------------------------------- Stundenblatt (Stufe 2, A4 hoch)
@@ -321,7 +326,7 @@ function stundenblatt(daten) {
         + 'Abwesenheit „ohne Gutschrift“ (z. B. ZA) zählt nicht in der Summe. '
         + '„offen“ = noch nicht bestätigt, ohne Stunden. Wochen ganz, auch Tage außerhalb des Zeitraums. '
         + 'Saldo = gebuchtes Zeitkonto nach dem Sonntag der Woche; die Diff einer nicht abgeschlossenen Woche ist darin '
-        + 'noch nicht enthalten.'),
+        + 'noch nicht enthalten, eine Diff mit „nicht gebucht“ (inaktiv oder beim Abschluss nicht dabei) nie.'),
       // Unterschriften am Ende der Person: bei mehreren Seiten nur auf ihrer letzten.
       element('div', { class: 'dr-unterschriften' },
         element('div', { class: 'dr-unterschrift' }, 'Datum, Unterschrift Mitarbeiter/in'),

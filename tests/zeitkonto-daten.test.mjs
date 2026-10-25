@@ -68,6 +68,15 @@ test('wochenSumme: Summe von Soll, IST, Abwesend, Feiertag und Diff über alle Z
   assert.deepEqual(wochenSumme([]), { soll: 0, ist: 0, abwesend: 0, feiertag: 0, diff: 0 });
 });
 
+test('wochenSumme: Diff nicht gebuchter Zeilen (gebucht false) zählt nicht, Soll und IST schon', () => {
+  const ma = [
+    { soll: 37.5, ist: 40, abwesend: 0, feiertag: 0, diff: 2.5, gebucht: true },
+    { soll: 37.5, ist: 0, abwesend: 0, feiertag: 0, diff: -37.5, gebucht: false },
+    { soll: 10, ist: 9, abwesend: 0, feiertag: 0, diff: -1 }, // ohne Feld: wie gebucht
+  ];
+  assert.deepEqual(wochenSumme(ma), { soll: 85, ist: 49, abwesend: 0, feiertag: 0, diff: 1.5 });
+});
+
 test('stundenEingabe: Komma oder Punkt, Minus auch typografisch, höchstens zwei Stellen, 0 und Unsinn ungültig', () => {
   assert.equal(stundenEingabe('2,25'), 2.25);
   assert.equal(stundenEingabe('−4,5'), -4.5);

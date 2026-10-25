@@ -201,6 +201,8 @@ export function wochenIstZeilen(ist, zeitkonto) {
       ist: zahlOderNull(k?.ist),
       spaet: zahlOderNull(k?.spaet),
       diff: zahlOderNull(k?.diff),
+      // false: Diff wird bzw. wurde nicht gebucht (pep_zeitkonto_woche.gebucht), steht nicht im Saldo; ohne Zeile null
+      gebucht: k ? k.gebucht !== false : null,
       saldo_vorwoche: zahlOderNull(k?.saldo_vorwoche),
       saldo_aktuell: zahlOderNull(k?.saldo_aktuell),
     };
@@ -220,6 +222,7 @@ const kurzDatum = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
 // Dienst 06:00–08:00, 13:30–17:30“ (mehrere zusammenhängende Zeiten), mit „ · “ verbunden. Eine Abwesenheit ohne
 // zaehlt (ZA, U am Feiertag mit Gutschrift) steht als „ZA (ohne Gutschrift)“ da und fehlt in der Summe.
 // Wochen: Saldo = gebuchter Saldo bis zum Sonntag; nicht abgeschlossene Wochen sind markiert, ihre Diff fehlt im Saldo.
+// gebucht false (inaktiv, beim Abschluss nicht dabei; pep.wird_gebucht): „nicht gebucht“, die Diff fehlt im Saldo immer.
 export function stundenblattSeiten(daten) {
   return (daten?.mitarbeiter ?? []).map((m) => {
     const zeilen = (m.tage ?? []).map((t) => ({
@@ -244,7 +247,8 @@ export function stundenblattSeiten(daten) {
       feiertag: stundenText(w.feiertag),
       diff: vorzeichen(w.diff),
       saldo: vorzeichen(w.saldo_nach),
-      hinweis: w.abgeschlossen ? '' : w.vor_ist_start ? 'vor IST-Start, nicht gebucht' : 'nicht abgeschlossen',
+      hinweis: w.vor_ist_start && !w.abgeschlossen ? 'vor IST-Start, nicht gebucht'
+        : w.gebucht === false ? 'nicht gebucht' : w.abgeschlossen ? '' : 'nicht abgeschlossen',
     }));
     return {
       id: m.id,

@@ -48,6 +48,9 @@ const laeuft = () => laufendeWoche(woche, heuteIso());
 const vorStart = () => Boolean(woche?.vor_ist_start) && !woche.abgeschlossen;
 const VOR_START = 'vor dem Start der IST-Erfassung: wird nicht gebucht, zählt nicht im Saldo';
 const VORLAEUFIG = 'vorläufig: Soll der ganzen Woche, IST erst bis heute';
+// Zeile mit gebucht = false (pep_zeitkonto_woche): Der Abschluss bucht diese Diff nicht bzw. hat sie nicht gebucht.
+const NICHT_GEBUCHT = 'nicht gebucht: inaktiv oder beim Abschluss nicht dabei – zählt nicht im Saldo und nicht in der '
+  + 'Summe; Korrektur von Hand möglich';
 
 // ---------------------------------------------------------------- Laden
 
@@ -208,6 +211,17 @@ function saldoZellen(m, laufend) {
     if (!aktuell.title) aktuell.title = VOR_START;
     return [diff, zahlZelle(vorzeichen(m.saldo_vorwoche)), aktuell];
   }
+  if (m.gebucht === false) { // grau mit „nicht gebucht“; Saldo aktuell ohne die Diff (Server)
+    const diff = zahlZelle(vorzeichen(m.diff), 'vorlaeufig zk-nicht-gebucht');
+    diff.title = NICHT_GEBUCHT;
+    diff.append(element('small', { class: 'zk-nicht-gebucht-marke' }, 'nicht gebucht'));
+    const vorwoche = laufend
+      ? saldoZelle(m.saldo_vorwoche, saldoWarnung(m.saldo_vorwoche, m.wochenstunden, warnfaktor), '')
+      : zahlZelle(vorzeichen(m.saldo_vorwoche));
+    const aktuell = laufend ? zahlZelle(vorzeichen(m.saldo_aktuell))
+      : saldoZelle(m.saldo_aktuell, m.warnung, vorzeichenKlasse(m.saldo_aktuell));
+    return [diff, vorwoche, aktuell];
+  }
   if (laufend) {
     const diff = zahlZelle(vorzeichen(m.diff), 'vorlaeufig');
     diff.title = VORLAEUFIG;
@@ -249,6 +263,7 @@ function zeichneTabelle() {
   const laufend = laeuft();
   const vor = vorStart();
   const grau = laufend || vor;
+  const nichtGebucht = !vor && liste.some((m) => m.gebucht === false);
   const kopf = element('tr', {}, element('th', { scope: 'col' }, 'Mitarbeiter'),
     SPALTEN.map(([titel, hinweis], i) => element('th', {
       scope: 'col', title: hinweis, class: i > 0 && i < SPALTEN.length - 1 ? 'zahl' : '',
@@ -257,7 +272,9 @@ function zeichneTabelle() {
         !vor ? 'vorläufig' : titel === 'Diff' ? 'nicht gebucht' : 'ohne Diff') : null)));
   const fuss = element('tr', {}, element('th', { scope: 'row' }, 'Summe'), element('td'),
     zahlZelle(stundenDE(s.soll)), zahlZelle(stundenDE(s.ist)), zahlZelle(stundenDE(s.abwesend)),
-    zahlZelle(stundenDE(s.feiertag)), zahlZelle(vorzeichen(s.diff), grau ? 'vorlaeufig' : vorzeichenKlasse(s.diff)),
+    zahlZelle(stundenDE(s.feiertag)),
+    Object.assign(zahlZelle(vorzeichen(s.diff), grau ? 'vorlaeufig' : vorzeichenKlasse(s.diff)),
+      { title: nichtGebucht ? 'Summe ohne die nicht gebuchten Diffs' : '' }),
     element('td'), element('td'), element('td'), element('td'));
   rahmen.tabelle.replaceChildren(
     element('div', { class: 'tabelle-scroll' },
@@ -270,7 +287,9 @@ function zeichneTabelle() {
         ? 'Die Woche läuft noch: Diff und Saldo aktuell sind vorläufig (Soll der ganzen Woche, IST erst bis heute). '
           + '⚠ = Saldo Vorwoche über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).'
         : '⚠ = Saldo über dem Warnwert (Warnfaktor × Wochenstunden, Einstellungen).',
-    woche.abgeschlossen || grau ? '' : ' Solange die Woche nicht gebucht ist, enthält „Saldo aktuell“ die Diff.'));
+    woche.abgeschlossen || grau ? '' : ' Solange die Woche nicht gebucht ist, enthält „Saldo aktuell“ die Diff.',
+    nichtGebucht ? element('span', { class: 'zk-legende-nicht-gebucht' }, ' Grau mit „nicht gebucht“: inaktiv oder beim '
+      + 'Abschluss nicht dabei – die Diff zählt weder im Saldo noch in der Summe; Korrektur von Hand möglich.') : ''));
 }
 
 // ---------------------------------------------------------------- Woche buchen

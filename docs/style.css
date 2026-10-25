@@ -909,6 +909,8 @@ table.zk-tabelle td.zk-warnung { background: var(--hinweis); }
 /* Laufende Woche: Diff und Saldo aktuell neutral grau, im Spaltenkopf „vorläufig“ */
 .zk-tabelle .zahl.vorlaeufig { color: var(--text-2); font-weight: 400; font-style: italic; }
 .zk-vorlaeufig-marke { display: block; font-size: 0.75rem; font-weight: 400; font-style: italic; color: var(--text-2); }
+/* Diff, die der Abschluss nicht bucht (pep_zeitkonto_woche.gebucht = false): grau mit „nicht gebucht“ darunter */
+.zk-nicht-gebucht-marke { display: block; font-size: 0.75rem; font-style: italic; color: var(--text-2); }
 .dialog .zk-erster { margin-top: 0; }
 .zk-name {
   padding: 0; font: inherit; color: var(--text); text-align: left; background: none; border: 0; cursor: pointer;
@@ -1029,6 +1031,8 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
 
   /* Wocheneinsatz-IST (Stufe 2): wie der Wochenplan; „offen“ grau und kursiv (zählt nicht) */
   .dr-wochenist td.dr-offen { color: #555; font-style: italic; }
+  .dr-wochenist td.dr-nicht-gebucht { color: #555; font-style: italic; }
+  .dr-wochenist td.dr-nicht-gebucht small { display: block; font-size: 6pt; }
 
   /* Stundenblatt (Stufe 2): A4 hoch über die benannte Seite „hoch“, eine Seite je Mitarbeiter (.dr-seite) */
   @page hoch { size: A4 portrait; margin: 10mm 12mm; }

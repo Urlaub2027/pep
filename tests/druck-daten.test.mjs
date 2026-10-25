@@ -250,6 +250,15 @@ test('Wocheneinsatz-IST: bestätigt „07:00–15:30 / 8,00 (P 0:30)“, offen �
   assert.deepEqual(anna.tage, ['07:00–15:30 / 8,00 (P 0:30)', '–', 'offen', 'offen', '', '', '–']);
   assert.deepEqual([anna.vertrag, anna.soll, anna.ist, anna.spaet, anna.diff, anna.saldo_vorwoche, anna.saldo_aktuell],
     [37.5, 37.5, 8, 1.5, -29.5, 4, -25.5]);
+  assert.equal(anna.gebucht, true, 'ohne Feld gebucht: wie gebucht');
+});
+
+test('Wocheneinsatz-IST: gebucht aus dem Zeitkonto (false = Diff nicht gebucht), ohne Zeitkonto-Zeile null', () => {
+  const zk = zkWoche();
+  zk.mitarbeiter[1] = { ...zk.mitarbeiter[1], gebucht: false, diff: -37.5, saldo_aktuell: -2.25 };
+  const [anna, ben, cem] = wochenIstZeilen(istWoche(), zk);
+  assert.deepEqual([anna.gebucht, ben.gebucht, cem.gebucht], [true, null, false]);
+  assert.deepEqual([cem.diff, cem.saldo_aktuell], [-37.5, -2.25]);
 });
 
 test('Wocheneinsatz-IST: Abwesenheit „U/6,25“; Teil-KM vor dem IST bzw. vor „offen“; ohne Zeitkonto-Zeile leer', () => {
@@ -291,6 +300,9 @@ const stundenblatt = () => ({
         saldo_nach: -1.5, abgeschlossen: false, vor_ist_start: false },
       { montag: '2027-01-11', kw: 2, jahr: 2027, soll: 37.5, ist: 40, abwesend: 0, feiertag: 0, diff: 2.5,
         saldo_nach: 1, abgeschlossen: true, vor_ist_start: false },
+      // abgeschlossen, aber ohne Zeile woche (etwa inaktiv): Diff steht da, ist aber nicht gebucht
+      { montag: '2027-01-18', kw: 3, jahr: 2027, soll: 37.5, ist: 0, abwesend: 0, feiertag: 0, diff: -37.5,
+        saldo_nach: 1, abgeschlossen: true, vor_ist_start: false, gebucht: false },
     ],
   }],
 });
@@ -321,6 +333,7 @@ test('Stundenblatt: Wochenzeilen mit Soll, IST, Abwesend, Feiertag, Diff und Sal
     ['KW 53/2026', '28.12.–03.01.', '37,50', '0,00', '0,00', '6,25', '−31,25', '−3,50', 'vor IST-Start, nicht gebucht'],
     ['KW 1/2027', '04.01.–10.01.', '37,50', '10,00', '6,25', '6,25', '−15,00', '−1,50', 'nicht abgeschlossen'],
     ['KW 2/2027', '11.01.–17.01.', '37,50', '40,00', '0,00', '0,00', '+2,50', '+1,00', ''],
+    ['KW 3/2027', '18.01.–24.01.', '37,50', '0,00', '0,00', '0,00', '−37,50', '+1,00', 'nicht gebucht'],
   ]);
 });
 

@@ -5670,6 +5670,22 @@ as $$
     from (select (pep.einstellung(p_filiale_id, 'zeitkonto_warnfaktor') #>> '{}')::numeric as faktor) f
 $$;
 
+-- Bucht der Wochenabschluss den Mitarbeiter in der Woche ab p_montag (Zeile woche)? Einzige Stelle der Regel:
+-- pep_wochenabschluss bucht genau diese Mitarbeiter, pep_zeitkonto_woche und pep.stundenblatt_person nennen eine offene
+-- Woche damit „gebucht“ oder „nicht gebucht“. Aktiv (Ruling Task 4: Inaktive ohne Zeile woche, sonst wüchse beim
+-- Deaktivieren ohne Austritt jede Woche ein Minus), nicht vor dem Montag ausgetreten und ein Vertrag in der Woche
+-- (pep.wochenvertrag). Korrekturen gibt es danach nur für Paare mit Zeile woche (pep.zeitkonto_abgleichen).
+create or replace function pep.wird_gebucht(p_mitarbeiter_id bigint, p_montag date)
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select coalesce(m.aktiv and (m.austritt is null or m.austritt >= p_montag)
+                  and (pep.wochenvertrag(m.id, p_montag)).id is not null, false)
+    from pep.mitarbeiter m
+   where m.id = p_mitarbeiter_id
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Zeitkonto: Funktionen für den Browser
 -- ---------------------------------------------------------------------------
@@ -5677,9 +5693,12 @@ $$;
 -- Zeitkonto einer Woche (Leitung und Stellvertretung): je Mitarbeiter mit Wochenrechnung (pep.zeitkonto_woche nicht
 -- NULL) alle Felder der Rechnung, dazu der Saldo nach G2 aus dem Journal, verglichen über Datumswerte (nie über
 -- jahr/kw): saldo_vorwoche = Buchungen vor dem Montag; saldo_aktuell = saldo_vorwoche + Buchungen der Woche + (Woche
--- nicht abgeschlossen ? diff : 0 – beim Abschluss steckt diff in der Buchung „woche“). warnung am saldo_aktuell nach
--- pep.zeitkonto_warnung. vor_ist_start (Montag < ist_ab): die Woche wird nie gebucht, darum ohne diff im saldo_aktuell
--- (diff bleibt zur Ansicht in der Zeile); ist_ab = Start der IST-Erfassung oder null.
+-- nicht abgeschlossen und gebucht ? diff : 0 – beim Abschluss steckt diff in der Buchung „woche“). warnung am
+-- saldo_aktuell nach pep.zeitkonto_warnung. gebucht: abgeschlossene Woche = es gibt eine Zeile woche; offene Woche = der
+-- Abschluss würde die Person buchen (pep.wird_gebucht, dieselbe Regel wie pep_wochenabschluss) und die Woche liegt nicht
+-- vor ist_ab. Sonst (inaktiv, nach dem Abschluss angelegt, vor dem Start) steht diff nur zur Ansicht da: Der Abschluss
+-- bucht sie nicht, und ohne Zeile woche gibt es keine Korrekturen (Korrektur von Hand möglich). vor_ist_start (Montag <
+-- ist_ab): die Woche wird nie gebucht; ist_ab = Start der IST-Erfassung oder null.
 -- offene_tage = offene IST-Zeilen der Filiale in der Woche (pep.ist_zeilen). abgeschlossen = {am, von_name} oder null.
 create or replace function public.pep_zeitkonto_woche(p_jahr int, p_kw int)
 returns jsonb
@@ -5706,23 +5725,26 @@ begin
     'offene_tage', (select count(*)::int from pep.ist_zeilen(v_b.filiale_id, v_mo, v_mo + 6, null) z
                      where z.bestaetigt_am is null),
     'mitarbeiter', coalesce((
-      select jsonb_agg(jsonb_build_object('id', x.id, 'name', x.name, 'aktiv', x.aktiv) || x.zk
+      select jsonb_agg(jsonb_build_object('id', y.id, 'name', y.name, 'aktiv', y.aktiv) || y.zk
                        || jsonb_build_object(
-                            'saldo_vorwoche', x.vor, 'saldo_aktuell', x.akt,
-                            'warnung', pep.zeitkonto_warnung(x.akt, x.ws, v_b.filiale_id))
-                       order by x.aktiv desc, x.position, x.name, x.id)
-        from (select m.id, m.name, m.aktiv, m.position, z.zk, (z.zk ->> 'wochenstunden')::numeric as ws, s.vor,
-                     s.vor + s.woche + case when v_a.montag is null and v_mo >= v_ist_ab
-                                            then (z.zk ->> 'diff')::numeric else 0 end as akt
+                            'gebucht', y.gebucht, 'saldo_vorwoche', y.vor, 'saldo_aktuell', y.akt,
+                            'warnung', pep.zeitkonto_warnung(y.akt, y.ws, v_b.filiale_id))
+                       order by y.aktiv desc, y.position, y.name, y.id)
+        from (select x.*, x.vor + x.woche + case when v_a.montag is null and x.gebucht
+                                                 then (x.zk ->> 'diff')::numeric else 0 end as akt
+        from (select m.id, m.name, m.aktiv, m.position, z.zk, (z.zk ->> 'wochenstunden')::numeric as ws, s.vor, s.woche,
+                     case when v_a.montag is not null then s.hat_woche
+                          else v_mo >= v_ist_ab and pep.wird_gebucht(m.id, v_mo) end as gebucht
                 from pep.mitarbeiter m
                 -- offset 0: Ohne ihn zieht der Planer die Unterabfrage hoch und rechnet pep.zeitkonto_woche für jede
                 -- Verwendung von z.zk neu (Filter, zk, ws, akt; gemessen bei 20 Mitarbeitern 265 ms statt 60 ms).
                 cross join lateral (select pep.zeitkonto_woche(m.id, v_mo) as zk offset 0) z
                 cross join lateral (
                   select coalesce(sum(k.stunden) filter (where k.datum < v_mo), 0) as vor,
-                         coalesce(sum(k.stunden) filter (where k.datum between v_mo and v_mo + 6), 0) as woche
+                         coalesce(sum(k.stunden) filter (where k.datum between v_mo and v_mo + 6), 0) as woche,
+                         coalesce(bool_or(k.art = 'woche' and k.datum = v_mo), false) as hat_woche
                     from pep.zeitkonto_buchungen k where k.mitarbeiter_id = m.id) s
-               where m.filiale_id = v_b.filiale_id and z.zk is not null) x), '[]'::jsonb));
+               where m.filiale_id = v_b.filiale_id and z.zk is not null) x) y), '[]'::jsonb));
 end;
 $$;
 
@@ -6184,11 +6206,11 @@ begin
     null, to_jsonb(v_a));
   -- Jeder Aktive mit Vertrag in der Woche bekommt eine Zeile, auch 0 (etwa Eintritt erst nach der Woche): Nur Wochen
   -- mit Zeile woche werden später nachgebucht (pep.zeitkonto_abgleichen). Ausnahme: Austritt vor dem Montag – sonst
-  -- bekäme jeder Ausgeschiedene, der noch aktiv ist, für immer jede Woche eine Nullzeile.
+  -- bekäme jeder Ausgeschiedene, der noch aktiv ist, für immer jede Woche eine Nullzeile. Die Regel steht nur in
+  -- pep.wird_gebucht (der Reiter Zeitkonto zeigt damit vorab, wen der Abschluss bucht).
   for v_m in select m.id, coalesce((pep.zeitkonto_woche(m.id, v_mo) ->> 'diff')::numeric, 0) as diff
                from pep.mitarbeiter m
-              where m.filiale_id = v_b.filiale_id and m.aktiv and (m.austritt is null or m.austritt >= v_mo)
-                and (pep.wochenvertrag(m.id, v_mo)).id is not null
+              where m.filiale_id = v_b.filiale_id and pep.wird_gebucht(m.id, v_mo)
               order by m.id loop
     perform pep.zeitkonto_buchen(v_b.filiale_id, v_m.id, v_mo, 'woche', v_m.diff, null);
     v_n := v_n + 1;
@@ -6282,8 +6304,10 @@ $$;
 -- und seine Woche liegt vor dem Start (ist_ab ist ein Montag), wird also nie gebucht (vor_ist_start): Der Saldo bleibt
 -- unberührt, nur die Spalte IST dieser Woche passt nicht zur Summe der Tage.
 -- Woche: Wochen, die der Zeitraum berührt, ganz (auch Tage außerhalb des Zeitraums); abgeschlossen = Woche gebucht,
--- vor_ist_start = Woche vor dem Start der IST-Erfassung (wird nie gebucht). saldo_nach enthält nur Gebuchtes: in einer
--- nicht abgeschlossenen Woche fehlt die Diff noch.
+-- vor_ist_start = Woche vor dem Start der IST-Erfassung (wird nie gebucht). gebucht wie in pep_zeitkonto_woche:
+-- abgeschlossen = Zeile woche vorhanden, offen = der Abschluss würde die Person buchen (pep.wird_gebucht) und nicht vor
+-- dem Start. saldo_nach enthält nur Gebuchtes: in einer nicht abgeschlossenen Woche fehlt die Diff noch, eine nicht
+-- gebuchte Diff fehlt immer.
 -- p_status: Öffnung je Tag des Zeitraums [{tag, geoeffnet, feiertag}] aus pep_stundenblatt, einmal je Aufruf statt je
 -- Mitarbeiter und Tag gerechnet (pep.tag_status hängt nur von Filiale und Tag ab).
 drop function if exists pep.stundenblatt_person(bigint, date, date); -- Fassung vor Fix-Runde 1 (ohne p_status)
@@ -6360,14 +6384,19 @@ as $$
                'feiertag', z.zk -> 'feiertag', 'diff', z.zk -> 'diff',
                'saldo_nach', (select coalesce(sum(k.stunden), 0) from pep.zeitkonto_buchungen k
                                where k.mitarbeiter_id = p_mitarbeiter_id and k.datum <= w.mo + 6),
-               'abgeschlossen', exists (select 1 from pep.wochen_abschluesse x
-                                         where x.filiale_id = w.filiale_id and x.montag = w.mo),
-               'vor_ist_start', w.mo < w.ist_ab)
+               'abgeschlossen', a.abgeschlossen,
+               'vor_ist_start', w.mo < w.ist_ab,
+               'gebucht', case when a.abgeschlossen
+                               then exists (select 1 from pep.zeitkonto_buchungen k
+                                             where k.mitarbeiter_id = p_mitarbeiter_id and k.datum = w.mo and k.art = 'woche')
+                               else w.mo >= w.ist_ab and pep.wird_gebucht(p_mitarbeiter_id, w.mo) end)
              order by w.mo)
         from wochen w
         -- offset 0: Ohne ihn zieht der Planer die Unterabfrage hoch und rechnet pep.zeitkonto_woche je Verwendung von
         -- z.zk neu (gemessen: sechsmal je Woche, 20 Mitarbeiter × 62 Tage 3,0 s statt 0,7 s).
         cross join lateral (select pep.zeitkonto_woche(p_mitarbeiter_id, w.mo) as zk offset 0) z
+        cross join lateral (select exists (select 1 from pep.wochen_abschluesse x
+                                            where x.filiale_id = w.filiale_id and x.montag = w.mo) as abgeschlossen) a
        where z.zk is not null), '[]'::jsonb))
   from m
 $$;
