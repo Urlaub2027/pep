@@ -61,11 +61,15 @@ test('Stufe-1-Datenbank mit Planblöcken → neues Schema zweimal: Daten bleiben
   const vorher = {};
   for (const t of ['mitarbeiter', 'vertraege', 'plan_bloecke', 'abwesenheiten']) vorher[t] = await lesen(t);
   assert.equal(vorher.plan_bloecke.length, 1);
+  const planWoche = () => json('select public.pep_einsatzplan_woche(2026, 46) as r');
+  const wocheVorher = await planWoche();
 
   await db.exec(SCHEMA);
   await db.exec(SCHEMA);
 
   for (const t of Object.keys(vorher)) assert.deepEqual(await lesen(t), vorher[t], t);
+  // Plan-Antwort unverändert (pep_einsatzplan_woche läuft jetzt über pep.woche_antwort)
+  assert.deepEqual(await planWoche(), wocheVorher);
   const gutschrift = async () => Object.fromEntries((await db.query(
     'select code, gutschrift from pep.abwesenheitscodes where filiale_id = $1', [fil])).rows.map((r) => [r.code, r.gutschrift]));
   const g = await gutschrift();

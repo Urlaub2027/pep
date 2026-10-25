@@ -50,6 +50,21 @@ const segmente = (antwort, maId, datum = null) => antwort.bloecke
   .filter((b) => b.mitarbeiter_id === maId && (datum === null || b.datum === datum))
   .map(({ datum: d, von, bis, bereich_id, unbesetzt, vorschlag }) => ({ datum: d, von, bis, bereich_id, unbesetzt, vorschlag }));
 
+// Wie zeileAus in docs/einsatzplan.js: Segmente derselben id einer Zeile wieder zu Blöcken zusammensetzen.
+const minuten = (hhmm) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+function zeileAus(seg, maId, datum) {
+  const bloecke = new Map();
+  for (const s of seg.filter((x) => x.mitarbeiter_id === maId && x.datum === datum)) {
+    const b = bloecke.get(s.id);
+    if (!b) bloecke.set(s.id, { von: s.von, bis: s.bis, bereich_id: s.bereich_id });
+    else {
+      if (minuten(s.von) < minuten(b.von)) b.von = s.von;
+      if (minuten(s.bis) > minuten(b.bis)) b.bis = s.bis;
+    }
+  }
+  return [...bloecke.values()].sort((x, y) => minuten(x.von) - minuten(y.von));
+}
+
 let t; // gemeinsame Datenbank
 let chef2, fremdMa, fremdBereich, azubiNutzer;
 
@@ -73,7 +88,7 @@ test('Vorschlag = besetzter Plan: Plan KA 08–16 mit KM 12–16 → Vorschlag 0
   const w = await istWoche(2026, 46);
   assert.deepEqual(segmente(w, a, '2026-11-09'),
     [{ datum: '2026-11-09', von: '08:00', bis: '12:00', bereich_id: bereich.KA, unbesetzt: false, vorschlag: true }]);
-  assert.equal(w.bloecke.find((b) => b.mitarbeiter_id === a && b.datum === '2026-11-09').id, null);
+  assert.ok(w.bloecke.find((b) => b.mitarbeiter_id === a && b.datum === '2026-11-09').id < 0, 'Vorschlag-id negativ');
   assert.deepEqual(await gespeichert(a, '2026-11-09'), []);
   // Plan-Segmente der Woche liegen daneben (mit dem unbesetzten Teil)
   assert.deepEqual(w.plan_bloecke.filter((b) => b.mitarbeiter_id === a).map(({ von, bis, unbesetzt }) => ({ von, bis, unbesetzt })),
@@ -160,12 +175,67 @@ test('Abwesenheit: ganztägig U → ABWESEND; Teilabwesenheit sperrt nur ihr Fen
   const r = await ist(leitung, a, '2026-11-13', '08:00', '12:00', 'KA');
   assert.equal(segmente(r, a).length, 1);
   await ist(leitung, a, '2026-11-13', '16:00', '18:00', 'KA');
-  // nicht sperrender Code (NV) sperrt nicht
-  const nv = (await t.json(leitung, 'select public.pep_einstellungen() as r')).codes.find((c) => c.code === 'NV');
-  if (!nv.sperrt) {
-    await abwesend(a, 'NV', '2026-11-14');
-    await ist(leitung, a, '2026-11-14', '08:00', '12:00', 'KA');
-  }
+  // nicht sperrender Code sperrt nicht: eigener Code „IN“ mit sperrt = false
+  const inId = await t.json(leitung, `select public.pep_code_speichern(null,
+    '{"code":"IN","name":"Info","farbe":"#123456","stundenregel":"keine","sperrt":false}') as r`);
+  await t.json(leitung, `select public.pep_abwesenheit_setzen($1, $2, '2026-11-14', '2026-11-14', null, null, null, null) as r`, [a, inId]);
+  const r2 = await ist(leitung, a, '2026-11-14', '08:00', '12:00', 'KA');
+  assert.deepEqual(segmente(r2, a).map((s) => `${s.von}-${s.bis}/${s.unbesetzt}`), ['08:00-12:00/false']);
+});
+
+test('G6: IST-Block vor der Abwesenheit gespeichert → Strich daneben geht, Bereichswechsel in der Abwesenheit → ABWESEND', async () => {
+  const { ma, ist, istSetzen, abwesend, leitung, istWoche, bereich } = t;
+  const a = await ma('Test, Ivo', { kompetenzen: ['KA', 'OG'] });
+  await ist(leitung, a, '2026-11-10', '08:00', '16:00', 'KA');
+  await abwesend(a, 'KM', '2026-11-10', 2, '12:00', '14:00');
+  // gespeicherter Block an den Abwesenheitsgrenzen geteilt: drei Segmente mit derselben (echten) id
+  const seg = (await istWoche(2026, 46)).bloecke.filter((b) => b.mitarbeiter_id === a && b.datum === '2026-11-10');
+  assert.deepEqual(seg.map((s) => `${s.von}-${s.bis}/${s.unbesetzt}/${s.vorschlag}`),
+    ['08:00-12:00/false/false', '12:00-14:00/true/false', '14:00-16:00/false/false']);
+  assert.equal(new Set(seg.map((s) => s.id)).size, 1);
+  assert.ok(seg[0].id > 0);
+  const r = await ist(leitung, a, '2026-11-10', '16:00', '17:00', 'KA');
+  assert.deepEqual(zeileAus(r.bloecke, a, '2026-11-10'), [{ von: '08:00', bis: '17:00', bereich_id: bereich.KA }]);
+  await ist(leitung, a, '2026-11-10', '08:00', '09:00', 'OG');
+  await wirft(ist(leitung, a, '2026-11-10', '12:00', '13:00', 'OG'), 'ABWESEND');
+  await wirft(ist(leitung, a, '2026-11-10', '11:00', '15:00', 'OG'), 'ABWESEND');
+  // Rückgängig mit der aus den Segmenten zusammengesetzten Zeile (unveränderte Zeit wird nicht geprüft)
+  const zeile = zeileAus(r.bloecke, a, '2026-11-10');
+  const u = await istSetzen(leitung, a, '2026-11-10', zeile);
+  assert.deepEqual(zeileAus(u.bloecke, a, '2026-11-10'), zeile);
+});
+
+test('Vorschlag-ids: mehrere Blöcke behalten je eigene negative id; Teilabwesenheit ergibt zwei Blöcke, Rückgängig klappt', async () => {
+  const { ma, plan, abwesend, istWoche, istSetzen, leitung, bereich, gespeichert } = t;
+  const a = await ma('Test, Vito');
+  await plan(a, '2026-11-12', '08:00', '12:00', 'KA');
+  await plan(a, '2026-11-12', '12:00', '12:30', 'PA');
+  await plan(a, '2026-11-12', '12:30', '16:00', 'KA');
+  const b = await ma('Test, Wanda');
+  await plan(b, '2026-11-12', '08:00', '16:00', 'KA');
+  await abwesend(b, 'KM', '2026-11-12', 2, '12:00', '14:00');
+  const w = await istWoche(2026, 46);
+  const va = w.bloecke.filter((s) => s.mitarbeiter_id === a && s.datum === '2026-11-12');
+  assert.deepEqual(va.map((s) => `${s.von}-${s.bis}/${s.vorschlag}`), ['08:00-12:00/true', '12:00-12:30/true', '12:30-16:00/true']);
+  assert.ok(va.every((s) => s.id < 0));
+  assert.equal(new Set(va.map((s) => s.id)).size, 3);
+  // alle Vorschlag-ids der Antwort sind verschieden (auch über Mitarbeiter und Tage)
+  const vids = w.bloecke.filter((s) => s.vorschlag).map((s) => s.id);
+  assert.equal(new Set(vids).size, vids.length);
+  // wie im Browser zusammengesetzt = Planzeile; als Rückgängig-Zeile gesendet wird sie IST
+  const za = zeileAus(w.bloecke, a, '2026-11-12');
+  assert.deepEqual(za, [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA },
+    { von: '12:00', bis: '12:30', bereich_id: bereich.PA }, { von: '12:30', bis: '16:00', bereich_id: bereich.KA }]);
+  await istSetzen(leitung, a, '2026-11-12', za);
+  assert.deepEqual(await gespeichert(a, '2026-11-12'), za);
+  // Teilabwesenheit: der Vorschlag hat nur die besetzten Teile, als zwei Blöcke mit eigener id
+  const vb = w.bloecke.filter((s) => s.mitarbeiter_id === b && s.datum === '2026-11-12');
+  assert.deepEqual(vb.map((s) => `${s.von}-${s.bis}/${s.unbesetzt}`), ['08:00-12:00/false', '14:00-16:00/false']);
+  assert.notEqual(vb[0].id, vb[1].id);
+  const zb = zeileAus(w.bloecke, b, '2026-11-12');
+  assert.deepEqual(zb, [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA }, { von: '14:00', bis: '16:00', bereich_id: bereich.KA }]);
+  await istSetzen(leitung, b, '2026-11-12', zb); // kein ABWESEND
+  assert.deepEqual(await gespeichert(b, '2026-11-12'), zb);
 });
 
 test('nicht beschäftigt: vor Eintritt → MITARBEITER_INAKTIV, ohne Vertrag → KEIN_VERTRAG', async () => {

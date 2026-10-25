@@ -5134,7 +5134,13 @@ $$;
 
 -- IST-Segmente für den Browser zwischen p_von und p_bis (p_mitarbeiter_ids null = alle der Filiale): gespeicherte
 -- Blöcke an den Abwesenheitsgrenzen geteilt wie im Plan (F2, vorschlag = false), dazu für offene Zeilen ohne IST der
--- Vorschlag (id null, vorschlag = true).
+-- Vorschlag (vorschlag = true, unbesetzt = false).
+-- Ids der Vorschlag-Blöcke sind NEGATIV und nur zur Anzeige: -(laufende Nummer in dieser Antwort, nach datum,
+-- mitarbeiter_id, von). Nie gespeichert, zwischen zwei Antworten nicht vergleichbar; sie dienen nur dazu, dass der
+-- Browser (zeileAus in docs/einsatzplan.js) die Segmente einer Zeile wie im Plan über die id wieder zu Blöcken
+-- zusammensetzt. Ein Vorschlag-Block wird nie geteilt: Der Vorschlag enthält nur die besetzten Teile der Planzeile
+-- (pep.zeile_teil), ein Planblock mit Teilabwesenheit ergibt also zwei Vorschlag-Blöcke mit je eigener id – eine
+-- gemeinsame id würde sie im Browser über die Abwesenheit hinweg verbinden (ABWESEND beim Rückgängig).
 create or replace function pep.ist_bloecke_antwort(p_filiale_id bigint, p_von date, p_bis date, p_mitarbeiter_ids bigint[])
 returns jsonb
 language sql stable
@@ -5152,14 +5158,16 @@ as $$
        where b.filiale_id = p_filiale_id and b.datum between p_von and p_bis
          and (p_mitarbeiter_ids is null or b.mitarbeiter_id = any (p_mitarbeiter_ids))
       union all
-      select z.datum, z.mitarbeiter_id, (e ->> 'von')::time,
+      select v.datum, v.mitarbeiter_id, v.von,
              jsonb_build_object(
-               'id', null, 'mitarbeiter_id', z.mitarbeiter_id, 'datum', to_char(z.datum, 'YYYY-MM-DD'),
-               'von', e ->> 'von', 'bis', e ->> 'bis', 'bereich_id', (e ->> 'bereich_id')::bigint,
+               'id', -row_number() over (order by v.datum, v.mitarbeiter_id, v.von),
+               'mitarbeiter_id', v.mitarbeiter_id, 'datum', to_char(v.datum, 'YYYY-MM-DD'),
+               'von', to_char(v.von, 'HH24:MI'), 'bis', v.e ->> 'bis', 'bereich_id', (v.e ->> 'bereich_id')::bigint,
                'unbesetzt', false, 'vorschlag', true)
-        from pep.ist_zeilen(p_filiale_id, p_von, p_bis, p_mitarbeiter_ids) z
-        cross join lateral jsonb_array_elements(pep.ist_vorschlag(z.mitarbeiter_id, z.datum)) e
-       where z.bestaetigt_am is null
+        from (select z.datum, z.mitarbeiter_id, (e ->> 'von')::time as von, e
+                from pep.ist_zeilen(p_filiale_id, p_von, p_bis, p_mitarbeiter_ids) z
+                cross join lateral jsonb_array_elements(pep.ist_vorschlag(z.mitarbeiter_id, z.datum)) e
+               where z.bestaetigt_am is null) v
     ) x
 $$;
 
