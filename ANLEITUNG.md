@@ -191,8 +191,8 @@ sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck
     kann jede Leitung der Filiale, auch wenn der Organisator nicht mehr dabei ist.
     Die Zuordnungen bleiben dabei erhalten: Wird die Umfrage wieder eingeschaltet, sind
     sie wieder da, auch die von Hand gemachten.
-    Wer als Leitung in die PEP aufgenommen wird, macht damit seine
-    Urlaubstool-Umfragen für die anderen Leitungen der Filiale sichtbar.
+    Wer als Leitung in die PEP aufgenommen wird, macht damit nach seiner ersten
+    Anmeldung seine Urlaubstool-Umfragen für die anderen Leitungen der Filiale sichtbar.
   - **Teilnehmer zuordnen, Schritt für Schritt:**
     1. Oben die Umfrage mit dem Haken „aktiv“ einschalten. Solange keine Umfrage
        eingeschaltet ist, steht unter „Teilnehmer zuordnen“ nur der Hinweis
