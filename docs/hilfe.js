@@ -89,6 +89,7 @@ const FEHLER = {
   TEXT_ZU_LANG: 'Der Text ist zu lang (höchstens 200 Zeichen).',
   UEBERLAPPUNG: 'Dieser Mitarbeiter ist zu dieser Zeit schon eingeplant.',
   UMFRAGE_NICHT_GEFUNDEN: 'Diese Umfrage gibt es nicht (mehr).',
+  UMFRAGE_ANDERE_FILIALE: 'Diese Umfrage ist schon in einer anderen Filiale eingeschaltet.',
   VERGANGEN: 'Vergangene Tage lassen sich nicht mehr ändern.',
   VERTRAGSART_UNGUELTIG: 'Die Vertragsart ist ungültig.',
   VERTRAG_DOPPELT: 'Für diesen Zeitraum gibt es schon einen Vertrag.',

@@ -646,6 +646,20 @@ test('Umfrage einer anderen Leitung der Filiale wird beim Einspielen verknüpft 
   [{ t: zt.id, name: 'Muster-Beispiel, Anna' }]);
   assert.deepEqual((await z.query('select rolle from pep.benutzer where user_id = $1 and filiale_id = $2', [zchefin, zfil])).rows,
     [{ rolle: 'leitung' }]);
+  // Gegenprobe: steht chefin in der Datei nur als Stellvertretung (Abschnitt benutzer liegt außerhalb der Prüfsumme),
+  // ist ihre Umfrage nicht erlaubt: Schaltung und Zuordnung ausgelassen
+  const z2 = await neueDatenbank();
+  await heuteSetzen(z2, HEUTE);
+  const z2chef = await pepBenutzer(z2, 'chef');
+  await filiale(z2, z2chef, { name: 'Netto Neu', nummer: '7777' });
+  const z2chefin = await organisator(z2, 'chefin');
+  const z2u = await umfrageAnlegen(z2, z2chefin, { titel: 'Urlaub Chefin', jahr: 2027 });
+  await umfrageMitarbeiter(z2, z2u, 'Anna Muster-Beispiel');
+  const alsVize = { ...datei, benutzer: datei.benutzer.map((b) => (b.benutzername === 'chefin' ? { ...b, rolle: 'stellvertretung' } : b)) };
+  const r2 = await einspielen(z2, z2chef, alsVize, '2558');
+  assert.equal(r2.eingespielt.benutzer, 1);
+  assert.deepEqual(r2.ausgelassen, { urlaub_umfragen: 1, urlaub_zuordnung: 1 });
+  assert.equal((await z2.query('select count(*)::int as n from pep.urlaub_umfragen')).rows[0].n, 0);
 });
 
 // ------------------------------------------------------------ Größe

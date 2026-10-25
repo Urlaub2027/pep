@@ -178,14 +178,16 @@ sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck
 - **Urlaubstool:** welche Umfragen als Urlaubswünsche einfließen und welcher
   Teilnehmer welcher Mitarbeiter ist.
   - **Umfragen:** Angezeigt werden die Umfragen des Urlaubstools mit
-    Urlaubswochen-Frage, deren Organisator unter „Benutzer“ dieser Filiale eingetragen
-    ist (Leitung oder Stellvertretung), dazu die schon eingeschalteten. Jede Zeile
-    nennt den Organisator („von …“, bei den eigenen „eigene Umfrage“). **Jede Leitung
-    der Filiale** kann jede dieser Umfragen einschalten, auch die einer anderen
-    Leitung. Eine Umfrage kann nur in einer Filiale eingeschaltet sein. Ausschalten
+    Urlaubswochen-Frage, deren Organisator unter „Benutzer“ dieser Filiale als
+    **Leitung** eingetragen ist (Umfragen der Stellvertretung erscheinen nicht), dazu
+    die schon eingeschalteten. Jede Zeile nennt den Organisator („von …“, bei den
+    eigenen „eigene Umfrage“). **Jede Leitung der Filiale** kann jede dieser Umfragen
+    einschalten, auch die einer anderen Leitung. Eine Umfrage kann nur in einer
+    Filiale eingeschaltet sein; ist sie schon in einer anderen eingeschaltet, meldet
+    PEP „Diese Umfrage ist schon in einer anderen Filiale eingeschaltet.“ Ausschalten
     kann jede Leitung der Filiale, auch wenn der Organisator nicht mehr dabei ist.
-    Wer jemanden unter „Benutzer“ einträgt, macht damit auch dessen Umfragen hier
-    sichtbar.
+    Wer als Leitung in die PEP aufgenommen wird, macht damit seine
+    Urlaubstool-Umfragen für die anderen Leitungen der Filiale sichtbar.
   - **Teilnehmer zuordnen, Schritt für Schritt:**
     1. Oben die Umfrage mit dem Haken „aktiv“ einschalten. Solange keine Umfrage
        eingeschaltet ist, steht unter „Teilnehmer zuordnen“ nur der Hinweis
@@ -662,8 +664,8 @@ lässt sich so nicht überschreiben.
      über ihren Namen. Die Nummern (Ids) im Urlaubstool sind nach dessen eigenem
      Einspielen andere, darum nicht über die Nummer. Eingeschaltet wird eine Umfrage nur,
      wenn ihr Organisator nach dem Einspielen Benutzer der Filiale ist (wie beim
-     Einschalten von Hand: die eigenen und die anderer Leitungen oder der Stellvertretung
-     aus der Datei) und keine andere Filiale sie nutzt. Was nicht eindeutig gefunden wird,
+     Einschalten von Hand: die eigenen und die anderer Leitungen aus der Datei, nicht die
+     der Stellvertretung) und keine andere Filiale sie nutzt. Was nicht eindeutig gefunden wird,
      zählt als ausgelassen:
      danach unter Einstellungen → Urlaubstool die Umfrage einschalten und die Teilnehmer
      zuordnen. Genehmigte Urlaubstage bleiben in jedem Fall erhalten; nur wenn die Umfrage
@@ -683,8 +685,8 @@ Einspielen bucht PEP keine automatischen Korrekturen.
    anlegen. Jede Umfrage aus den Sicherungen des Urlaubstools spielt **ihr bisheriger
    Organisator** ein (derselbe Benutzername; wer einspielt, wird Organisator), und zwar
    **mit unverändertem Titel**: PEP findet sie über Organisator, Titel und Jahr wieder.
-   Gehört eine Umfrage einer anderen Leitung oder der Stellvertretung, wird sie nur
-   verknüpft, wenn diese in der PEP-Sicherung als Benutzer der Filiale steht.
+   Gehört eine Umfrage einer anderen Leitung, wird sie nur verknüpft, wenn diese in der
+   PEP-Sicherung als Leitung der Filiale steht.
 2. Im SQL-Editor den Inhalt von `supabase/schema.sql` ausführen.
 3. Im SQL-Editor die erste Leitung festlegen:
    `select pep.start_leitung('<benutzername>');`

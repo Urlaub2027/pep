@@ -2199,8 +2199,8 @@ $$;
 -- Urlaubstool-Anbindung: Funktionen für den Browser
 -- ---------------------------------------------------------------------------
 
--- Umfragen, die die Filiale einschalten darf (pep.umfrage_erlaubt: Urlaubswochen-Frage und Organisator ist ein
--- PEP-Benutzer der Filiale, oder schon für die Filiale eingeschaltet); organisator = Anzeigename im Urlaubstool,
+-- Umfragen, die die Filiale einschalten darf (pep.umfrage_erlaubt: Urlaubswochen-Frage und Organisator ist eine
+-- Leitung der Filiale, oder schon für die Filiale eingeschaltet); organisator = Anzeigename im Urlaubstool,
 -- eigene = vom Aufrufer.
 create or replace function public.pep_urlaub_umfragen()
 returns jsonb
@@ -2228,7 +2228,8 @@ end;
 $$;
 
 -- Darf die Filiale diese Umfrage sehen und einschalten? Die Umfrage hat eine Urlaubswochen-Frage, und ihr Organisator
--- ist ein PEP-Benutzer dieser Filiale (jede Rolle) oder sie ist schon für die Filiale eingeschaltet. Einzige Stelle
+-- ist eine Leitung dieser Filiale (pep.benutzer mit Rolle leitung; Stellvertretung und Mitarbeiter genügen nicht,
+-- Entscheidung dtn: „die Umfragen der anderen Leiter“) oder sie ist schon für die Filiale eingeschaltet. Einzige Stelle
 -- der Regel: Liste (pep_urlaub_umfragen), Einschalten und Einspielen einer Sicherung (dort sind die Benutzer der Datei
 -- zu diesem Zeitpunkt schon der Filiale zugeordnet). Hängt nicht vom Aufrufer ab.
 create or replace function pep.umfrage_erlaubt(p_filiale_id bigint, p_umfrage_id bigint)
@@ -2240,7 +2241,8 @@ as $$
                    join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
                   where u.id = p_umfrage_id
                     and (exists (select 1 from pep.benutzer b
-                                  where b.user_id = u.organisator_id and b.filiale_id = p_filiale_id)
+                                  where b.user_id = u.organisator_id and b.filiale_id = p_filiale_id
+                                    and b.rolle = 'leitung')
                          or exists (select 1 from pep.urlaub_umfragen s
                                      where s.umfrage_id = u.id and s.filiale_id = p_filiale_id)))
 $$;
@@ -2257,8 +2259,9 @@ begin
   if p_aktiv is null then
     raise exception 'WERT_UNGUELTIG';
   end if;
-  -- Einschalten: jede Leitung der Filiale jede erlaubte Umfrage (pep.umfrage_erlaubt, auch die anderer Leitungen);
-  -- Ausschalten, solange die Umfrage für die Filiale eingeschaltet ist (auch wenn ihr Organisator nicht mehr dabei ist).
+  -- Einschalten: jede Leitung der Filiale jede erlaubte Umfrage (pep.umfrage_erlaubt, auch die anderer Leitungen),
+  -- außer sie ist schon in einer anderen Filiale eingeschaltet (UMFRAGE_ANDERE_FILIALE); Ausschalten, solange die
+  -- Umfrage für die Filiale eingeschaltet ist (auch wenn ihr Organisator nicht mehr dabei ist).
   if not (case when p_aktiv then pep.umfrage_erlaubt(v_b.filiale_id, p_umfrage_id)
                else exists (select 1 from urlaub.umfragen u
                               join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
@@ -2270,6 +2273,10 @@ begin
   if p_aktiv then
     insert into pep.urlaub_umfragen (filiale_id, umfrage_id) values (v_b.filiale_id, p_umfrage_id)
       on conflict (umfrage_id) do nothing;
+    if not exists (select 1 from pep.urlaub_umfragen s
+                    where s.umfrage_id = p_umfrage_id and s.filiale_id = v_b.filiale_id) then
+      raise exception 'UMFRAGE_ANDERE_FILIALE';
+    end if;
   else
     delete from pep.urlaub_umfragen where umfrage_id = p_umfrage_id and filiale_id = v_b.filiale_id;
   end if;
@@ -6406,7 +6413,8 @@ $$;
 -- Urlaubstool: Dessen eigene Sicherung (urlaub.umfrage_aus_json) vergibt beim Einspielen NEUE Ids. Umfragen werden
 -- darum über Organisator (Benutzername), Titel und Jahr gefunden, Teilnehmer über die Umfrage und den Namen
 -- (pep.name_normal); nur eindeutige Treffer und nur Umfragen, die die Filiale einschalten darf (pep.umfrage_erlaubt;
--- die Benutzer der Datei werden vorher zugeordnet, damit auch Umfragen anderer Leitungen der Filiale zählen).
+-- die Benutzer der Datei werden vorher zugeordnet, damit auch Umfragen anderer Leitungen der Filiale zählen; als
+-- Stellvertretung eingetragene Organisatoren genügen nicht).
 -- Damit werden urlaub_umfragen.umfrage_id, urlaub_zuordnung.urlaub_mitarbeiter_id und die Ids in
 -- urlaub_freigaben.wunsch umgeschlüsselt (sonst erschienen genehmigte Wünsche wieder als offen). Ohne Treffer:
 -- Schaltung und Zuordnung ausgelassen und gezählt; die Freigabe bleibt (sie trägt die U-Tage und die Entscheidung),
@@ -6916,7 +6924,7 @@ begin
     from jsonb_each_text(coalesce(p_daten -> 'konten', '{}'::jsonb)) k
     join urlaub.organisatoren o on o.benutzername = k.value;
 
-  -- Benutzer der Datei vor dem Urlaubstool zuordnen: pep.umfrage_erlaubt erlaubt die Umfragen aller PEP-Benutzer der
+  -- Benutzer der Datei vor dem Urlaubstool zuordnen: pep.umfrage_erlaubt erlaubt die Umfragen aller Leitungen der
   -- Filiale, also auch die einer anderen Leitung aus der Datei.
   for v_e in select b from jsonb_array_elements(coalesce(p_daten -> 'benutzer', '[]'::jsonb)) b loop
     v_uid := null;

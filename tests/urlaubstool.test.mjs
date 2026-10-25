@@ -78,24 +78,33 @@ test('Umfrage schalten: nur Leitung, fremde Umfrage UMFRAGE_NICHT_GEFUNDEN', asy
   assert.equal((await json(stellv, 'select public.pep_urlaub_umfragen() as r')).length, 1);
 });
 
-test('Organisator als Stellvertretung der Filiale: seine Umfrage ist sichtbar und einschaltbar; entfernt: nur noch die eingeschaltete', async () => {
+test('Umfrage eines Organisators: als Stellvertretung unsichtbar, erst als Leitung einschaltbar; entfernt: nur noch die eingeschaltete', async () => {
   const extern = await organisator(db, 'extern');
   const externeUmfrage = await umfrageAnlegen(db, extern, { titel: 'Extern 2027' });
   const sichtbar = async () => (await json(leitung, 'select public.pep_urlaub_umfragen() as r')).some((u) => u.id === externeUmfrage);
+  const einschalten = (wer) => aufruf(wer, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]);
   // Noch kein PEP-Benutzer: unsichtbar, Einschalten UMFRAGE_NICHT_GEFUNDEN
   assert.equal(await sichtbar(), false);
-  await wirft(aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]), 'UMFRAGE_NICHT_GEFUNDEN');
-  // Als Stellvertretung der Filiale eingetragen: sichtbar, die Leitung schaltet ein, die Stellvertretung selbst nicht
+  await wirft(einschalten(leitung), 'UMFRAGE_NICHT_GEFUNDEN');
+  // Als Stellvertretung der Filiale eingetragen: weiter unsichtbar und nicht einschaltbar (nur Umfragen von Leitungen)
   await aufruf(leitung, 'select public.pep_benutzer_setzen($1, $2)', ['extern', 'stellvertretung']);
+  assert.equal(await sichtbar(), false);
+  await wirft(einschalten(leitung), 'UMFRAGE_NICHT_GEFUNDEN');
+  await wirft(einschalten(extern), 'NUR_LEITUNG');
+  // Rolle mitarbeiter (nur über eine Sicherung möglich): ebenso nicht
+  await db.query("update pep.benutzer set rolle = 'mitarbeiter' where user_id = $1", [extern]);
+  assert.equal(await sichtbar(), false);
+  await wirft(einschalten(leitung), 'UMFRAGE_NICHT_GEFUNDEN');
+  // Als Leitung der Filiale: sichtbar und einschaltbar
+  await aufruf(leitung, 'select public.pep_benutzer_setzen($1, $2)', ['extern', 'leitung']);
   assert.equal(await sichtbar(), true);
-  await wirft(aufruf(extern, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]), 'NUR_LEITUNG');
-  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]);
+  await einschalten(leitung);
   // Wieder entfernt: die eingeschaltete Umfrage bleibt sichtbar und lässt sich ausschalten, danach ist sie weg
   await aufruf(leitung, 'select public.pep_benutzer_entfernen($1)', [extern]);
   assert.equal(await sichtbar(), true);
   await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, false)', [externeUmfrage]);
   assert.equal(await sichtbar(), false);
-  await wirft(aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [externeUmfrage]), 'UMFRAGE_NICHT_GEFUNDEN');
+  await wirft(einschalten(leitung), 'UMFRAGE_NICHT_GEFUNDEN');
   assert.equal((await db.query('select count(*)::int as n from pep.urlaub_umfragen where umfrage_id = $1', [externeUmfrage])).rows[0].n, 0);
 });
 
@@ -361,4 +370,21 @@ test('Zuordnungsvorschlag unabhängig von der Reihenfolge: gleiche Menge vor Tei
   const z = await json(nord, 'select public.pep_urlaub_zuordnung() as r');
   assert.equal(z.find((t) => t.urlaub_mitarbeiter_id === nochmal).vorschlag_id, ma['Probe, Lena']);
   assert.equal(z.find((t) => t.urlaub_mitarbeiter_id === tn['Lena Probe']).vorschlag_id, ma['Probe, Lena']);
+});
+
+test('schon in einer anderen Filiale eingeschaltet → UMFRAGE_ANDERE_FILIALE, nichts geändert', async () => {
+  // Organisator wechselt die Filiale: seine Umfrage bleibt in der alten eingeschaltet
+  const wechsler = await pepBenutzer(db, 'wechsler', 'leitung', fil);
+  const u = await umfrageAnlegen(db, wechsler, { titel: 'Wechsel 2027' });
+  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
+  await aufruf(leitung, 'select public.pep_benutzer_entfernen($1)', [wechsler]);
+  await aufruf(fremd, 'select public.pep_benutzer_setzen($1, $2)', ['wechsler', 'leitung']);
+  const vorher = (await db.query('select count(*)::int as n from pep.protokoll')).rows[0].n;
+  assert.ok((await json(fremd, 'select public.pep_urlaub_umfragen() as r')).some((x) => x.id === u && !x.aktiv));
+  await wirft(aufruf(fremd, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]), 'UMFRAGE_ANDERE_FILIALE');
+  assert.deepEqual((await db.query('select filiale_id from pep.urlaub_umfragen where umfrage_id = $1', [u])).rows, [{ filiale_id: fil }]);
+  assert.equal((await db.query('select count(*)::int as n from pep.protokoll')).rows[0].n, vorher);
+  // In der eigenen Filiale bleibt erneutes Einschalten unschädlich
+  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
+  assert.deepEqual((await db.query('select filiale_id from pep.urlaub_umfragen where umfrage_id = $1', [u])).rows, [{ filiale_id: fil }]);
 });
