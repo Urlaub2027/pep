@@ -2431,7 +2431,9 @@ await szenario('Zeitkonto: nach dem Abschluss angelegt → Diff grau „nicht ge
   }, name);
   gleich(await druckZeile('Nachtrag, Nils'), [['−37,50nicht gebucht', true], ['0,00', false], ['0,00', false]],
     'Wocheneinsatz-IST: Diff „nicht gebucht“, Saldo ohne Diff');
-  gleich((await druckZeile('Muster, Ben'))[0], ['+2,50', false], 'Wocheneinsatz-IST: gebuchte Diff wie bisher');
+  const ben = Number(woche.mitarbeiter.find((m) => m.id === BEN).diff);
+  gleich([zahlDE((await druckZeile('Muster, Ben'))[0][0]), (await druckZeile('Muster, Ben'))[0][1]], [ben, false],
+    'Wocheneinsatz-IST: gebuchte Diff wie bisher (Ben)');
   await druckAufraeumen();
   await c.klick('#ansicht-zeitkonto [data-aktion="zk-drucken"]');
   await warteDialog('Drucken');
