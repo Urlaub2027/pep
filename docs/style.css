@@ -652,6 +652,41 @@ th { background: var(--hell); font-weight: 600; }
   cursor: pointer;
 }
 .ep-ersatz:hover { color: #fff; background: var(--netto-rot); }
+/* IST-Modus (ist-ansicht.js): Plan als dünner Umriss, Vorschlag blass mit gestrichelter Kante. Vor „markiert“, damit
+   die Strich-Markierung gewinnt. */
+.ep-tabelle td.ep-z.plan, .ep-tabelle td.ep-z.vorschlag { position: relative; }
+.ep-tabelle td.ep-z.plan::before, .ep-tabelle td.ep-z.vorschlag::after {
+  content: ""; position: absolute; top: 4px; bottom: 4px; left: 0; right: 0; z-index: 1; pointer-events: none;
+}
+.ep-tabelle td.ep-z.plan::before { border-top: 2px solid rgba(17, 17, 17, .62); border-bottom: 2px solid rgba(17, 17, 17, .62); }
+.ep-tabelle td.ep-z.plan-a::before { left: 2px; border-left: 2px solid rgba(17, 17, 17, .62); border-radius: 4px 0 0 4px; }
+.ep-tabelle td.ep-z.plan-e::before { right: 2px; border-right: 2px solid rgba(17, 17, 17, .62); border-radius: 0 4px 4px 0; }
+.ep-tabelle td.ep-z.plan-a.plan-e::before { border-radius: 4px; }
+.ep-tabelle td.ep-z.vorschlag { background-image: linear-gradient(rgba(255, 255, 255, .55), rgba(255, 255, 255, .55)); }
+.ep-tabelle td.ep-z.vorschlag::after { border-top: 2px dashed var(--grau); border-bottom: 2px dashed var(--grau); }
+.ep-tabelle td.ep-z.v-a::after { left: 2px; border-left: 2px dashed var(--grau); }
+.ep-tabelle td.ep-z.v-e::after { right: 2px; border-right: 2px dashed var(--grau); }
+.ep-tabelle col.ist-status-spalte { width: 118px; }
+.ep-tabelle col.ist-abw-spalte { width: 52px; }
+.ep-tabelle td.ist-status { padding: 0 4px 0 var(--a2); text-align: left; white-space: nowrap; }
+.ep-tabelle th.ist-status { padding-left: var(--a2); text-align: left; }
+.ist-status-inhalt { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.ist-status.ist-bestaetigt { color: var(--ok); font-weight: 700; }
+.ist-status.ist-vorschlag, .ist-status.ist-offen { color: var(--text-2); }
+.ist-status.ist-leer { color: var(--text); font-style: italic; }
+.ist-ok-knopf {
+  flex: none; width: 30px; height: 30px; padding: 0;
+  font: inherit; font-size: 15px; font-weight: 700; color: var(--ok);
+  background: var(--flaeche); border: 1px solid var(--linie-stark); border-radius: 6px; cursor: pointer;
+}
+.ist-ok-knopf:hover { color: #fff; background: var(--ok); border-color: var(--ok); }
+.ep-tabelle td.ist-abw { padding: 0 var(--a1); font-weight: 600; }
+.ep-tabelle td.ist-abw.plus { color: var(--ok); }
+.ep-modus .chip { min-width: 52px; justify-content: center; }
+.ep-tag.ist-zukunft { color: var(--text-2); border-style: dashed; }
+.ist-offen-tag span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dialog .ist-grund input { width: 100%; }
+
 /* Gezogener Strich; „wartet“: Antwort steht noch aus (hinter dem vorigen Strich der Zeile), sieht gleich aus */
 .ep-tabelle td.ep-z.markiert, .ep-tabelle td.ep-z.wartet { background-image: linear-gradient(rgba(255, 229, 0, .65), rgba(255, 229, 0, .65)); box-shadow: inset 0 2px 0 var(--schwarz), inset 0 -2px 0 var(--schwarz); }
 

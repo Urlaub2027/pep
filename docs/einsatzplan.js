@@ -1,12 +1,18 @@
 // Reiter „Einsatzplan“: Tagesraster in halben Stunden, Malen per Ziehen (Pointer-Events), Rückgängig,
 // Abdeckung Kasse/VP, Seitenleiste mit Regelprüfung, Wochenstunden und Abteilungen.
 // Blöcke kommen als Abschnitte (F2): dieselbe id kann mehrfach vorkommen, je Abschnitt eigenes `unbesetzt`.
+// Modus „IST“ (G8, ?modus=ist): dieselbe Mal-, Warteschlangen- und Rückgängig-Logik mit pep_ist_* statt pep_plan_*;
+// was nur der IST-Modus zeigt, liegt in ist-ansicht.js. Gezeichnet wird nach dem Modus der geladenen Woche (woche.modus).
 import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE, textfarbe } from './hilfe.js';
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
-import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum } from './zeit.js';
+import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum, montagDerKw } from './zeit.js';
 import {
-  zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel,
+  zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel, rund, kurz,
 } from './plan-raster.js';
+import {
+  istSpalten, istZellKlassen, zeilenStatus, istAbweichung, statusZelle, abweichungsZelle, istTagBox, offeneBox,
+  tagesReiterText, grundDialog, istKnopfLeiste, zukunftKarte, GRUND_ABGESCHLOSSEN,
+} from './ist-ansicht.js';
 import { kopierenDialog, vorlagenDialog, krankDialog, ersatzDialog, eckdatenDialog } from './plan-dialoge.js';
 import { druckAuswahlPlan } from './druck.js';
 
@@ -21,7 +27,7 @@ aktionen.eckdaten = (mitarbeiterId, tag) => eckdatenDialog(planKontext(), mitarb
 aktionen.drucken = () => druckAuswahlPlan(planKontext());
 
 const VERTRAG_KURZ = { vollzeit: 'VZ', teilzeit: 'TZ', minijob: 'MJ', azubi: 'AZ', fuehrung: 'F' };
-const VERGANGEN_TEXT = 'Vergangene Tage sind schreibgeschützt. Die IST-Erfassung folgt in der nächsten Stufe.';
+const VERGANGEN_TEXT = 'Vergangene Tage sind schreibgeschützt. Die tatsächlichen Zeiten stehen im Modus „IST“.';
 const PINSEL_SCHLUESSEL = 'pep-einsatzplan-pinsel';
 const MIN_ZELLE_PX = 24; // halbe Stunde; reicht die Breite nicht, scrollt nur der Raster-Container
 const FESTE_SPALTEN_PX = 168 + 52 + 170; // Name, Stunden, Kommentar (wie die col-Breiten in style.css)
@@ -39,7 +45,12 @@ let { jahr, kw } = datum ? isoWoche(datum)
   : ganzzahl('jahr', 2000, 2100) && ganzzahl('kw', 1, 53) ? { jahr: ganzzahl('jahr', 2000, 2100), kw: ganzzahl('kw', 1, 53) }
     : isoWoche(heuteLokal());
 
-let woche = null; // Antwort von pep_einsatzplan_woche
+let modus = adresse.get('modus') === 'ist' ? 'ist' : 'plan'; // gewünschter Modus; gezeichnet wird nach woche.modus
+let woche = null; // Antwort von pep_einsatzplan_woche bzw. pep_ist_woche (modus: 'ist')
+let erweitert = false; // IST: Zeitrahmen 04:00–24:00
+let bestaetigtGerade = false; // IST: „bestätigen“ läuft; solange keine neuen Striche
+// IST: Grund je Zeile („mitarbeiter|datum“) für bestätigte Tage; gilt bis zum Tageswechsel, danach wird neu gefragt.
+const gruende = new Map();
 let pinsel = lesePinsel(); // Bereich-Id als Text oder 'radieren'
 let zug = null; // laufendes Ziehen: { mitarbeiter, zellen, start, ende, pointerId }
 let hervor = null; // in der Regelprüfung angeklickter Eintrag
@@ -56,19 +67,24 @@ const rahmen = {}; // Container: kopf, raster, seite
 const darfZeichnen = () => ich?.rolle === 'leitung' || ich?.rolle === 'stellvertretung';
 const zeigeFehler = (fehler) => { if (!fehler.behandelt) meldung(fehlerText(fehler.message)); };
 const tag = () => woche?.tage.find((t) => t.datum === datum);
-const darfMalen = () => darfZeichnen() && tag()?.geoeffnet && !tag().vergangen;
-const spalten = () => (tag()?.geoeffnet ? halbstunden(tag().rahmen_von, tag().rahmen_bis) : []);
+const istAnsicht = () => woche?.modus === 'ist';
+const darfMalen = () => (istAnsicht() ? darfZeichnen() && tag()?.ist_erlaubt && !bestaetigtGerade
+  : darfZeichnen() && tag()?.geoeffnet && !tag().vergangen);
+const amTag = (liste) => (liste ?? []).filter((b) => b.datum === datum);
+const spalten = () => (istAnsicht() ? istSpalten(tag(), [...amTag(woche.bloecke), ...amTag(woche.plan_bloecke)], erweitert)
+  : tag()?.geoeffnet ? halbstunden(tag().rahmen_von, tag().rahmen_bis) : []);
 const bereichVon = (id) => woche.bereiche.find((b) => b.id === id);
 const pauseIds = () => new Set(woche.bereiche.filter((b) => b.art === 'pause').map((b) => b.id));
 const segmenteVon = (mid, d = datum) => woche.bloecke.filter((b) => b.mitarbeiter_id === mid && b.datum === d);
 const abwesenheitVon = (mid) => woche.abwesenheiten.find((a) => a.mitarbeiter_id === mid && a.datum === datum);
 const kommentarVon = (mid) => woche.kommentare.find((k) => k.mitarbeiter_id === mid && k.datum === datum)?.text ?? '';
-const inWoche = (d) => Boolean(woche?.tage.some((t) => t.datum === d));
+// Gehört eine Antwort zur geladenen Woche? Auch der Modus muss passen: eine Plan-Antwort nie in die IST-Woche.
+const inWoche = (d, ist = false) => Boolean(woche?.tage.some((t) => t.datum === d)) && istAnsicht() === ist;
+// Schlüssel der Strich-Kette einer Zeile; Plan und IST getrennt (heute gibt es beide).
+const zeilenSchluessel = (ist, mid, d) => `${ist ? 'ist|' : ''}${mid}|${d}`;
+const zeileBestaetigt = (mid, d) => Boolean(woche?.status?.find((s) => s.mitarbeiter_id === mid && s.datum === d)?.bestaetigt);
 const nameVon = (mid) => woche.mitarbeiter.find((m) => m.id === mid)?.name ?? '';
 
-// Stunden kurz und mit Komma: 7,5 · 8 · 6,25; negative mit echtem Minuszeichen.
-const rund = (n) => Math.round(n * 100) / 100 || 0; // Rechenreste wie −1e-15 und −0 werden 0
-const kurz = (n) => `${rund(n) < 0 ? '−' : ''}${Math.abs(rund(n)).toFixed(2).replace(/\.?0+$/, '').replace('.', ',')}`;
 // Uhrzeit kurz für die Tages-Reiter: 07:00 → 07, 07:30 bleibt.
 const kurzZeit = (t) => (t?.endsWith(':00') ? t.slice(0, 2) : t);
 
@@ -87,7 +103,7 @@ function waehlePinsel(wert) {
 let ladeNummer = 0; // verwirft veraltete Antworten, wenn die Woche schnell gewechselt wird
 async function lade() {
   const nummer = ++ladeNummer;
-  const antwort = await aufruf('pep_einsatzplan_woche', { p_jahr: jahr, p_kw: kw });
+  const antwort = await aufruf(modus === 'ist' ? 'pep_ist_woche' : 'pep_einsatzplan_woche', { p_jahr: jahr, p_kw: kw });
   if (nummer !== ladeNummer || !antwort) return;
   woche = antwort;
   if (!woche.tage.some((t) => t.datum === datum)) {
@@ -104,12 +120,33 @@ export const planNeuLaden = () => lade().catch(zeigeFehler);
 // Was die Dialoge über den aktuellen Stand wissen müssen.
 export const planKontext = () => ({ woche, datum, neuLaden: planNeuLaden });
 
-// Sprungziel für Startseite und Vorausplanung: öffnet den Reiter mit dieser Woche (und diesem Tag).
+// Sprungziel für Startseite und Vorausplanung: öffnet den Reiter mit dieser Woche (und diesem Tag) im Plan.
 export function oeffneWoche(j, k, d = null) {
+  oeffne('plan', j, k, d);
+}
+
+// Sprungziel für Startseite und Zeitkonto (Stufe 2): dieselbe Woche im Modus IST.
+export function oeffneIst(j, k, d = null) {
+  oeffne('ist', j, k, d);
+}
+
+function oeffne(m, j, k, d) {
+  modus = m;
   jahr = j;
   kw = k;
   datum = d;
+  gruende.clear();
   zeigeAnsicht('einsatzplan');
+}
+
+// Plan ⇄ IST in derselben Woche. IST gibt es erst ab dem Tag selbst: steht ein künftiger Tag, wechselt IST auf heute
+// (falls in der Woche); ein künftiger Tag im IST-Modus öffnet umgekehrt den Plan (waehleTag).
+function wechsleModus(neu) {
+  if (neu === modus && (woche?.modus ?? 'plan') === neu) return;
+  modus = neu;
+  gruende.clear();
+  if (neu === 'ist' && woche && datum > woche.heute && woche.tage.some((t) => t.datum === woche.heute)) datum = woche.heute;
+  planNeuLaden();
 }
 
 // Beim Blättern bleibt der Wochentag gewählt.
@@ -118,19 +155,23 @@ function wechsleWoche(schritt) {
   ({ jahr, kw } = kwVorZurueck(jahr, kw, schritt));
   datum = null;
   wunschTag = index >= 0 ? index : null;
+  gruende.clear();
   planNeuLaden();
 }
 
 function springeZu(d) {
   if (!istDatum(d)) return;
   ({ jahr, kw } = isoWoche(d));
+  if (d !== datum) gruende.clear();
   datum = d;
   if (woche?.tage.some((t) => t.datum === d)) zeichneAlles();
   else planNeuLaden();
 }
 
 function waehleTag(d) {
+  if (d !== datum) gruende.clear();
   datum = d;
+  if (istAnsicht() && !tag()?.ist_erlaubt) { wechsleModus('plan'); return; } // künftige Tage nur im Plan
   zeichneAlles();
 }
 
@@ -159,10 +200,13 @@ function zeichneAlles() {
 
 function tagesReiter(t) {
   const klassen = ['ep-tag', t.geoeffnet ? '' : 'geschlossen', t.vergangen ? 'vergangen' : '', t.datum === woche.heute ? 'heute' : ''];
-  const zeit = t.geoeffnet ? `${kurzZeit(t.oeffnung_von)}–${kurzZeit(t.oeffnung_bis)}` : t.feiertag ? 'Feiertag' : 'geschlossen';
+  if (istAnsicht() && !t.ist_erlaubt) klassen.push('ist-zukunft');
+  const zeit = istAnsicht() ? tagesReiterText(woche, t)
+    : t.geoeffnet ? `${kurzZeit(t.oeffnung_von)}–${kurzZeit(t.oeffnung_bis)}` : t.feiertag ? 'Feiertag' : 'geschlossen';
   return element('button', {
     type: 'button', class: klassen.filter(Boolean).join(' '), 'aria-pressed': String(t.datum === datum),
-    title: [datumDE(t.datum), t.feiertag, t.vergangen ? 'vergangen' : null].filter(Boolean).join(' · '),
+    title: [datumDE(t.datum), t.feiertag, t.vergangen ? 'vergangen' : null,
+      istAnsicht() && !t.ist_erlaubt ? 'künftig: öffnet den Plan' : null].filter(Boolean).join(' · '),
     onclick: () => waehleTag(t.datum),
   }, element('span', {}, `${WOCHENTAGE[t.wochentag - 1]} ${t.datum.slice(8)}.${t.datum.slice(5, 7)}.`), element('small', {}, zeit));
 }
@@ -174,19 +218,26 @@ function farbfeld(farbe, klasse = '') {
 }
 
 function pinselLeiste() {
-  if (!tag()?.geoeffnet) return element('p', { class: 'hinweis' }, 'An diesem Tag ist geschlossen.');
-  if (tag().vergangen) {
-    return element('p', { class: 'hinweis-gelb' }, VERGANGEN_TEXT, darfZeichnen() ? ' Kommentare bleiben änderbar.' : '');
+  if (istAnsicht()) {
+    if (!tag()?.ist_erlaubt) return element('p', { class: 'hinweis' }, 'IST gibt es erst ab dem Tag selbst.');
+  } else {
+    if (!tag()?.geoeffnet) return element('p', { class: 'hinweis' }, 'An diesem Tag ist geschlossen.');
+    if (tag().vergangen) {
+      return element('p', { class: 'hinweis-gelb' }, VERGANGEN_TEXT, darfZeichnen() ? ' Kommentare bleiben änderbar. ' : ' ',
+        darfZeichnen() ? element('button', { type: 'button', class: 'knopf', onclick: () => wechsleModus('ist') }, 'IST erfassen') : null);
+    }
   }
   if (!darfZeichnen()) return element('p', { class: 'hinweis' }, 'Keine Berechtigung zum Bearbeiten.');
-  const gueltig = pinsel === 'radieren' || woche.bereiche.some((b) => String(b.id) === pinsel);
-  if (!gueltig) pinsel = String((woche.bereiche.find((b) => b.bedeutung === 'kasse') ?? woche.bereiche[0])?.id ?? 'radieren');
+  // IST: die Woche liefert auch inaktive Bereiche, die Blöcke tragen; malen lässt sich nur mit aktiven.
+  const bereiche = woche.bereiche.filter((b) => b.aktiv !== false);
+  const gueltig = pinsel === 'radieren' || bereiche.some((b) => String(b.id) === pinsel);
+  if (!gueltig) pinsel = String((bereiche.find((b) => b.bedeutung === 'kasse') ?? bereiche[0])?.id ?? 'radieren');
   const chip = (wert, titel, ...inhalt) => element('button', {
     type: 'button', class: 'chip', 'data-pinsel': wert, 'aria-pressed': String(pinsel === wert), title: titel,
     onclick: () => waehlePinsel(wert),
   }, ...inhalt);
   return element('div', { class: 'chip-gruppe ep-pinsel', role: 'group', 'aria-label': 'Pinsel' },
-    woche.bereiche.map((b) => chip(String(b.id), b.name, farbfeld(b.farbe), b.kuerzel)),
+    bereiche.map((b) => chip(String(b.id), b.name, farbfeld(b.farbe), b.kuerzel)),
     chip('radieren', 'Radieren: gezogene halbe Stunden leeren', farbfeld(null, 'leer'), 'Radieren'));
 }
 
@@ -207,8 +258,17 @@ function zeichneKopf() {
     title: 'Letzten Strich zurücknehmen (bis zu 20 Schritte)',
   }, '↶ Rückgängig');
   rahmen.speichert = element('span', { class: 'ep-speichert', role: 'status', hidden: !wartend.length }, 'wird gespeichert …');
+  const modusChip = (wert, text, titel) => element('button', {
+    type: 'button', class: 'chip', 'data-modus': wert, 'aria-pressed': String((woche.modus ?? 'plan') === wert), title: titel,
+    onclick: () => wechsleModus(wert),
+  }, text);
+  const knoepfe = istAnsicht() ? istKnoepfe()
+    : [aktionsKnopf('kopieren', 'Kopieren'), aktionsKnopf('vorlagen', 'Vorlagen'), aktionsKnopf('krank', 'Krank/ZA'), aktionsKnopf('drucken', 'Drucken')];
   rahmen.kopf.replaceChildren(element('div', { class: 'karte werkzeugleiste ep-werkzeug' },
     element('div', { class: 'werkzeug-zeile' },
+      element('div', { class: 'chip-gruppe ep-modus', role: 'group', 'aria-label': 'Modus' },
+        modusChip('plan', 'Plan', 'Einsatzplan: geplante Zeiten'),
+        modusChip('ist', 'IST', 'Tatsächliche Arbeitszeiten erfassen und bestätigen')),
       element('div', { class: 'monatsnavi' },
         element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Vorherige Woche', onclick: () => wechsleWoche(-1) }, '◀'),
         element('strong', { class: 'ep-kw', title: `${datumDE(woche.montag)} – ${datumDE(plusTage(woche.montag, 6))}` }, `KW ${woche.kw}`),
@@ -218,10 +278,14 @@ function zeichneKopf() {
       element('div', { class: 'ep-tage', role: 'group', 'aria-label': 'Tag' }, woche.tage.map(tagesReiter))),
     element('div', { class: 'werkzeug-zeile' },
       pinselLeiste(),
-      element('div', { class: 'ep-knoepfe' }, rahmen.speichert, rahmen.rueckgaengig,
-        aktionsKnopf('kopieren', 'Kopieren'), aktionsKnopf('vorlagen', 'Vorlagen'),
-        aktionsKnopf('krank', 'Krank/ZA'), aktionsKnopf('drucken', 'Drucken')))));
+      element('div', { class: 'ep-knoepfe' }, rahmen.speichert, rahmen.rueckgaengig, knoepfe))));
 }
+
+// IST-Knöpfe: Zeitrahmen 04:00–24:00 ein/aus und „Tag bestätigen“ (alle offenen Zeilen des Tages).
+const istKnoepfe = () => istKnopfLeiste({
+  woche, datum, erweitert, gesperrt: bestaetigtGerade, darfBestaetigen: darfZeichnen() && tag()?.ist_erlaubt,
+  umschalten: () => { erweitert = !erweitert; zeichneAlles(); }, bestaetigen: () => bestaetige(null),
+});
 
 // ---------------------------------------------------------------- Raster
 
@@ -230,7 +294,7 @@ function namensZelle(m) {
   if (m.vp) kuerzel.push('VP');
   const vertrag = m.vertragsart ? `${VERTRAG_KURZ[m.vertragsart] ?? m.vertragsart} ${kurz(Number(m.wochenstunden) || 0)}` : 'kein Vertrag';
   const a = abwesenheitVon(m.id);
-  const name = aktionen.eckdaten
+  const name = aktionen.eckdaten && !istAnsicht() // die Dialoge lesen die Plan-Woche
     ? element('button', { type: 'button', class: 'ep-name-knopf', title: `Eckdaten: ${m.name}`, onclick: () => starte(() => aktionen.eckdaten(m.id, datum)) }, m.name)
     : element('span', { class: 'ep-name-text', title: m.name }, m.name);
   return element('th', { class: 'ep-name' }, name, element('small', { class: 'ep-info' },
@@ -281,6 +345,14 @@ function bearbeiteKommentar(td, m) {
   feld.focus();
 }
 
+// Letzte Zellen einer Zeile: im Plan der Kommentar, im IST Status (mit „✓“) und Abweichung IST − Plan.
+function zeilenEnde(m) {
+  if (!istAnsicht()) return [kommentarZelle(m)];
+  const status = zeilenStatus(woche, m.id, datum);
+  const darf = darfZeichnen() && tag()?.ist_erlaubt;
+  return [statusZelle(status, darf ? () => bestaetige([m.id]) : null), abweichungsZelle(istAbweichung(woche, m.id, datum), status)];
+}
+
 function zeile(m, sp, oeffnung) {
   const tr = element('tr', { 'data-mitarbeiter': m.id });
   const segmente = segmenteVon(m.id);
@@ -290,19 +362,25 @@ function zeile(m, sp, oeffnung) {
   if (a?.sperrt && !a.von && !segmente.length) {
     // Ganztags abwesend ohne geplante Blöcke: graue Zeile, nicht bemalbar.
     tr.classList.add('ep-abwesend');
-    tr.append(element('td', { class: 'ep-sperre', colspan: sp.length }, `${a.code} – ${a.name}`), kommentarZelle(m));
+    tr.append(element('td', { class: 'ep-sperre', colspan: sp.length }, `${a.code} – ${a.name}`), ...zeilenEnde(m));
     return tr;
   }
   if (a?.sperrt) tr.classList.add('ep-teilabwesend');
   const belegung = zellen(segmente, sp);
+  // IST: besetzter Plan als Umriss; eine Vorschlag-Zeile (offen, ohne IST) ist blass und gestrichelt.
+  const ist = istAnsicht();
+  const plan = ist ? zellen((woche.plan_bloecke ?? []).filter((b) => b.mitarbeiter_id === m.id && b.datum === datum && !b.unbesetzt), sp) : null;
+  const vorschlag = ist && segmente.some((s) => s.vorschlag);
   sp.forEach((von, i) => {
     const z = belegung[i];
     const klassen = ['ep-z'];
     if (von.endsWith(':00')) klassen.push('voll');
-    if (von < oeffnung.von || von >= oeffnung.bis) klassen.push('zu');
+    if (!oeffnung || von < oeffnung.von || von >= oeffnung.bis) klassen.push('zu');
     if (a?.sperrt && (!a.von || (von >= a.von && von < a.bis))) klassen.push('ep-abw');
+    if (ist) klassen.push(...istZellKlassen(belegung, plan, i, vorschlag));
     const td = element('td', { class: klassen.join(' '), 'data-i': i, 'data-von': von });
     const titel = [von];
+    if (plan?.[i] && !vorschlag) titel.push(`Plan ${bereichVon(plan[i].bereich_id)?.kuerzel ?? '?'}`);
     if (z) {
       const b = bereichVon(z.bereich_id);
       const vorher = belegung[i - 1];
@@ -313,16 +391,17 @@ function zeile(m, sp, oeffnung) {
       if (beginn) {
         td.classList.add('ep-start');
         td.append(element('span', { class: 'ep-kz' }, b?.kuerzel ?? '?'));
-        if (z.unbesetzt && aktionen.ersatz && !tag().vergangen) {
+        if (z.unbesetzt && aktionen.ersatz && !tag().vergangen && !ist) {
           td.append(element('button', { type: 'button', class: 'ep-ersatz', onclick: () => starte(() => aktionen.ersatz(m.id, datum)) }, 'Ersatz'));
         }
       }
-      titel.push(b ? `${b.kuerzel} ${b.name}` : '', z.unbesetzt ? `unbesetzt (${a?.code ?? 'abwesend'})` : '');
+      titel.push(b ? `${b.kuerzel} ${b.name}` : '', z.unbesetzt ? `unbesetzt (${a?.code ?? 'abwesend'})` : '',
+        vorschlag ? 'Vorschlag aus dem Plan' : '');
     } else if (klassen.includes('ep-abw')) titel.push(`${a.code} ${a.name}`);
     td.title = titel.filter(Boolean).join(' · ');
     tr.append(td);
   });
-  tr.append(kommentarZelle(m));
+  tr.append(...zeilenEnde(m));
   return tr;
 }
 
@@ -343,15 +422,24 @@ function abdeckungsZeilen(sp, oeffnung) {
 function zeichneRaster() {
   raeumeAuf(); // ein laufender Strich gehört zu Zellen, die es gleich nicht mehr gibt
   const t = tag();
-  if (!t?.geoeffnet) {
+  const ist = istAnsicht();
+  if (ist && t && !t.ist_erlaubt) {
+    rahmen.raster.classList.remove('malt');
+    rahmen.raster.replaceChildren(zukunftKarte(t, () => wechsleModus('plan')));
+    rahmen.sp = [];
+    return;
+  }
+  if (!t?.geoeffnet && !ist) { // im IST-Modus bleibt ein geschlossener Tag erfassbar (z. B. Inventur)
     rahmen.raster.classList.remove('malt');
     rahmen.raster.replaceChildren(element('div', { class: 'karte ep-geschlossen' },
       element('h2', {}, `${WOCHENTAGE[(t?.wochentag ?? 7) - 1]}, ${datumDE(datum)}: geschlossen`),
       t?.feiertag ? element('p', {}, t.feiertag) : null));
+    rahmen.sp = [];
     return;
   }
   const sp = spalten();
-  const oeffnung = { von: t.oeffnung_von, bis: t.oeffnung_bis };
+  rahmen.sp = sp; // die gezeichneten Spalten: Striche rechnen damit, Neuzeichnen einzelner Zeilen prüft sie
+  const oeffnung = t.geoeffnet ? { von: t.oeffnung_von, bis: t.oeffnung_bis } : null;
   // Kopf: eine Zelle je Stunde (zwei halbe Stunden), Öffnungszeit mit gelbem Strich.
   const stunden = [];
   for (const von of sp) {
@@ -359,17 +447,19 @@ function zeichneRaster() {
     if (letzte && von.endsWith(':30') && letzte.von.slice(0, 2) === von.slice(0, 2)) letzte.breite += 1;
     else stunden.push({ von, breite: 1 });
   }
-  const kopf = element('tr', {}, element('th', { class: 'ep-name' }, 'Mitarbeiter'), element('th', { class: 'zahl' }, 'Std.'),
+  const kopf = element('tr', {}, element('th', { class: 'ep-name' }, 'Mitarbeiter'), element('th', { class: 'zahl' }, ist ? 'IST' : 'Std.'),
     stunden.map((s) => element('th', {
-      colspan: s.breite, class: ['ep-stunde', s.von >= oeffnung.von && s.von < oeffnung.bis ? 'offen' : ''].filter(Boolean).join(' '),
+      colspan: s.breite, class: ['ep-stunde', oeffnung && s.von >= oeffnung.von && s.von < oeffnung.bis ? 'offen' : ''].filter(Boolean).join(' '),
     }, s.von)),
-    element('th', { class: 'ep-kom' }, 'Kommentar'));
-  const tabelle = element('table', { class: 'raster ep-tabelle' },
+    ist ? [element('th', { class: 'ist-status' }, 'Status'), element('th', { class: 'zahl', title: 'IST − Plan in Stunden' }, 'Abw.')]
+      : element('th', { class: 'ep-kom' }, 'Kommentar'));
+  const tabelle = element('table', { class: `raster ep-tabelle${ist ? ' ist-tabelle' : ''}` },
     element('colgroup', {}, element('col', { class: 'ep-name-spalte' }), element('col', { class: 'ep-std-spalte' }),
-      sp.map(() => element('col', {})), element('col', { class: 'ep-kom-spalte' })),
+      sp.map(() => element('col', {})),
+      ist ? [element('col', { class: 'ist-status-spalte' }), element('col', { class: 'ist-abw-spalte' })] : element('col', { class: 'ep-kom-spalte' })),
     element('thead', {}, kopf),
     element('tbody', {}, woche.mitarbeiter.map((m) => zeile(m, sp, oeffnung))),
-    abdeckungsZeilen(sp, oeffnung));
+    ist ? null : abdeckungsZeilen(sp, oeffnung));
   tabelle.style.minWidth = `${FESTE_SPALTEN_PX + sp.length * MIN_ZELLE_PX}px`;
   rahmen.raster.classList.toggle('malt', Boolean(darfMalen()));
   const leer = woche.mitarbeiter.length ? null
@@ -392,16 +482,17 @@ function passeHoeheAn() {
 function zeichneZeilen(ids) {
   const t = tag();
   const tabelle = rahmen.raster.querySelector('.ep-tabelle');
-  if (!t?.geoeffnet || !tabelle) { zeichneAlles(); return; }
   const sp = spalten();
-  const oeffnung = { von: t.oeffnung_von, bis: t.oeffnung_bis };
+  // Ein IST-Strich kann die Spalten ändern (Raster folgt dem frühesten und spätesten Block): dann alles neu.
+  if (!(t?.geoeffnet || istAnsicht()) || !tabelle || sp.join() !== rahmen.sp?.join()) { zeichneAlles(); return; }
+  const oeffnung = t.geoeffnet ? { von: t.oeffnung_von, bis: t.oeffnung_bis } : null;
   if (zug && ids.includes(zug.mitarbeiter)) raeumeAuf();
   for (const id of ids) {
     const m = woche.mitarbeiter.find((x) => x.id === id);
     const alt = tabelle.querySelector(`tbody tr[data-mitarbeiter="${id}"]`);
     if (m && alt) alt.replaceWith(zeile(m, sp, oeffnung));
   }
-  tabelle.querySelector('tfoot').replaceWith(abdeckungsZeilen(sp, oeffnung));
+  tabelle.querySelector('tfoot')?.replaceWith(abdeckungsZeilen(sp, oeffnung));
   for (const x of tabelle.querySelectorAll('.hervor, .hervor-zelle')) x.classList.remove('hervor', 'hervor-zelle');
   hervor = null;
   zeigeWartende();
@@ -413,7 +504,7 @@ function zeigeWartende() {
   if (rahmen.speichert) rahmen.speichert.hidden = !wartend.length;
   for (const td of rahmen.raster?.querySelectorAll('td.ep-z.wartet') ?? []) td.classList.remove('wartet');
   for (const w of wartend) {
-    if (w.datum !== datum) continue;
+    if (w.datum !== datum || w.ist !== istAnsicht()) continue;
     for (const td of rahmen.raster.querySelectorAll(`tbody tr[data-mitarbeiter="${w.mitarbeiter}"] td.ep-z`)) {
       if (td.dataset.von >= w.von && td.dataset.von < w.bis) td.classList.add('wartet');
     }
@@ -484,37 +575,66 @@ async function beiPointerAuf(e) {
   zug.ende = indexBei(e.clientX);
   const { mitarbeiter, start, ende } = zug;
   raeumeAuf();
-  const { von, bis } = strich(spalten(), start, ende);
-  const s = { mitarbeiter, datum, von, bis };
+  const { von, bis } = strich(rahmen.sp, start, ende);
+  const s = { mitarbeiter, datum, von, bis, ist: istAnsicht(), grund: null };
   const bereichId = pinsel === 'radieren' ? null : Number(pinsel);
   const zeiger = { x: e.clientX, y: e.clientY };
+  if (s.ist) { // bestätigte Zeile: erst der Grund; Abbrechen = kein Strich
+    s.grund = await grundFuer(mitarbeiter, s.datum);
+    if (s.grund === undefined) return;
+  }
   // Zeile beim Loslassen: Schnappschuss, falls bis zum Senden keine Antwort der Zeile kommt (voriger Strich abgelehnt).
-  // Bis dahin kann die Seite schon eine andere Woche zeigen, dann fehlt die Zeile in `woche`.
+  // Bis dahin kann die Seite schon eine andere Woche zeigen, dann fehlt die Zeile in `woche`. Im IST ist das auf einer
+  // offenen Zeile der angezeigte Vorschlag (Rückgängig setzt ihn wieder, nicht []: [] hieße „ausdrücklich leer“).
   const vorherBeimZiehen = gespeicherteZeile(mitarbeiter, s.datum);
   wartend.push(s);
   zeigeWartende();
-  await einreihen(`${mitarbeiter}|${s.datum}`, () => sendeStrich(s, bereichId, zeiger, vorherBeimZiehen));
+  await einreihen(zeilenSchluessel(s.ist, mitarbeiter, s.datum), () => sendeStrich(s, bereichId, zeiger, vorherBeimZiehen));
+}
+
+// IST: Grund für eine Zeile. null = Tag nicht bestätigt (kein Grund nötig), undefined = abgebrochen. Ein einmal
+// genannter Grund gilt für alle Striche dieser Zeile bis zum Tageswechsel.
+async function grundFuer(mid, d) {
+  if (!zeileBestaetigt(mid, d)) return null;
+  const schluessel = `${mid}|${d}`;
+  if (gruende.has(schluessel)) return gruende.get(schluessel);
+  const grund = await grundDialog({ name: nameVon(mid), datum: d, hinweis: abschlussHinweis(d) });
+  if (grund == null) return undefined;
+  if (d === datum) gruende.set(schluessel, grund);
+  return grund;
+}
+
+// Hinweis im Grund-Dialog, wenn die Woche schon abgeschlossen ist (Task 4 bucht dann eine Korrektur im Zeitkonto).
+// pep_ist_woche sagt das nicht; pep_zeitkonto_woche (nur lesend) liefert `abgeschlossen`. Gefragt wird nur bei einer
+// vergangenen Woche (nur die lässt sich abschließen); Fehler und Vorschau ohne Daten lassen den allgemeinen Text stehen.
+async function abschlussHinweis(d) {
+  const { jahr: j, kw: k } = isoWoche(d);
+  if (plusTage(montagDerKw(j, k), 6) >= (woche?.heute ?? heuteLokal())) return null;
+  try {
+    const zk = await aufruf('pep_zeitkonto_woche', { p_jahr: j, p_kw: k });
+    return zk?.abgeschlossen ? GRUND_ABGESCHLOSSEN : null;
+  } catch { return null; }
 }
 
 // Schickt einen Strich, wenn die vorige Antwort seiner Zeile eingearbeitet ist. Der Rückgängig-Schnappschuss ist die
 // Zeile in diesem Moment (letzte Antwort der Zeile, sonst die Zeile beim Loslassen), damit ein „Rückgängig“ genau
 // diesen einen Strich zurücknimmt.
 async function sendeStrich(s, bereichId, zeiger, vorherBeimZiehen) {
-  const schluessel = `${s.mitarbeiter}|${s.datum}`;
+  const schluessel = zeilenSchluessel(s.ist, s.mitarbeiter, s.datum);
   const vorher = stand.get(schluessel) ?? vorherBeimZiehen;
   try {
-    const antwort = await aufruf('pep_plan_malen', {
-      p_mitarbeiter_id: s.mitarbeiter, p_datum: s.datum, p_von: s.von, p_bis: s.bis, p_bereich_id: bereichId,
-    });
+    const parameter = { p_mitarbeiter_id: s.mitarbeiter, p_datum: s.datum, p_von: s.von, p_bis: s.bis, p_bereich_id: bereichId };
+    const antwort = s.ist ? await aufruf('pep_ist_malen', { ...parameter, p_grund: s.grund })
+      : await aufruf('pep_plan_malen', parameter);
     wartend.splice(wartend.indexOf(s), 1);
     if (!antwort) { zeigeWartende(); return; } // Vorschau ohne Datenbank
     const nachher = zeileAus(antwort.bloecke ?? [], s.mitarbeiter, s.datum);
     stand.set(schluessel, nachher);
     if (JSON.stringify(nachher) !== JSON.stringify(vorher)) {
-      stapel.merken({ mitarbeiterId: s.mitarbeiter, datum: s.datum, bloecke: vorher });
+      stapel.merken({ mitarbeiterId: s.mitarbeiter, datum: s.datum, bloecke: vorher, ist: s.ist, grund: s.grund });
     }
     rahmen.rueckgaengig.disabled = stapel.leer();
-    if (inWoche(s.datum)) {
+    if (inWoche(s.datum, s.ist)) {
       uebernehme(antwort, [s.mitarbeiter]);
       if (s.datum === datum) zeichneZeilen([s.mitarbeiter]);
       else { zeigeWartende(); zeichneSeite(); } // Tag inzwischen gewechselt: Wochenstunden trotzdem aktuell halten
@@ -563,6 +683,11 @@ function uebernehme(antwort, ids) {
   for (const [d, liste] of Object.entries(antwort.pruefung ?? {})) {
     if (d in woche.pruefung) woche.pruefung[d] = liste;
   }
+  if (antwort.status && woche.status) { // IST: Status dieser Zeilen (offen/bestätigt) aus der Antwort
+    woche.status = woche.status
+      .filter((x) => !(x.datum === antwort.datum && ids.includes(x.mitarbeiter_id)))
+      .concat(antwort.status);
+  }
 }
 
 async function rueckgaengig() {
@@ -572,22 +697,57 @@ async function rueckgaengig() {
   const eintrag = stapel.holen();
   rahmen.rueckgaengig.disabled = stapel.leer();
   if (!eintrag) return;
-  const schluessel = `${eintrag.mitarbeiterId}|${eintrag.datum}`;
+  // IST: Rückgängig schickt denselben Grund wie der Strich. Wurde die Zeile erst danach bestätigt, fehlt er: fragen.
+  let grund = eintrag.grund ?? null;
+  if (eintrag.ist && grund == null && inWoche(eintrag.datum, true)) {
+    grund = await grundFuer(eintrag.mitarbeiterId, eintrag.datum);
+    if (grund === undefined) { stapel.merken(eintrag); rahmen.rueckgaengig.disabled = stapel.leer(); return; }
+  }
+  const schluessel = zeilenSchluessel(eintrag.ist, eintrag.mitarbeiterId, eintrag.datum);
   await einreihen(schluessel, async () => {
-    const antwort = await aufruf('pep_plan_zeile_setzen', {
-      p_mitarbeiter_id: eintrag.mitarbeiterId, p_datum: eintrag.datum, p_bloecke: eintrag.bloecke,
-    });
+    const parameter = { p_mitarbeiter_id: eintrag.mitarbeiterId, p_datum: eintrag.datum, p_bloecke: eintrag.bloecke };
+    const antwort = eintrag.ist ? await aufruf('pep_ist_zeile_setzen', { ...parameter, p_grund: grund })
+      : await aufruf('pep_plan_zeile_setzen', parameter);
     if (!antwort) return;
     stand.set(schluessel, zeileAus(antwort.bloecke ?? [], eintrag.mitarbeiterId, eintrag.datum));
-    if (inWoche(eintrag.datum)) {
+    if (inWoche(eintrag.datum, Boolean(eintrag.ist))) {
       uebernehme(antwort, [eintrag.mitarbeiterId]);
       if (eintrag.datum === datum) zeichneZeilen([eintrag.mitarbeiterId]);
       else waehleTag(eintrag.datum);
+    } else if (istAnsicht() !== Boolean(eintrag.ist)) {
+      // Strich aus dem anderen Modus: dorthin wechseln (neu laden), damit man sieht, was zurückging
+      modus = eintrag.ist ? 'ist' : 'plan';
+      ({ jahr, kw } = isoWoche(eintrag.datum));
+      datum = eintrag.datum;
+      gruende.clear();
+      planNeuLaden();
     } else {
       springeZu(eintrag.datum); // Strich aus einer anderen Woche: dorthin wechseln, damit man sieht, was zurückging
     }
     meldung(`Rückgängig: ${nameVon(eintrag.mitarbeiterId) || 'Zeile'}, ${datumDE(eintrag.datum)}`, 'ok');
   });
+}
+
+// IST „Tag bestätigen“ (ids null = alle offenen Zeilen) bzw. „✓“ einer Zeile. Erst laufen alle Striche zu Ende,
+// solange sind neue Striche gesperrt; das Bestätigen hängt selbst in den Ketten, damit „Rückgängig“ darauf wartet.
+// Danach wird die Woche neu geladen (die Antwort ist nur eine Anzahl; Vorschläge sind jetzt gespeichertes IST).
+async function bestaetige(ids) {
+  if (bestaetigtGerade || !istAnsicht()) return;
+  const d = datum;
+  bestaetigtGerade = true;
+  zeichneKopf();
+  rahmen.raster.classList.remove('malt');
+  try {
+    while (ketten.size) await Promise.all([...ketten.values()]);
+    await einreihen('ist-bestaetigen', async () => {
+      const r = await aufruf('pep_ist_bestaetigen', { p_datum: d, p_mitarbeiter_ids: ids });
+      await lade();
+      if (r) meldung(`${datumDE(d)}: ${anzahl(r.bestaetigt, 'Zeile', 'Zeilen')} bestätigt`, 'ok');
+    });
+  } finally {
+    bestaetigtGerade = false;
+    if (woche) zeichneAlles();
+  }
 }
 
 // ---------------------------------------------------------------- Seitenleiste
@@ -675,6 +835,11 @@ function abteilungsBox() {
 }
 
 function zeichneSeite() {
+  // IST: Tagessummen Plan/IST und offene Zeilen der Woche, keine Regelprüfung.
+  if (istAnsicht()) {
+    rahmen.seite.replaceChildren(...[tag()?.ist_erlaubt ? istTagBox(woche, datum) : null, offeneBox(woche, datum, waehleTag)].filter(Boolean));
+    return;
+  }
   rahmen.seite.replaceChildren(...(tag()?.geoeffnet ? [regelBox(), wochenBox(), abteilungsBox()] : [wochenBox()]));
 }
 

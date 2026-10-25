@@ -1,0 +1,3090 @@
+{
+ "kw": 46,
+ "jahr": 2026,
+ "tage": [
+  {
+   "datum": "2026-11-09",
+   "feiertag": null,
+   "geoeffnet": true,
+   "vergangen": true,
+   "wochentag": 1,
+   "rahmen_bis": "21:30",
+   "rahmen_von": "06:00",
+   "ist_erlaubt": true,
+   "oeffnung_bis": "20:00",
+   "oeffnung_von": "07:00"
+  },
+  {
+   "datum": "2026-11-10",
+   "feiertag": null,
+   "geoeffnet": true,
+   "vergangen": true,
+   "wochentag": 2,
+   "rahmen_bis": "21:30",
+   "rahmen_von": "06:00",
+   "ist_erlaubt": true,
+   "oeffnung_bis": "20:00",
+   "oeffnung_von": "07:00"
+  },
+  {
+   "datum": "2026-11-11",
+   "feiertag": null,
+   "geoeffnet": true,
+   "vergangen": true,
+   "wochentag": 3,
+   "rahmen_bis": "21:30",
+   "rahmen_von": "06:00",
+   "ist_erlaubt": true,
+   "oeffnung_bis": "20:00",
+   "oeffnung_von": "07:00"
+  },
+  {
+   "datum": "2026-11-12",
+   "feiertag": null,
+   "geoeffnet": true,
+   "vergangen": false,
+   "wochentag": 4,
+   "rahmen_bis": "21:30",
+   "rahmen_von": "06:00",
+   "ist_erlaubt": true,
+   "oeffnung_bis": "20:00",
+   "oeffnung_von": "07:00"
+  },
+  {
+   "datum": "2026-11-13",
+   "feiertag": null,
+   "geoeffnet": true,
+   "vergangen": false,
+   "wochentag": 5,
+   "rahmen_bis": "21:30",
+   "rahmen_von": "06:00",
+   "ist_erlaubt": false,
+   "oeffnung_bis": "20:00",
+   "oeffnung_von": "07:00"
+  },
+  {
+   "datum": "2026-11-14",
+   "feiertag": null,
+   "geoeffnet": true,
+   "vergangen": false,
+   "wochentag": 6,
+   "rahmen_bis": "21:30",
+   "rahmen_von": "06:00",
+   "ist_erlaubt": false,
+   "oeffnung_bis": "20:00",
+   "oeffnung_von": "07:00"
+  },
+  {
+   "datum": "2026-11-15",
+   "feiertag": null,
+   "geoeffnet": false,
+   "vergangen": false,
+   "wochentag": 7,
+   "rahmen_bis": null,
+   "rahmen_von": null,
+   "ist_erlaubt": false,
+   "oeffnung_bis": null,
+   "oeffnung_von": null
+  }
+ ],
+ "heute": "2026-11-12",
+ "modus": "ist",
+ "montag": "2026-11-09",
+ "status": [
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 2
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 3
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 5
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 6
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 7
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 8
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 9
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 10
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 11
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 12
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 13
+  },
+  {
+   "datum": "2026-11-09",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.875+01:00",
+   "mitarbeiter_id": 14
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 2
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 3
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 4
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 5
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 6
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 7
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 8
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 9
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 10
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 12
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 13
+  },
+  {
+   "datum": "2026-11-10",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.887+01:00",
+   "mitarbeiter_id": 14
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 2
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 3
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 4
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 5
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 6
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 7
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 8
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 9
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 10
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 11
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": true,
+   "bestaetigt_am": "2026-10-25T11:43:53.914+01:00",
+   "mitarbeiter_id": 12
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 13
+  },
+  {
+   "datum": "2026-11-11",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 14
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 2
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 3
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 4
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 5
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 6
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 7
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 9
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 10
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 11
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 12
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 13
+  },
+  {
+   "datum": "2026-11-12",
+   "bestaetigt": false,
+   "bestaetigt_am": null,
+   "mitarbeiter_id": 14
+  }
+ ],
+ "bloecke": [
+  {
+   "id": 51,
+   "bis": "11:00",
+   "von": "07:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 52,
+   "bis": "11:30",
+   "von": "11:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 53,
+   "bis": "16:30",
+   "von": "11:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 7,
+   "bis": "17:30",
+   "von": "14:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 8,
+   "bis": "18:00",
+   "von": "17:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 9,
+   "bis": "20:00",
+   "von": "18:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 10,
+   "bis": "09:00",
+   "von": "06:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 11,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 12,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 13,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 14,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 15,
+   "bis": "10:30",
+   "von": "10:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 16,
+   "bis": "14:30",
+   "von": "10:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 17,
+   "bis": "09:00",
+   "von": "07:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 18,
+   "bis": "11:00",
+   "von": "09:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 3,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 19,
+   "bis": "16:00",
+   "von": "12:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 20,
+   "bis": "16:30",
+   "von": "16:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 21,
+   "bis": "20:00",
+   "von": "16:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 22,
+   "bis": "08:00",
+   "von": "06:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 23,
+   "bis": "17:30",
+   "von": "13:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 24,
+   "bis": "16:30",
+   "von": "12:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 25,
+   "bis": "17:00",
+   "von": "16:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 26,
+   "bis": "20:30",
+   "von": "17:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 27,
+   "bis": "20:00",
+   "von": "17:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "id": 28,
+   "bis": "17:00",
+   "von": "13:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 29,
+   "bis": "17:30",
+   "von": "17:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 30,
+   "bis": "21:30",
+   "von": "17:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 31,
+   "bis": "12:30",
+   "von": "07:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 32,
+   "bis": "13:00",
+   "von": "12:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 33,
+   "bis": "15:30",
+   "von": "13:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 1,
+   "bis": "17:30",
+   "von": "15:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 2,
+   "bis": "18:00",
+   "von": "17:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 3,
+   "bis": "20:00",
+   "von": "18:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 34,
+   "bis": "20:00",
+   "von": "16:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 4
+  },
+  {
+   "id": 35,
+   "bis": "09:00",
+   "von": "06:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 36,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 37,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 38,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 39,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 40,
+   "bis": "10:30",
+   "von": "10:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 41,
+   "bis": "14:30",
+   "von": "10:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 42,
+   "bis": "16:00",
+   "von": "12:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 43,
+   "bis": "16:30",
+   "von": "16:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 44,
+   "bis": "20:00",
+   "von": "16:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 45,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 46,
+   "bis": "12:00",
+   "von": "10:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 47,
+   "bis": "17:00",
+   "von": "13:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 48,
+   "bis": "17:30",
+   "von": "17:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 49,
+   "bis": "21:30",
+   "von": "17:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 50,
+   "bis": "12:00",
+   "von": "08:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 13
+  },
+  {
+   "id": -1,
+   "bis": "17:30",
+   "von": "14:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": -2,
+   "bis": "18:00",
+   "von": "17:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 10,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": -3,
+   "bis": "20:00",
+   "von": "18:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 54,
+   "bis": "21:00",
+   "von": "16:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 4
+  },
+  {
+   "id": 55,
+   "bis": "09:00",
+   "von": "05:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 56,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 57,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 58,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 59,
+   "bis": "09:00",
+   "von": "07:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 60,
+   "bis": "10:30",
+   "von": "09:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 3,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": -4,
+   "bis": "16:00",
+   "von": "12:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 4,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": -5,
+   "bis": "16:30",
+   "von": "16:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 10,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": -6,
+   "bis": "20:00",
+   "von": "16:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 6,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": -7,
+   "bis": "16:30",
+   "von": "12:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": -8,
+   "bis": "17:00",
+   "von": "16:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 10,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": -9,
+   "bis": "20:30",
+   "von": "17:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": -10,
+   "bis": "20:00",
+   "von": "17:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "id": 61,
+   "bis": "17:00",
+   "von": "13:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 62,
+   "bis": "17:30",
+   "von": "17:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 63,
+   "bis": "21:30",
+   "von": "17:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "vorschlag": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": -11,
+   "bis": "12:30",
+   "von": "07:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": -12,
+   "bis": "13:00",
+   "von": "12:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 10,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": -13,
+   "bis": "15:30",
+   "von": "13:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": -14,
+   "bis": "20:00",
+   "von": "16:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 4
+  },
+  {
+   "id": -15,
+   "bis": "09:00",
+   "von": "06:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": -16,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": -17,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": -18,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": -19,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": -20,
+   "bis": "10:30",
+   "von": "10:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 10,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": -21,
+   "bis": "14:30",
+   "von": "10:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": -22,
+   "bis": "09:00",
+   "von": "07:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": -23,
+   "bis": "11:00",
+   "von": "09:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 3,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": -24,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": -25,
+   "bis": "12:00",
+   "von": "10:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 5,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": -26,
+   "bis": "16:30",
+   "von": "12:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": -27,
+   "bis": "17:00",
+   "von": "16:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 10,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": -28,
+   "bis": "20:30",
+   "von": "17:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": -29,
+   "bis": "20:00",
+   "von": "17:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "id": -30,
+   "bis": "12:00",
+   "von": "08:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "vorschlag": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 13
+  }
+ ],
+ "bereiche": [
+  {
+   "id": 1,
+   "art": "bereich",
+   "name": "Kasse",
+   "aktiv": true,
+   "farbe": "#7FD1FF",
+   "kuerzel": "KA",
+   "bedeutung": "kasse",
+   "kompetenz_noetig": true
+  },
+  {
+   "id": 2,
+   "art": "bereich",
+   "name": "Obst",
+   "aktiv": true,
+   "farbe": "#9BE38A",
+   "kuerzel": "OG",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 3,
+   "art": "bereich",
+   "name": "Backen",
+   "aktiv": true,
+   "farbe": "#F3C96B",
+   "kuerzel": "BB",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 4,
+   "art": "bereich",
+   "name": "TroSo",
+   "aktiv": true,
+   "farbe": "#D9B38C",
+   "kuerzel": "TS",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 5,
+   "art": "bereich",
+   "name": "MoPro",
+   "aktiv": true,
+   "farbe": "#F7C6DA",
+   "kuerzel": "MO",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 6,
+   "art": "bereich",
+   "name": "TK",
+   "aktiv": true,
+   "farbe": "#B8C4FF",
+   "kuerzel": "TK",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 7,
+   "art": "bereich",
+   "name": "Führung",
+   "aktiv": true,
+   "farbe": "#2E7D4F",
+   "kuerzel": "FÜ",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 8,
+   "art": "bereich",
+   "name": "Reinigung",
+   "aktiv": true,
+   "farbe": "#C9C9C9",
+   "kuerzel": "RE",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 9,
+   "art": "bereich",
+   "name": "Backoffice",
+   "aktiv": true,
+   "farbe": "#AEE0D6",
+   "kuerzel": "BO",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  },
+  {
+   "id": 10,
+   "art": "pause",
+   "name": "Pause",
+   "aktiv": true,
+   "farbe": "#555555",
+   "kuerzel": "PA",
+   "bedeutung": null,
+   "kompetenz_noetig": false
+  }
+ ],
+ "pruefung": {},
+ "kennzahlen": {
+  "kw": 46,
+  "jahr": 2026,
+  "soll": 305,
+  "montag": "2026-11-09",
+  "geplant": 339,
+  "abwesend": 60.08,
+  "ueberhang": 61.42,
+  "planumsatz": 61000,
+  "verfuegbar": 366.42,
+  "davon_urlaub": 37.5,
+  "stundenvorgabe": 305,
+  "vorgabe_quelle": "planumsatz",
+  "stundenleistung": 200,
+  "vertragsstunden": 426.5,
+  "stundenleistung_eigen": null,
+  "stundenvorgabe_manuell": null
+ },
+ "kommentare": [
+  {
+   "text": "Obstlieferung prüfen",
+   "datum": "2026-11-09",
+   "mitarbeiter_id": 5
+  },
+  {
+   "text": "Lieferung TroSo annehmen",
+   "datum": "2026-11-09",
+   "mitarbeiter_id": 6
+  },
+  {
+   "text": "Abschluss, Schlüssel",
+   "datum": "2026-11-09",
+   "mitarbeiter_id": 12
+  },
+  {
+   "text": "Inventur TK vorbereiten",
+   "datum": "2026-11-10",
+   "mitarbeiter_id": 8
+  }
+ ],
+ "mitarbeiter": [
+  {
+   "id": 1,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Test, Anna",
+   "kompetenzen": [],
+   "vertragsart": "vollzeit",
+   "wochenstunden": 37.5,
+   "personalnummer": "90001"
+  },
+  {
+   "id": 2,
+   "vp": true,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Muster, Ben",
+   "kompetenzen": [
+    1,
+    15
+   ],
+   "vertragsart": "vollzeit",
+   "wochenstunden": 37.5,
+   "personalnummer": "90002"
+  },
+  {
+   "id": 3,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Beispiel, Cem",
+   "kompetenzen": [
+    1
+   ],
+   "vertragsart": "teilzeit",
+   "wochenstunden": 30,
+   "personalnummer": "90003"
+  },
+  {
+   "id": 4,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Probe, Dana",
+   "kompetenzen": [
+    1
+   ],
+   "vertragsart": "teilzeit",
+   "wochenstunden": 20,
+   "personalnummer": "90004"
+  },
+  {
+   "id": 5,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Demo, Emil",
+   "kompetenzen": [],
+   "vertragsart": "vollzeit",
+   "wochenstunden": 37.5,
+   "personalnummer": "90005"
+  },
+  {
+   "id": 6,
+   "vp": true,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Fiktiv, Frieda",
+   "kompetenzen": [
+    15
+   ],
+   "vertragsart": "fuehrung",
+   "wochenstunden": 42,
+   "personalnummer": "90006"
+  },
+  {
+   "id": 7,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Platzhalter, Gustav",
+   "kompetenzen": [
+    1
+   ],
+   "vertragsart": "teilzeit",
+   "wochenstunden": 25,
+   "personalnummer": "90007"
+  },
+  {
+   "id": 8,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Vorlage, Hanna",
+   "kompetenzen": [],
+   "vertragsart": "vollzeit",
+   "wochenstunden": 37.5,
+   "personalnummer": "90008"
+  },
+  {
+   "id": 9,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Entwurf, Ivo",
+   "kompetenzen": [],
+   "vertragsart": "teilzeit",
+   "wochenstunden": 30,
+   "personalnummer": "90009"
+  },
+  {
+   "id": 10,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Skizze, Jana",
+   "kompetenzen": [
+    1
+   ],
+   "vertragsart": "vollzeit",
+   "wochenstunden": 37.5,
+   "personalnummer": "90010"
+  },
+  {
+   "id": 11,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Modell, Kai",
+   "kompetenzen": [],
+   "vertragsart": "teilzeit",
+   "wochenstunden": 20,
+   "personalnummer": "90011"
+  },
+  {
+   "id": 12,
+   "vp": true,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Attrappe, Lea",
+   "kompetenzen": [
+    15
+   ],
+   "vertragsart": "fuehrung",
+   "wochenstunden": 42,
+   "personalnummer": "90012"
+  },
+  {
+   "id": 13,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Reserve, Mia",
+   "kompetenzen": [
+    1
+   ],
+   "vertragsart": "teilzeit",
+   "wochenstunden": 20,
+   "personalnummer": null
+  },
+  {
+   "id": 14,
+   "vp": false,
+   "u18": {
+    "2026-11-09": false,
+    "2026-11-10": false,
+    "2026-11-11": false,
+    "2026-11-12": false,
+    "2026-11-13": false,
+    "2026-11-14": false,
+    "2026-11-15": false
+   },
+   "name": "Aushilfe, Nico",
+   "kompetenzen": [
+    1
+   ],
+   "vertragsart": "minijob",
+   "wochenstunden": 10,
+   "personalnummer": null
+  }
+ ],
+ "plan_bloecke": [
+  {
+   "id": 266,
+   "bis": "11:00",
+   "von": "07:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 267,
+   "bis": "11:30",
+   "von": "11:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 268,
+   "bis": "15:30",
+   "von": "11:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 34,
+   "bis": "17:30",
+   "von": "14:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 35,
+   "bis": "18:00",
+   "von": "17:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 36,
+   "bis": "20:00",
+   "von": "18:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 61,
+   "bis": "20:00",
+   "von": "16:00",
+   "datum": "2026-11-09",
+   "unbesetzt": true,
+   "bereich_id": 1,
+   "mitarbeiter_id": 4
+  },
+  {
+   "id": 72,
+   "bis": "09:00",
+   "von": "06:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 73,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 74,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 75,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 119,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 120,
+   "bis": "10:30",
+   "von": "10:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 121,
+   "bis": "14:30",
+   "von": "10:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 147,
+   "bis": "09:00",
+   "von": "07:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 148,
+   "bis": "11:00",
+   "von": "09:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 3,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 164,
+   "bis": "16:00",
+   "von": "12:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 165,
+   "bis": "16:30",
+   "von": "16:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 166,
+   "bis": "20:00",
+   "von": "16:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 271,
+   "bis": "08:00",
+   "von": "06:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 271,
+   "bis": "10:00",
+   "von": "08:00",
+   "datum": "2026-11-09",
+   "unbesetzt": true,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 272,
+   "bis": "12:00",
+   "von": "10:00",
+   "datum": "2026-11-09",
+   "unbesetzt": true,
+   "bereich_id": 5,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 273,
+   "bis": "17:30",
+   "von": "13:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 203,
+   "bis": "16:30",
+   "von": "12:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 204,
+   "bis": "17:00",
+   "von": "16:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 205,
+   "bis": "20:30",
+   "von": "17:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 230,
+   "bis": "20:00",
+   "von": "17:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "id": 238,
+   "bis": "17:00",
+   "von": "13:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 239,
+   "bis": "17:30",
+   "von": "17:00",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 240,
+   "bis": "21:30",
+   "von": "17:30",
+   "datum": "2026-11-09",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 10,
+   "bis": "12:30",
+   "von": "07:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 11,
+   "bis": "13:00",
+   "von": "12:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 12,
+   "bis": "15:30",
+   "von": "13:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 40,
+   "bis": "17:30",
+   "von": "14:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 41,
+   "bis": "18:00",
+   "von": "17:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 42,
+   "bis": "20:00",
+   "von": "18:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 62,
+   "bis": "20:00",
+   "von": "16:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 4
+  },
+  {
+   "id": 82,
+   "bis": "09:00",
+   "von": "06:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 83,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 84,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 85,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 125,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 126,
+   "bis": "10:30",
+   "von": "10:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 127,
+   "bis": "14:30",
+   "von": "10:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 170,
+   "bis": "16:00",
+   "von": "12:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 171,
+   "bis": "16:30",
+   "von": "16:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 172,
+   "bis": "20:00",
+   "von": "16:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 189,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 190,
+   "bis": "12:00",
+   "von": "10:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 244,
+   "bis": "17:00",
+   "von": "13:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 245,
+   "bis": "17:30",
+   "von": "17:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 246,
+   "bis": "21:30",
+   "von": "17:30",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 269,
+   "bis": "12:00",
+   "von": "08:00",
+   "datum": "2026-11-10",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 13
+  },
+  {
+   "id": 46,
+   "bis": "17:30",
+   "von": "14:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 47,
+   "bis": "18:00",
+   "von": "17:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 48,
+   "bis": "20:00",
+   "von": "18:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 63,
+   "bis": "20:00",
+   "von": "16:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 4
+  },
+  {
+   "id": 92,
+   "bis": "09:00",
+   "von": "06:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 93,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 94,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 95,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 150,
+   "bis": "09:00",
+   "von": "07:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 151,
+   "bis": "11:00",
+   "von": "09:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 3,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 176,
+   "bis": "16:00",
+   "von": "12:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 177,
+   "bis": "16:30",
+   "von": "16:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 178,
+   "bis": "20:00",
+   "von": "16:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 192,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 193,
+   "bis": "12:00",
+   "von": "10:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 209,
+   "bis": "16:30",
+   "von": "12:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 210,
+   "bis": "17:00",
+   "von": "16:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 211,
+   "bis": "20:30",
+   "von": "17:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 231,
+   "bis": "20:00",
+   "von": "17:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "id": 250,
+   "bis": "17:00",
+   "von": "13:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 251,
+   "bis": "17:30",
+   "von": "17:00",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 252,
+   "bis": "21:30",
+   "von": "17:30",
+   "datum": "2026-11-11",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 16,
+   "bis": "12:30",
+   "von": "07:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 17,
+   "bis": "13:00",
+   "von": "12:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 18,
+   "bis": "15:30",
+   "von": "13:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 64,
+   "bis": "20:00",
+   "von": "16:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 4
+  },
+  {
+   "id": 102,
+   "bis": "09:00",
+   "von": "06:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 103,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 104,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 105,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 131,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 132,
+   "bis": "10:30",
+   "von": "10:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 133,
+   "bis": "14:30",
+   "von": "10:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 153,
+   "bis": "09:00",
+   "von": "07:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 154,
+   "bis": "11:00",
+   "von": "09:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 3,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 195,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 196,
+   "bis": "12:00",
+   "von": "10:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 215,
+   "bis": "16:30",
+   "von": "12:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 216,
+   "bis": "17:00",
+   "von": "16:30",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 217,
+   "bis": "20:30",
+   "von": "17:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 232,
+   "bis": "20:00",
+   "von": "17:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "id": 270,
+   "bis": "12:00",
+   "von": "08:00",
+   "datum": "2026-11-12",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 13
+  },
+  {
+   "id": 22,
+   "bis": "12:30",
+   "von": "07:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 23,
+   "bis": "13:00",
+   "von": "12:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 24,
+   "bis": "15:30",
+   "von": "13:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 52,
+   "bis": "17:30",
+   "von": "14:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 53,
+   "bis": "18:00",
+   "von": "17:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 54,
+   "bis": "20:00",
+   "von": "18:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 112,
+   "bis": "09:00",
+   "von": "06:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 2,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 113,
+   "bis": "12:00",
+   "von": "09:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 114,
+   "bis": "12:30",
+   "von": "12:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 115,
+   "bis": "14:00",
+   "von": "12:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 5
+  },
+  {
+   "id": 137,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 138,
+   "bis": "10:30",
+   "von": "10:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 139,
+   "bis": "14:30",
+   "von": "10:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 156,
+   "bis": "09:00",
+   "von": "07:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 157,
+   "bis": "11:00",
+   "von": "09:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 3,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 182,
+   "bis": "16:00",
+   "von": "12:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 4,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 183,
+   "bis": "16:30",
+   "von": "16:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 184,
+   "bis": "20:00",
+   "von": "16:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 8
+  },
+  {
+   "id": 221,
+   "bis": "16:30",
+   "von": "12:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 222,
+   "bis": "17:00",
+   "von": "16:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 223,
+   "bis": "20:30",
+   "von": "17:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 233,
+   "bis": "20:00",
+   "von": "17:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "id": 256,
+   "bis": "17:00",
+   "von": "13:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 257,
+   "bis": "17:30",
+   "von": "17:00",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 258,
+   "bis": "21:30",
+   "von": "17:30",
+   "datum": "2026-11-13",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 28,
+   "bis": "12:30",
+   "von": "07:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 29,
+   "bis": "13:00",
+   "von": "12:30",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 30,
+   "bis": "15:30",
+   "von": "13:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 2
+  },
+  {
+   "id": 58,
+   "bis": "17:30",
+   "von": "14:30",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 59,
+   "bis": "18:00",
+   "von": "17:30",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 60,
+   "bis": "20:00",
+   "von": "18:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 3
+  },
+  {
+   "id": 65,
+   "bis": "20:00",
+   "von": "16:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 4
+  },
+  {
+   "id": 143,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 144,
+   "bis": "10:30",
+   "von": "10:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 145,
+   "bis": "14:30",
+   "von": "10:30",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 6
+  },
+  {
+   "id": 159,
+   "bis": "09:00",
+   "von": "07:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 160,
+   "bis": "11:00",
+   "von": "09:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 3,
+   "mitarbeiter_id": 7
+  },
+  {
+   "id": 198,
+   "bis": "10:00",
+   "von": "06:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 6,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 199,
+   "bis": "12:00",
+   "von": "10:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 5,
+   "mitarbeiter_id": 9
+  },
+  {
+   "id": 227,
+   "bis": "16:30",
+   "von": "12:30",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 228,
+   "bis": "17:00",
+   "von": "16:30",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 229,
+   "bis": "20:30",
+   "von": "17:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 1,
+   "mitarbeiter_id": 10
+  },
+  {
+   "id": 234,
+   "bis": "20:00",
+   "von": "17:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "id": 262,
+   "bis": "17:00",
+   "von": "13:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 263,
+   "bis": "17:30",
+   "von": "17:00",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 10,
+   "mitarbeiter_id": 12
+  },
+  {
+   "id": 264,
+   "bis": "21:30",
+   "von": "17:30",
+   "datum": "2026-11-14",
+   "unbesetzt": false,
+   "bereich_id": 7,
+   "mitarbeiter_id": 12
+  }
+ ],
+ "abwesenheiten": [
+  {
+   "bis": null,
+   "von": null,
+   "code": "U",
+   "name": "Urlaub",
+   "datum": "2026-11-09",
+   "farbe": "#4CAF50",
+   "sperrt": true,
+   "stunden": 6.25,
+   "mitarbeiter_id": 1
+  },
+  {
+   "bis": null,
+   "von": null,
+   "code": "KM",
+   "name": "Krank",
+   "datum": "2026-11-09",
+   "farbe": "#E53935",
+   "sperrt": true,
+   "stunden": 3.33,
+   "mitarbeiter_id": 4
+  },
+  {
+   "bis": "13:00",
+   "von": "08:00",
+   "code": "BS",
+   "name": "Berufsschule",
+   "datum": "2026-11-09",
+   "farbe": "#1E88E5",
+   "sperrt": true,
+   "stunden": 5,
+   "mitarbeiter_id": 9
+  },
+  {
+   "bis": null,
+   "von": null,
+   "code": "U",
+   "name": "Urlaub",
+   "datum": "2026-11-10",
+   "farbe": "#4CAF50",
+   "sperrt": true,
+   "stunden": 6.25,
+   "mitarbeiter_id": 1
+  },
+  {
+   "bis": null,
+   "von": null,
+   "code": "BS",
+   "name": "Berufsschule",
+   "datum": "2026-11-10",
+   "farbe": "#1E88E5",
+   "sperrt": true,
+   "stunden": 8,
+   "mitarbeiter_id": 11
+  },
+  {
+   "bis": null,
+   "von": null,
+   "code": "U",
+   "name": "Urlaub",
+   "datum": "2026-11-11",
+   "farbe": "#4CAF50",
+   "sperrt": true,
+   "stunden": 6.25,
+   "mitarbeiter_id": 1
+  },
+  {
+   "bis": null,
+   "von": null,
+   "code": "U",
+   "name": "Urlaub",
+   "datum": "2026-11-12",
+   "farbe": "#4CAF50",
+   "sperrt": true,
+   "stunden": 6.25,
+   "mitarbeiter_id": 1
+  },
+  {
+   "bis": null,
+   "von": null,
+   "code": "ZA",
+   "name": "Zeitausgleich",
+   "datum": "2026-11-12",
+   "farbe": "#F9A825",
+   "sperrt": true,
+   "stunden": 6.25,
+   "mitarbeiter_id": 8
+  },
+  {
+   "bis": null,
+   "von": null,
+   "code": "U",
+   "name": "Urlaub",
+   "datum": "2026-11-13",
+   "farbe": "#4CAF50",
+   "sperrt": true,
+   "stunden": 6.25,
+   "mitarbeiter_id": 1
+  },
+  {
+   "bis": null,
+   "von": null,
+   "code": "U",
+   "name": "Urlaub",
+   "datum": "2026-11-14",
+   "farbe": "#4CAF50",
+   "sperrt": true,
+   "stunden": 6.25,
+   "mitarbeiter_id": 1
+  }
+ ]
+}

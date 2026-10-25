@@ -144,4 +144,22 @@ for (const [i, kw] of [[6, 48], [11, 47]]) {
   await abgeben(db, tn.code, { [frage]: [kw] });
 }
 schreib('pep_startseite', await q('select public.pep_startseite() as r'));
+
+// IST-Modus KW 46 (pep_ist_woche), ganz zuletzt, damit alle übrigen Dateien unverändert bleiben. „Heute“ ist dafür
+// Do 12.11.: Mo und Di bestätigt (Mo mit einer Änderung samt Grund), Mi gemischt, Do offen mit Vorschlag, Fr/Sa künftig.
+await heuteSetzen(db, '2026-11-12');
+const istMalen = (m, datum, von, bis, kuerzel, grund = null) => q(
+  'select public.pep_ist_malen($1, $2::date, $3::time, $4::time, $5, $6) as r', [m, datum, von, bis, kuerzel ? bereich[kuerzel] : null, grund]);
+const bestaetigen = (datum, mids = null) => q(
+  `select public.pep_ist_bestaetigen($1::date, ${mids ? `array[${mids.join(',')}]` : 'null'}::bigint[]) as r`, [datum]);
+await istMalen(ids[2], TAGE[1], '14:30', '15:00', null); // Di: 30 Minuten später gekommen
+await bestaetigen(TAGE[0]);
+await bestaetigen(TAGE[1]);
+await istMalen(ids[1], TAGE[0], '15:30', '16:30', 'KA', 'Kassenabschluss übernommen'); // bestätigter Tag: mit Grund
+await istMalen(ids[3], TAGE[2], '20:00', '21:00', 'KA'); // Mi: eine Stunde länger
+await istMalen(ids[4], TAGE[2], '05:30', '06:00', 'OG'); // Mi: vor der Rahmenzeit angefangen (Raster ab 05:30)
+await istMalen(ids[6], TAGE[2], '10:30', '11:00', null); // Mi: früher gegangen
+await q('select public.pep_ist_zeile_setzen($1, $2::date, $3::jsonb, null) as r', [ids[8], TAGE[2], '[]']); // Mi: nicht gekommen
+await bestaetigen(TAGE[2], [ids[11]]); // Mi: eine Zeile einzeln bestätigt
+schreib('pep_ist_woche', await q('select public.pep_ist_woche(2026, 46) as r'));
 console.log('Vorschau-Daten geschrieben');
