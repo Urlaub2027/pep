@@ -5632,7 +5632,9 @@ begin
                      s.vor + s.woche + case when v_a.montag is null and v_mo >= v_ist_ab
                                             then (z.zk ->> 'diff')::numeric else 0 end as akt
                 from pep.mitarbeiter m
-                cross join lateral (select pep.zeitkonto_woche(m.id, v_mo) as zk) z
+                -- offset 0: Ohne ihn zieht der Planer die Unterabfrage hoch und rechnet pep.zeitkonto_woche für jede
+                -- Verwendung von z.zk neu (Filter, zk, ws, akt; gemessen bei 20 Mitarbeitern 265 ms statt 60 ms).
+                cross join lateral (select pep.zeitkonto_woche(m.id, v_mo) as zk offset 0) z
                 cross join lateral (
                   select coalesce(sum(k.stunden) filter (where k.datum < v_mo), 0) as vor,
                          coalesce(sum(k.stunden) filter (where k.datum between v_mo and v_mo + 6), 0) as woche
