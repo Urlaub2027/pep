@@ -216,9 +216,9 @@ test('tageText: ein Tag oder Spanne mit Wochentagen', () => {
 });
 
 test('lueckeText: offene Wochenstunden des Ersatzes, voll oder über Soll', () => {
-  assert.equal(lueckeText(12.5), 'noch 12,5 h offen');
-  assert.equal(lueckeText(37.5), 'noch 37,5 h offen');
-  assert.equal(lueckeText('8'), 'noch 8 h offen');
+  assert.equal(lueckeText(12.5), 'noch 12,50 h offen');
+  assert.equal(lueckeText(37.5), 'noch 37,50 h offen');
+  assert.equal(lueckeText('8'), 'noch 8,00 h offen');
   assert.equal(lueckeText(0), 'Woche voll');
   assert.equal(lueckeText(-1e-9), 'Woche voll');
   assert.equal(lueckeText(-1.25), '1,25 h über Soll');
@@ -249,12 +249,12 @@ test('ersatzBloecke: Pausen nicht als eigene Blöcke, Stunden der Übernahme ohn
 });
 
 test('uebernahmeText: Stunden der Übernahme und was danach von der Woche offen bleibt', () => {
-  assert.deepEqual(uebernahmeText(8, 10), { text: 'Übernahme 8,0 h · danach noch 2,0 h offen', ueber: false });
-  assert.deepEqual(uebernahmeText(8, '6.5'), { text: 'Übernahme 8,0 h · danach 1,5 h über Soll', ueber: true });
+  assert.deepEqual(uebernahmeText(8, 10), { text: 'Übernahme 8,00 h · danach noch 2,00 h offen', ueber: false });
+  assert.deepEqual(uebernahmeText(8, '6.5'), { text: 'Übernahme 8,00 h · danach 1,50 h über Soll', ueber: true });
   assert.deepEqual(uebernahmeText(7.75, 7.75), { text: 'Übernahme 7,75 h · danach Woche voll', ueber: false });
-  assert.deepEqual(uebernahmeText(4, 10.25), { text: 'Übernahme 4,0 h · danach noch 6,25 h offen', ueber: false });
-  assert.deepEqual(uebernahmeText(4, -1), { text: 'Übernahme 4,0 h · danach 5,0 h über Soll', ueber: true });
-  assert.deepEqual(uebernahmeText(8, 8 + 1e-9), { text: 'Übernahme 8,0 h · danach Woche voll', ueber: false });
+  assert.deepEqual(uebernahmeText(4, 10.25), { text: 'Übernahme 4,00 h · danach noch 6,25 h offen', ueber: false });
+  assert.deepEqual(uebernahmeText(4, -1), { text: 'Übernahme 4,00 h · danach 5,00 h über Soll', ueber: true });
+  assert.deepEqual(uebernahmeText(8, 8 + 1e-9), { text: 'Übernahme 8,00 h · danach Woche voll', ueber: false });
 });
 
 test('vorgabeText: Wochenvorgabe als Zeile im Eckdaten-Fenster', () => {

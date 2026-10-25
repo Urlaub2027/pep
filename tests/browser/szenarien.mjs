@@ -904,7 +904,7 @@ await szenario('Krank melden über geplanten Blöcken, Ersatz übernehmen', asyn
     join pep.bereiche b on b.id = p.bereich_id where p.mitarbeiter_id = $1 and p.datum = $2::date and b.art <> 'pause'`, [ben, DO]))[0].h;
   const verbrauch = await texte('dialog[open] .pd-uebernahme');
   gleich(verbrauch.length, kandidaten.length, 'Jeder Kandidat zeigt den Verbrauch der Übernahme');
-  pruefe(verbrauch.every((x) => x.startsWith(`Übernahme ${arbeit.toFixed(1).replace('.', ',')} h · danach `)), `Übernahme ${arbeit} h`, verbrauch);
+  pruefe(verbrauch.every((x) => x.startsWith(`Übernahme ${arbeit.toFixed(2).replace('.', ',')} h · danach `)), `Übernahme ${arbeit} h`, verbrauch);
   await c.foto(`${FOTOS}ersatz-dialog.png`);
   if (kandidaten.length) {
     const ersatzName = kandidaten[0];
