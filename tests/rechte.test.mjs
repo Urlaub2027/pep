@@ -54,7 +54,7 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
   'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
-  'pep_startseite', 'pep_ist_woche'];
+  'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
@@ -180,6 +180,14 @@ test('pep_startseite: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale �
 // Die IST-Woche zeigt Arbeitszeiten aller Mitarbeiter: nur Leitung und Stellvertretung mit Filiale.
 test('pep_ist_woche: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
   const sql = 'select public.pep_ist_woche(2026, 10)';
+  await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/);
+  await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/);
+  for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);
+});
+
+// Das Zeitkonto zeigt Stunden und Salden aller Mitarbeiter: nur Leitung und Stellvertretung mit Filiale.
+test('pep_zeitkonto_woche: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
+  const sql = 'select public.pep_zeitkonto_woche(2026, 10)';
   await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/);
   await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/);
   for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);

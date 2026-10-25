@@ -5317,6 +5317,188 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Zeitkonto: Tabellen (Stufe 2, G3/G4)
+-- ---------------------------------------------------------------------------
+
+-- Journal je Mitarbeiter. Saldo = Summe aller Buchungen. Buchungen der Art woche und korrektur tragen den Montag der
+-- Woche als datum. saldo_nach, Append-only-Trigger (JOURNAL_UNVERAENDERBAR) und Buchungsfunktionen: Task 4.
+create table if not exists pep.zeitkonto_buchungen (
+  id             bigint generated always as identity primary key,
+  filiale_id     bigint not null references pep.filialen (id) on delete cascade,
+  mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
+  datum          date not null,
+  art            text not null check (art in ('start', 'woche', 'korrektur', 'manuell')),
+  stunden        numeric(7,2) not null,
+  saldo_nach     numeric(8,2) not null,
+  grund          text,
+  angelegt_von   uuid,
+  angelegt_am    timestamptz not null default now(),
+  check (art not in ('woche', 'korrektur') or extract(isodow from datum) = 1)
+);
+create index if not exists zeitkonto_buchungen_ma_datum_idx on pep.zeitkonto_buchungen (mitarbeiter_id, datum);
+-- Höchstens eine Wochenbuchung je Mitarbeiter und Woche (zwei Leitungen schließen gleichzeitig ab).
+create unique index if not exists zeitkonto_buchungen_woche_idx
+  on pep.zeitkonto_buchungen (mitarbeiter_id, datum) where art = 'woche';
+
+-- Abgeschlossene Wochen einer Filiale (montag = Montag der ISO-Woche).
+create table if not exists pep.wochen_abschluesse (
+  filiale_id        bigint not null references pep.filialen (id) on delete cascade,
+  montag            date not null check (extract(isodow from montag) = 1),
+  abgeschlossen_am  timestamptz not null default now(),
+  abgeschlossen_von uuid,
+  primary key (filiale_id, montag)
+);
+
+alter table pep.zeitkonto_buchungen enable row level security;
+alter table pep.wochen_abschluesse  enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- Zeitkonto-Rechnung
+-- ---------------------------------------------------------------------------
+
+-- G1: Wochenrechnung eines Mitarbeiters (p_montag = Montag der ISO-Woche, Tage Mo–So). NULL ohne Vertrag in der Woche
+-- (pep.wochenvertrag) und wenn der Mitarbeiter in der Woche gar nicht beschäftigt ist (Eintritt nach Sonntag, Austritt
+-- vor Montag) – sonst bekäme jeder Ausgetretene bis in alle Zukunft Wochenzeilen.
+-- beschäftigte Tage = Mo–Sa mit Vertrag (gueltig_ab ≤ Tag), eintritt ≤ Tag, austritt leer oder ≥ Tag. Das Merkmal aktiv
+-- zählt hier nicht: es trägt kein Datum, eine spätere Änderung würde vergangene Wochen umschreiben.
+-- ist = nur bestätigte Tage (pep.ist_tage), Arbeitszeit ohne Pause und ohne unbesetzte Abschnitte (pep.arbeitsstunden);
+-- abwesend = Abwesenheitsstunden der Woche mit Code gutschrift; feiertag = geschlossene gesetzliche Feiertage an
+-- beschäftigten Tagen × round(wochenstunden / feiertag_teiler, 2); Führung: Plus erst über der grenze, Minus erst
+-- unter dem soll; spaet = bestätigte IST-Arbeitszeit ab spaet_grenze; offene_tage = offene Zeilen aus pep.ist_zeilen.
+-- grenze nur bei Vertragsart fuehrung, sonst null.
+create or replace function pep.zeitkonto_woche(p_mitarbeiter_id bigint, p_montag date)
+returns jsonb
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_v      pep.vertraege := pep.wochenvertrag(p_mitarbeiter_id, p_montag);
+  v_so     date := p_montag + 6;
+  v_m      pep.mitarbeiter;
+  v_tage   int;
+  v_ftage  int;
+  v_soll   numeric;
+  v_grenze numeric;
+  v_ist    numeric;
+  v_abw    numeric;
+  v_ft     numeric;
+  v_summe  numeric;
+  v_diff   numeric;
+  v_spaet  numeric;
+  v_offen  int;
+begin
+  if v_v.id is null then
+    return null;
+  end if;
+  select * into v_m from pep.mitarbeiter where id = p_mitarbeiter_id;
+  if v_m.eintritt > v_so or v_m.austritt < p_montag then
+    return null;
+  end if;
+
+  select count(*)::int, (count(*) filter (where pep.feiertag(v_m.filiale_id, t.tag) is not null and not s.geoeffnet))::int
+    into v_tage, v_ftage
+    from (select p_montag + i as tag from generate_series(0, 5) i) t
+    cross join lateral (select x.geoeffnet from pep.tag_status(v_m.filiale_id, t.tag) x) s
+   where (v_m.eintritt is null or v_m.eintritt <= t.tag) and (v_m.austritt is null or v_m.austritt >= t.tag)
+     and exists (select 1 from pep.vertraege v where v.mitarbeiter_id = p_mitarbeiter_id and v.gueltig_ab <= t.tag);
+
+  v_soll := round(v_v.wochenstunden * v_tage / 6, 2);
+  v_ft := v_ftage * round(v_v.wochenstunden
+                          / (pep.einstellung(v_m.filiale_id, 'feiertag_teiler') #>> '{}')::numeric, 2);
+
+  select coalesce(sum(pep.arbeitsstunden(p_mitarbeiter_id, it.datum, pep.ist_zeile_lesen(p_mitarbeiter_id, it.datum))), 0)
+    into v_ist
+    from pep.ist_tage it
+   where it.mitarbeiter_id = p_mitarbeiter_id and it.datum between p_montag and v_so;
+
+  select coalesce(sum(a.stunden), 0) into v_abw
+    from pep.abwesenheiten a
+    join pep.abwesenheitscodes c on c.id = a.code_id
+   where a.mitarbeiter_id = p_mitarbeiter_id and a.datum between p_montag and v_so and c.gutschrift;
+
+  -- Halbstunden mit Beginn ≥ Grenze: alle Zeiten liegen auf halben Stunden, also Anteil nach der Grenze.
+  select round(coalesce(sum(extract(epoch from x.bis - greatest(x.von, g.grenze)) / 3600), 0), 2) into v_spaet
+    from pep.ist_tage it
+    join pep.ist_bloecke b on b.mitarbeiter_id = it.mitarbeiter_id and b.datum = it.datum
+    join pep.bereiche r on r.id = b.bereich_id
+    cross join (select (pep.einstellung(v_m.filiale_id, 'spaet_grenze') #>> '{}')::time as grenze) g
+    cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
+   where it.mitarbeiter_id = p_mitarbeiter_id and it.datum between p_montag and v_so
+     and r.art <> 'pause' and not x.unbesetzt and x.bis > g.grenze;
+
+  select count(*)::int into v_offen
+    from pep.ist_zeilen(v_m.filiale_id, p_montag, v_so, array[p_mitarbeiter_id]) z
+   where z.bestaetigt_am is null;
+
+  v_summe := round(v_ist + v_abw + v_ft, 2);
+  if v_v.vertragsart = 'fuehrung' then
+    v_grenze := round(coalesce(v_v.zeitkonto_grenze, 42) * v_tage / 6, 2);
+    v_diff := case when v_summe > v_grenze then v_summe - v_grenze
+                   when v_summe < v_soll then v_summe - v_soll
+                   else 0 end;
+  else
+    v_diff := v_summe - v_soll;
+  end if;
+
+  return jsonb_build_object(
+    'vertragsart', v_v.vertragsart, 'wochenstunden', v_v.wochenstunden, 'soll', v_soll, 'grenze', v_grenze,
+    'ist', v_ist, 'abwesend', v_abw, 'feiertag', v_ft, 'summe', v_summe, 'diff', round(v_diff, 2),
+    'spaet', v_spaet, 'offene_tage', v_offen);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Zeitkonto: Funktionen für den Browser
+-- ---------------------------------------------------------------------------
+
+-- Zeitkonto einer Woche (Leitung und Stellvertretung): je Mitarbeiter mit Wochenrechnung (pep.zeitkonto_woche nicht
+-- NULL) alle Felder der Rechnung, dazu der Saldo nach G2 aus dem Journal, verglichen über Datumswerte (nie über
+-- jahr/kw): saldo_vorwoche = Buchungen vor dem Montag; saldo_aktuell = saldo_vorwoche + Buchungen der Woche + (Woche
+-- nicht abgeschlossen ? diff : 0 – beim Abschluss steckt diff in der Buchung „woche“). warnung plus/minus, wenn
+-- saldo_aktuell über zeitkonto_warnfaktor × wochenstunden bzw. unter dem Negativen davon liegt.
+-- offene_tage = offene IST-Zeilen der Filiale in der Woche (pep.ist_zeilen). abgeschlossen = {am, von_name} oder null.
+create or replace function public.pep_zeitkonto_woche(p_jahr int, p_kw int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b      pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_mo     date := pep.kw_montag(p_jahr, p_kw);
+  v_faktor numeric := (pep.einstellung(v_b.filiale_id, 'zeitkonto_warnfaktor') #>> '{}')::numeric;
+  v_a      pep.wochen_abschluesse;
+begin
+  select * into v_a from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id and a.montag = v_mo;
+  return jsonb_build_object(
+    'jahr', p_jahr, 'kw', p_kw, 'montag', to_char(v_mo, 'YYYY-MM-DD'),
+    'abgeschlossen', case when v_a.montag is null then null else jsonb_build_object(
+                       'am', v_a.abgeschlossen_am,
+                       'von_name', (select o.anzeigename from urlaub.organisatoren o
+                                     where o.user_id = v_a.abgeschlossen_von))
+                     end,
+    'offene_tage', (select count(*)::int from pep.ist_zeilen(v_b.filiale_id, v_mo, v_mo + 6, null) z
+                     where z.bestaetigt_am is null),
+    'mitarbeiter', coalesce((
+      select jsonb_agg(jsonb_build_object('id', x.id, 'name', x.name, 'aktiv', x.aktiv) || x.zk
+                       || jsonb_build_object(
+                            'saldo_vorwoche', x.vor, 'saldo_aktuell', x.akt,
+                            'warnung', case when x.akt > v_faktor * x.ws then 'plus'
+                                            when x.akt < -v_faktor * x.ws then 'minus' end)
+                       order by x.aktiv desc, x.position, x.name, x.id)
+        from (select m.id, m.name, m.aktiv, m.position, z.zk, (z.zk ->> 'wochenstunden')::numeric as ws, s.vor,
+                     s.vor + s.woche + case when v_a.montag is null then (z.zk ->> 'diff')::numeric else 0 end as akt
+                from pep.mitarbeiter m
+                cross join lateral (select pep.zeitkonto_woche(m.id, v_mo) as zk) z
+                cross join lateral (
+                  select coalesce(sum(k.stunden) filter (where k.datum < v_mo), 0) as vor,
+                         coalesce(sum(k.stunden) filter (where k.datum between v_mo and v_mo + 6), 0) as woche
+                    from pep.zeitkonto_buchungen k where k.mitarbeiter_id = m.id) s
+               where m.filiale_id = v_b.filiale_id and z.zk is not null) x), '[]'::jsonb));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Rechte
 -- ---------------------------------------------------------------------------
 
@@ -5466,5 +5648,9 @@ grant execute on function public.pep_ist_woche(int, int) to authenticated;
 grant execute on function public.pep_ist_malen(bigint, date, time, time, bigint, text) to authenticated;
 grant execute on function public.pep_ist_zeile_setzen(bigint, date, jsonb, text) to authenticated;
 grant execute on function public.pep_ist_bestaetigen(date, bigint[]) to authenticated;
+
+-- Zeitkonto
+revoke all on function public.pep_zeitkonto_woche(int, int) from public, anon, authenticated;
+grant execute on function public.pep_zeitkonto_woche(int, int) to authenticated;
 
 commit;
