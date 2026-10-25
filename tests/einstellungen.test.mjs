@@ -277,27 +277,31 @@ test('Code-Gutschrift (Stufe 2): lesen, beim Anlegen Standard true, beim Ändern
   assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).abschluss_vorhanden, true);
 });
 
-test('IST-Erfassung ab (ist_ab): Standard Montag von heute, nur Montage, nur Leitung, nach Abschluss höchstens die Woche danach', async () => {
+test('IST-Erfassung ab (ist_ab): Standard Montag von heute, nur Montage, nur Leitung, nach dem ersten Abschluss fest', async () => {
   // Diese Filiale entstand in before() ohne festes heute: Standard = Montag der Woche von pep.heute() (= current_date).
   const montag = (await db.query(
     "select to_char(pep.heute() - (extract(isodow from pep.heute())::int - 1), 'YYYY-MM-DD') as m")).rows[0].m;
-  const f2 = await filiale(db, await pepBenutzer(db, 'chefIstAb'), { name: 'Netto Startfiliale', nummer: '9010' });
+  const chef2 = await pepBenutzer(db, 'chefIstAb');
+  const f2 = await filiale(db, chef2, { name: 'Netto Startfiliale', nummer: '9010' });
   assert.equal((await db.query("select wert #>> '{}' as w from pep.einstellungen where filiale_id = $1 and schluessel = 'ist_ab'",
     [f2])).rows[0].w, montag);
   const setze = (nutzer, wert) =>
     aufruf(nutzer, 'select public.pep_einstellung_setzen($1, $2::jsonb)', ['ist_ab', JSON.stringify(wert)]);
-  await wirft(setze(leitung, '2026-03-03'), 'KEIN_MONTAG');          // Dienstag
-  await wirft(setze(leitung, '2026-03-08'), 'KEIN_MONTAG');          // Sonntag
-  await wirft(setze(leitung, '2026-02-30'), 'WERT_UNGUELTIG');
-  await wirft(setze(leitung, 'quatsch'), 'WERT_UNGUELTIG');
-  await wirft(setze(leitung, 20260302), 'WERT_UNGUELTIG');
+  // Filiale ohne Abschluss: nur gültige Montage
+  const werteF2 = async () => (await json(chef2, 'select public.pep_einstellungen() as r')).werte;
+  await wirft(setze(chef2, '2026-03-03'), 'KEIN_MONTAG');          // Dienstag
+  await wirft(setze(chef2, '2026-03-08'), 'KEIN_MONTAG');          // Sonntag
+  await wirft(setze(chef2, '2026-02-30'), 'WERT_UNGUELTIG');
+  await wirft(setze(chef2, 'quatsch'), 'WERT_UNGUELTIG');
+  await wirft(setze(chef2, 20260302), 'WERT_UNGUELTIG');
+  await setze(chef2, '2026-03-09');
+  assert.equal((await werteF2()).ist_ab, '2026-03-09');
+  await setze(chef2, '2026-01-05');
+  assert.equal((await werteF2()).ist_ab, '2026-01-05');
+  // Die Stellvertretung darf nicht ändern, liest den Wert aber mit
   await wirft(setze(stellv, '2026-03-02'), 'NUR_LEITUNG');
-  // Zuletzt abgeschlossen: KW 10 (Mo 02.03., vorheriger Test). Höchstens die Woche danach, früher geht.
-  await wirft(setze(leitung, '2026-03-16'), 'IST_AB_NACH_ABSCHLUSS');
-  await setze(leitung, '2026-03-09');
-  assert.equal((await alle()).werte.ist_ab, '2026-03-09');
-  await setze(leitung, '2026-01-05');
-  assert.equal((await alle()).werte.ist_ab, '2026-01-05');
-  // Die Stellvertretung liest den Wert mit
-  assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).werte.ist_ab, '2026-01-05');
+  // Filiale mit Abschluss (KW 10, vorheriger Test): fest – später, früher und derselbe Wert
+  for (const wert of ['2026-03-16', '2026-01-05', '2026-03-02']) await wirft(setze(leitung, wert), 'IST_AB_FEST');
+  assert.equal((await alle()).werte.ist_ab, '2026-03-02');
+  assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).werte.ist_ab, '2026-03-02');
 });

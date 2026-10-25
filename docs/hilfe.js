@@ -54,7 +54,7 @@ const FEHLER = {
   GRENZE_UNTER_VERTRAG: 'Die Grenze für Mehrarbeit darf nicht unter den Vertragsstunden liegen.',
   GRUND_FEHLT: 'Bitte einen Grund angeben. Er ist Pflicht bei Änderungen an bestätigten Tagen und bei Buchungen im Zeitkonto.',
   HALBE_STUNDE: 'Uhrzeiten nur in halben Stunden (:00 oder :30).',
-  IST_AB_NACH_ABSCHLUSS: 'Die IST-Erfassung kann höchstens mit der Woche nach der zuletzt abgeschlossenen beginnen – sonst ließe sich keine Woche mehr abschließen.',
+  IST_AB_FEST: 'Nach dem ersten Wochenabschluss lässt sich der Start der IST-Erfassung nicht mehr ändern.',
   IST_OFFEN: 'In dieser Woche sind noch Tage offen. Bitte erst alle Tage im IST bestätigen, dann die Woche abschließen.',
   IST_VOR_START: 'Vor dem Start der IST-Erfassung (Einstellungen) gibt es kein IST – diese Tage zeigt nur der Plan.',
   JOURNAL_UNVERAENDERBAR: 'Buchungen im Zeitkonto lassen sich nicht ändern oder löschen. Bitte stattdessen eine Buchung zum Ausgleich anlegen.',

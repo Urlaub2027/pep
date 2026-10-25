@@ -1164,9 +1164,9 @@ end;
 $$;
 
 -- Nur die bekannten Schlüssel; Zahlen müssen > 0 sein (wochen_toleranz_h: >= 0),
--- Uhrzeiten "HH:MM" mit Minute 00 oder 30. ist_ab (Stufe 2): Datum "YYYY-MM-DD", ein Montag (KEIN_MONTAG); gibt es
--- schon einen Wochenabschluss, höchstens die Woche danach (IST_AB_NACH_ABSCHLUSS) – sonst ließe sich keine Woche mehr
--- abschließen (die nächste läge vor dem Start, VOR_IST_START, und jede spätere außer der Reihe, VORWOCHE_OFFEN).
+-- Uhrzeiten "HH:MM" mit Minute 00 oder 30. ist_ab (Stufe 2): nach dem ersten Wochenabschluss der Filiale fest
+-- (IST_AB_FEST) – später gelegt ließe sich keine Woche mehr abschließen (VOR_IST_START / VORWOCHE_OFFEN), früher gelegt
+-- würden Tage offen, die sich nie mehr abschließen lassen. Sonst Datum "YYYY-MM-DD", ein Montag (KEIN_MONTAG).
 -- Kein Nachbuchen: ist_ab ändert diff keiner Woche (nur, welche Tage offen sind und welche Wochen abschließbar).
 create or replace function public.pep_einstellung_setzen(p_schluessel text, p_wert jsonb)
 returns void
@@ -1190,6 +1190,9 @@ begin
   end if;
 
   if p_schluessel = 'ist_ab' then
+    if exists (select 1 from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id) then
+      raise exception 'IST_AB_FEST';
+    end if;
     if v_typ <> 'string' or (p_wert #>> '{}') !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' then
       raise exception 'WERT_UNGUELTIG';
     end if;
@@ -1200,9 +1203,6 @@ begin
     end;
     if extract(isodow from v_datum) <> 1 then
       raise exception 'KEIN_MONTAG';
-    end if;
-    if v_datum > (select max(a.montag) + 7 from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id) then
-      raise exception 'IST_AB_NACH_ABSCHLUSS';
     end if;
   elsif p_schluessel in ('spaet_grenze', 'u18_fruehestens', 'u18_spaetestens') then
     if v_typ <> 'string' or (p_wert #>> '{}') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then

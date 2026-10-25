@@ -271,8 +271,10 @@ function zeichneParameter() {
 // ---------------------------------------------------------------- IST-Erfassung (Stufe 2)
 
 // Start der IST-Erfassung (Einstellung ist_ab, ein Montag): davor keine offenen Tage und kein Wochenabschluss.
+// Nach dem ersten Wochenabschluss fest (IST_AB_FEST): das Feld ist dann nur lesbar.
 function zeichneIst() {
-  const ab = eingabe('date', daten.werte.ist_ab ?? '', { required: true });
+  const fest = Boolean(daten.abschluss_vorhanden);
+  const ab = eingabe('date', daten.werte.ist_ab ?? '', { required: true, ...(fest ? { disabled: true } : {}) });
   ab.addEventListener('change', async () => {
     if (!ab.value) { ab.value = daten.werte.ist_ab ?? ''; return; }
     const ok = await speichere(
@@ -282,7 +284,8 @@ function zeichneIst() {
   boxen.ist.replaceChildren(abschnitt('IST-Erfassung',
     element('div', { class: 'zeile' }, feld('IST-Erfassung ab (Montag)', ab),
       element('small', { class: 'hinweis erklaerung' },
-        'Tage davor gelten nicht als offen und werden nicht abgeschlossen. Startsalden zum Sonntag davor im Journal eintragen.'))));
+        'Tage davor gelten nicht als offen und werden nicht abgeschlossen. Startsalden zum Sonntag davor im Journal eintragen.')),
+    fest ? element('p', { class: 'hinweis-gelb' }, fehlerText('IST_AB_FEST')) : null));
 }
 
 // ---------------------------------------------------------------- Schulferien
