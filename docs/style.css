@@ -732,6 +732,8 @@ table.vorausplanung td { padding: 6px var(--a2); }
 .eingabe-mit-einheit { display: flex; align-items: center; gap: 4px; }
 .eingabe-mit-einheit input { width: 100%; min-width: 0; height: 36px; padding: 0 8px; border: 1px solid var(--linie-stark); border-radius: 6px; font: inherit; }
 .eingabe-mit-einheit .einheit { color: var(--text-2); font-size: 0.85rem; }
+/* Platzhalter wie „Standard 200“ etwas kleiner, damit die Zahl auch in schmalen Spalten (Tablet) ganz zu sehen ist */
+.eingabe-mit-einheit input::placeholder { font-size: 0.8em; }
 table.vorausplanung td.plus { color: var(--ok); font-weight: 700; }
 table.vorausplanung td.vorgabe strong { display: block; font-size: 1.1rem; }
 table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); font-weight: 400; }
