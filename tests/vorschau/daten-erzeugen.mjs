@@ -208,6 +208,7 @@ schreib('pep_stundenblatt', { ...blatt, mitarbeiter: blatt.mitarbeiter.slice(0, 
 // zugeordnet) und die einer zweiten Leitung der Filiale, von chef eingeschaltet. Deren Teilnehmer schreiben sich
 // „Vorname Nachname“ oder nur den Vornamen: Vorschläge trotz anderer Reihenfolge, einer ohne Treffer, einer zugeordnet.
 const leiterin = await pepBenutzer(db, 'leiterin', 'leitung', fil);
+await als(db, 'authenticated', leiterin, 'select public.pep_ich()'); // erst nach ihrer Anmeldung sichtbar
 await db.query("update urlaub.organisatoren set anzeigename = 'Leiterin Süd' where user_id = $1", [leiterin]);
 const umfrage2 = await umfrageAnlegen(db, leiterin, { titel: 'Urlaub 2026 Frühschicht', jahr: 2026 });
 await q('select public.pep_urlaub_umfrage_schalten($1, true) as r', [umfrage2]);

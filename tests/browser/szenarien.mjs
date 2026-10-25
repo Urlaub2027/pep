@@ -2153,9 +2153,10 @@ await szenario('Sicherung: herunterladen, in zweite leere Filiale einspielen, Mi
 
 // ================================================================ Stufe 2: Urlaubstool aller Leitungen
 // Eine zweite Leitung der Filiale („Leiterin Süd“) hat eine eigene Umfrage; ihre Teilnehmer schreiben sich „Vorname
-// Nachname“ bzw. nur den Vornamen. chef schaltet erst die eigene Umfrage aus (Hinweis statt Teilnehmerliste), dann
-// beide ein, übernimmt die Vorschläge; die Kopfzeile zählt mit. Am Ende, damit kein anderes Szenario die zweite Leitung
-// sieht.
+// Nachname“ bzw. nur den Vornamen. Vor ihrer ersten Anmeldung sieht chef die Umfrage nicht (Benutzer: „noch nicht
+// angemeldet“). Danach schaltet chef erst die eigene Umfrage aus (Hinweis statt Teilnehmerliste; ihre Zuordnungen gehen
+// mit), dann beide ein, übernimmt die Vorschläge; die Kopfzeile zählt mit. Am Ende, damit kein anderes Szenario die
+// zweite Leitung sieht.
 await szenario('Urlaubstool: Umfrage einer zweiten Leitung einschalten, Vorschläge übernehmen, Kopfzeile zählt', async () => {
   if (!(await sql("select 1 from urlaub.organisatoren where benutzername = 'leiterin'")).length) {
     await sql("insert into urlaub.organisatoren (user_id, anzeigename, benutzername) values (gen_random_uuid(), 'Leiterin Süd', 'leiterin')");
@@ -2192,8 +2193,25 @@ await szenario('Urlaubstool: Umfrage einer zweiten Leitung einschalten, Vorschl�
   const zaehler = () => text('[data-t="urlaubbox"] .urlaub-zaehler');
   const zeilenTitel = () => texte('[data-t="urlaubbox"] form .zeilentitel');
 
+  // Vor ihrer ersten Anmeldung: Umfrage unsichtbar, Hinweis unter Benutzer
   await alsBenutzer('chef');
   await reiter('einstellungen');
+  pruefe(await urlaubBox(), 'Abschnitt Urlaubstool');
+  pruefe(!(await texte('[data-t="urlaubbox"] .zeile:not(form)')).some((z) => z.startsWith('Urlaub 2026 Frühschicht')),
+    'Umfrage vor der Anmeldung der Leiterin unsichtbar');
+  const benutzerTitel = () => c.werte(() => [...([...document.querySelectorAll('#ansicht-einstellungen .box')]
+    .find((b) => b.querySelector('h2')?.textContent === 'Benutzer')?.querySelectorAll('form .zeilentitel') ?? [])].map((e) => e.textContent));
+  pruefe((await benutzerTitel()).includes('leiterin · Leiterin Süd · noch nicht angemeldet'), 'Benutzer: „noch nicht angemeldet“', await benutzerTitel());
+  // Die Leiterin meldet sich einmal an (Anzeigename statt Benutzername in der Kopfzeile, darum nicht alsBenutzer)
+  await c.klick('#abmelden');
+  await c.warteAuf(() => !document.getElementById('ansicht-login').hidden, { text: 'Login nach Abmelden' });
+  await anmelden('leiterin');
+  gleich(await text('#wer'), 'Angemeldet als Leiterin Süd', 'Angemeldet als Leiterin');
+  pruefe((await sql("select b.bestaetigt_am from pep.benutzer b join urlaub.organisatoren o on o.user_id = b.user_id where o.benutzername = 'leiterin'"))[0]
+    .bestaetigt_am !== null, 'DB: Leiterin bestätigt');
+  await alsBenutzer('chef');
+  await reiter('einstellungen');
+  pruefe((await benutzerTitel()).includes('leiterin · Leiterin Süd'), 'Benutzer: nach der Anmeldung ohne Hinweis', await benutzerTitel());
   pruefe(await urlaubBox(), 'Abschnitt Urlaubstool');
   const umfrageZeilen = await texte('[data-t="urlaubbox"] .zeile:not(form)');
   pruefe(umfrageZeilen.some((z) => z.startsWith('Urlaub 2026 Frühschicht (2026)') && z.includes('von Leiterin Süd')), 'Zeile „von Leiterin Süd“', umfrageZeilen);
@@ -2201,9 +2219,11 @@ await szenario('Urlaubstool: Umfrage einer zweiten Leitung einschalten, Vorschl�
   pruefe((await text('[data-t="urlaubbox"]')).includes('Jeder Teilnehmer der Umfrage wird einem PEP-Mitarbeiter zugeordnet; erst dann erscheinen seine Wünsche unter Abwesenheiten zum Freigeben.'),
     'Erklärung über der Liste');
 
-  // Eigene Umfrage aus: keine eingeschaltet → Hinweis statt Liste
+  // Eigene Umfrage aus: keine eingeschaltet → Hinweis statt Liste; die Zuordnungen von Gustav und Lea gehen mit
   await haken('Urlaub 2026 (2026)');
   gleich(await geschaltet(), [], 'DB: keine Umfrage eingeschaltet');
+  gleich((await sql(`select count(*)::int as n from pep.urlaub_zuordnung z join urlaub.mitarbeiter t on t.id = z.urlaub_mitarbeiter_id
+    where t.umfrage_id = $1`, [B.umfrage]))[0].n, 0, 'DB: Zuordnungen der ausgeschalteten Umfrage gelöscht');
   pruefe((await text('[data-t="urlaubbox"]')).includes('Zuerst oben eine Umfrage einschalten – dann erscheinen hier ihre Teilnehmer.'), 'Hinweis ohne eingeschaltete Umfrage');
   gleich(await zaehler(), null, 'keine Kopfzeile ohne eingeschaltete Umfrage');
 
@@ -2211,19 +2231,24 @@ await szenario('Urlaubstool: Umfrage einer zweiten Leitung einschalten, Vorschl�
   await haken('Urlaub 2026 (2026)');
   await haken('Urlaub 2026 Frühschicht (2026)');
   gleich(await geschaltet(), [B.umfrage, fremd].sort((a, b) => a - b), 'DB: beide Umfragen eingeschaltet');
-  gleich(await zaehler(), '2 von 5 zugeordnet', 'Kopfzeile vorher');
-  gleich((await zeilenTitel()).slice(0, 3), ['Cem Beispiel', 'Dana', 'Ohnetreffer, Zoe'], 'nicht zugeordnete zuerst');
+  gleich(await zaehler(), '0 von 5 zugeordnet', 'Kopfzeile vorher');
+  gleich(await zeilenTitel(), ['Attrappe, Lea', 'Platzhalter, Gustav', 'Cem Beispiel', 'Dana', 'Ohnetreffer, Zoe'], 'Teilnehmer beider Umfragen');
   await c.werte(() => document.querySelector('[data-t="urlaubbox"]').scrollIntoView());
   await c.foto(`${FOTOS}urlaubstool-vorschlaege.png`);
 
-  // Vorschläge übernehmen: Cem (andere Reihenfolge) und Dana (nur Vorname); Zoe ohne Treffer bleibt offen
-  await c.klick({ text: 'Vorschläge übernehmen (2)', in: '[data-t="urlaubbox"]', sel: 'button', genau: true });
+  // Vorschläge übernehmen: Lea und Gustav (gleiche Schreibweise), Cem (andere Reihenfolge), Dana (nur Vorname); Zoe ohne
+  // Treffer bleibt offen
+  await c.klick({ text: 'Vorschläge übernehmen (4)', in: '[data-t="urlaubbox"]', sel: 'button', genau: true });
   await ruhe();
   await urlaubBox();
   const zuordnung = await sql(`select t.name, z.mitarbeiter_id as m from urlaub.mitarbeiter t
       left join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id where t.umfrage_id = $1 order by t.name`, [fremd]);
   gleich(zuordnung, [{ name: 'Cem Beispiel', m: await maId('Beispiel, Cem') }, { name: 'Dana', m: await maId('Probe, Dana') },
     { name: 'Ohnetreffer, Zoe', m: null }], 'DB: Zuordnung nach „Vorschläge übernehmen“');
+  gleich(await sql(`select t.name, z.mitarbeiter_id as m from urlaub.mitarbeiter t
+      left join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id where t.umfrage_id = $1 order by t.name`, [B.umfrage]),
+  [{ name: 'Attrappe, Lea', m: await maId('Attrappe, Lea') }, { name: 'Platzhalter, Gustav', m: await maId('Platzhalter, Gustav') }],
+  'DB: Gustav und Lea wieder zugeordnet');
   gleich(await zaehler(), '4 von 5 zugeordnet', 'Kopfzeile nachher');
   gleich((await zeilenTitel())[0], 'Ohnetreffer, Zoe', 'der nicht zugeordnete steht oben');
   pruefe(!(await texte('[data-t="urlaubbox"] button')).some((t) => t.startsWith('Vorschläge übernehmen')), 'kein Knopf „Vorschläge übernehmen“ mehr');

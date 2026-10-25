@@ -534,6 +534,7 @@ th { background: var(--hell); font-weight: 600; }
 .zeile .feld.breit { width: 100%; }
 .codes .zeile .feld.haken { width: auto; }
 .zeile .zeilentitel { width: 100%; }
+.zeile .zeilentitel .hinweis { font-weight: normal; }
 .zeile .zeiten { display: flex; gap: var(--a3); }
 .zeile .zeiten[hidden] { display: none; }
 .zeile .zeiten .feld { width: 120px; }

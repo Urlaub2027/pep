@@ -607,7 +607,7 @@ test('nicht zugeordneter Wunsch wird markiert: gleiche Ids im neuen Projekt mach
   assert.equal(s.tabellen.urlaub_freigaben[0].wunsch.nicht_zugeordnet, true);
 });
 
-test('Umfrage einer anderen Leitung der Filiale wird beim Einspielen verknüpft (neues Projekt)', async () => {
+test('Umfrage einer anderen Leitung: beim Einspielen ausgelassen, bis sie sich im neuen Projekt angemeldet hat', async () => {
   // Quelle: chef und chefin leiten dieselbe Filiale; die Umfrage gehört chefin, chef hat sie eingeschaltet und zugeordnet
   const db = await neueDatenbank();
   await heuteSetzen(db, HEUTE);
@@ -615,6 +615,7 @@ test('Umfrage einer anderen Leitung der Filiale wird beim Einspielen verknüpft 
   const fil = await filiale(db, chef);
   const chefin = await pepBenutzer(db, 'chefin', 'leitung', fil);
   const json = async (d, nutzer, sql, p = []) => (await als(d, 'authenticated', nutzer, sql, p))[0]?.r;
+  await json(db, chefin, 'select public.pep_ich() as r'); // hat sich angemeldet
   const ma = await json(db, chef, 'select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r',
     [JSON.stringify({ name: 'Muster-Beispiel, Anna' })]);
   const u = await umfrageAnlegen(db, chefin, { titel: 'Urlaub Chefin', jahr: 2027 });
@@ -633,19 +634,22 @@ test('Umfrage einer anderen Leitung der Filiale wird beim Einspielen verknüpft 
   const zu = await umfrageAnlegen(z, zchefin, { titel: 'Urlaub Chefin', jahr: 2027 });
   const zt = await umfrageMitarbeiter(z, zu, 'Anna Muster-Beispiel');
   assert.notEqual(zu, u);
-  // chef spielt ein: chefin wird Leitung der Filiale, danach ist ihre Umfrage erlaubt und wird verknüpft
+  // chef spielt ein: chefin wird Leitung der Filiale, hat sich hier aber noch nie angemeldet → ihre Umfrage ist (noch)
+  // nicht erlaubt: Schaltung und Zuordnung ausgelassen und gezählt
   const r = await einspielen(z, zchef, datei, '2558');
   assert.equal(r.eingespielt.benutzer, 1);
-  assert.equal(r.eingespielt.urlaub_umfragen, 1);
-  assert.equal(r.eingespielt.urlaub_zuordnung, 1);
-  assert.deepEqual(r.ausgelassen, {});
-  assert.deepEqual((await z.query('select umfrage_id from pep.urlaub_umfragen where filiale_id = $1', [zfil])).rows,
-    [{ umfrage_id: zu }]);
+  assert.deepEqual(r.ausgelassen, { urlaub_umfragen: 1, urlaub_zuordnung: 1 });
+  assert.deepEqual((await z.query('select rolle, bestaetigt_am from pep.benutzer where user_id = $1 and filiale_id = $2', [zchefin, zfil])).rows,
+    [{ rolle: 'leitung', bestaetigt_am: null }]);
+  assert.equal((await z.query('select count(*)::int as n from pep.urlaub_umfragen')).rows[0].n, 0);
+  // Nach ihrer ersten Anmeldung schaltet chef die Umfrage von Hand ein und ordnet zu (Vorschlag trotz Reihenfolge)
+  await json(z, zchefin, 'select public.pep_ich() as r');
+  await json(z, zchef, 'select public.pep_urlaub_umfrage_schalten($1, true) as r', [zu]);
+  const tz = (await json(z, zchef, 'select public.pep_urlaub_zuordnung() as r')).find((x) => x.urlaub_mitarbeiter_id === zt.id);
+  await json(z, zchef, 'select public.pep_urlaub_zuordnung_setzen($1, $2) as r', [zt.id, tz.vorschlag_id]);
   assert.deepEqual((await z.query(`select z.urlaub_mitarbeiter_id as t, m.name from pep.urlaub_zuordnung z
       join pep.mitarbeiter m on m.id = z.mitarbeiter_id where z.filiale_id = $1`, [zfil])).rows,
   [{ t: zt.id, name: 'Muster-Beispiel, Anna' }]);
-  assert.deepEqual((await z.query('select rolle from pep.benutzer where user_id = $1 and filiale_id = $2', [zchefin, zfil])).rows,
-    [{ rolle: 'leitung' }]);
   // Gegenprobe: steht chefin in der Datei nur als Stellvertretung (Abschnitt benutzer liegt außerhalb der Prüfsumme),
   // ist ihre Umfrage nicht erlaubt: Schaltung und Zuordnung ausgelassen
   const z2 = await neueDatenbank();

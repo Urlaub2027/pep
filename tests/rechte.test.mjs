@@ -53,7 +53,8 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
   }
 });
 
-// Nur lesende Funktionen; alles andere gilt als schreibend und muss unten abgedeckt sein.
+// Nur lesende Funktionen; alles andere gilt als schreibend und muss unten abgedeckt sein. pep_ich schreibt einmal die
+// eigene erste Anmeldung (benutzer.bestaetigt_am) und ist für jede Rolle erlaubt, darum hier.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
   'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',

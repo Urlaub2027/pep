@@ -128,3 +128,19 @@ test('MoPro-Farbe: altes Grau #F5F5F5 (auch klein geschrieben) wird beim Schema-
   const re = (await db.query("select farbe from pep.bereiche where filiale_id = $1 and kuerzel = 'RE'", [filialen[0]])).rows[0].farbe;
   assert.equal(re, '#F5F5F5', 'nur MoPro wird umgefärbt');
 });
+
+test('benutzer.bestaetigt_am: beim ersten Schema-Lauf gelten vorhandene Benutzer als angemeldet, später angelegte nicht', async () => {
+  const db = await neueDatenbank({ schema: false });
+  await db.exec(STUFE_1);
+  const chef = await pepBenutzer(db, 'chef');
+  const fil = await filiale(db, chef);
+  const vize = await pepBenutzer(db, 'vize', 'stellvertretung', fil);
+  await db.exec(SCHEMA);
+  const am = async (u) => (await db.query('select bestaetigt_am from pep.benutzer where user_id = $1', [u])).rows[0].bestaetigt_am;
+  assert.ok((await am(chef)) instanceof Date);
+  assert.ok((await am(vize)) instanceof Date);
+  // Nach der Umstellung eingetragen: nicht bestätigt, auch nicht durch einen weiteren Schema-Lauf
+  const neu = await pepBenutzer(db, 'neu', 'leitung', fil);
+  await db.exec(SCHEMA);
+  assert.equal(await am(neu), null);
+});

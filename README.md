@@ -113,8 +113,9 @@ Schritte und Grenzen: [ANLEITUNG.md](ANLEITUNG.md), Abschnitt „Sicherung“.
   mit seinen Werten. Urlaubstool-Verweise (Schaltung, Zuordnung, Ids im Wunsch einer
   Freigabe) über Organisator/Titel/Jahr bzw. Namen, weil das Urlaubstool beim eigenen
   Einspielen neue Ids vergibt; erlaubt sind nur Umfragen nach `pep.umfrage_erlaubt`
-  (dieselbe Regel wie beim Einschalten: Organisator ist Leitung der Filiale; die
-  Benutzer der Datei werden darum vorher zugeordnet). Eine Datei einer neueren Stufe (unbekannte Tabelle
+  (dieselbe Regel wie beim Einschalten: Organisator ist Leitung der Filiale und hat sich
+  seit der Zuordnung selbst angemeldet, `benutzer.bestaetigt_am`; Benutzer aus der Datei
+  sind das im neuen Projekt noch nicht, ihre Umfragen werden ausgelassen und gezählt). Eine Datei einer neueren Stufe (unbekannte Tabelle
   mit Zeilen oder Spalte mit Werten) lehnt schon die Vorschau ab (`SICHERUNG_NEUER`);
   einer älteren fehlende Einstellungen ergänzt `pep.grundausstattung`.
 

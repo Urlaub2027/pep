@@ -43,6 +43,23 @@ create table if not exists pep.benutzer (
   angelegt_am timestamptz not null default now()
 );
 
+-- bestaetigt_am (Stufe 2): erste eigene Anmeldung in der PEP seit der Zuordnung zur Filiale (pep_ich setzt es).
+-- Urlaubstool-Umfragen anderer Leitungen zählen erst danach (pep.umfrage_erlaubt): Sonst könnte eine Leitung jeden
+-- Organisator, der keiner Filiale gehört, per Benutzername eintragen und ohne sein Zutun dessen Umfragen lesen.
+-- Wechselt die Filiale (pep_benutzer_setzen, Einspielen einer Sicherung), wird es wieder leer.
+-- Umstellung: Nur beim Anlegen der Spalte gelten alle vorhandenen Benutzer als angemeldet (Entscheidung
+-- Koordinator/dtn: Das sind die bekannten Leitungen, sie sollen nichts verlieren). Darum nicht als
+-- „add column if not exists“ plus Update bei jedem Lauf: ein späterer Lauf bestätigte sonst jeden neu Eingetragenen.
+do $$
+begin
+  if not exists (select 1 from information_schema.columns
+                  where table_schema = 'pep' and table_name = 'benutzer' and column_name = 'bestaetigt_am') then
+    alter table pep.benutzer add column bestaetigt_am timestamptz;
+    update pep.benutzer set bestaetigt_am = now();
+  end if;
+end;
+$$;
+
 create table if not exists pep.protokoll (
   id         bigint generated always as identity primary key,
   filiale_id bigint,
@@ -388,9 +405,11 @@ $$;
 -- Funktionen für den Browser
 -- ---------------------------------------------------------------------------
 
+-- Ruft die Seite nach jeder Anmeldung auf. Schreibt nur einmal: die erste eigene Anmeldung (benutzer.bestaetigt_am,
+-- mit Protokoll), danach liest sie nur.
 create or replace function public.pep_ich()
 returns jsonb
-language plpgsql stable
+language plpgsql
 security definer
 set search_path = ''
 as $$
@@ -399,6 +418,11 @@ declare
   v_o urlaub.organisatoren;
   v_f pep.filialen;
 begin
+  if v_b.bestaetigt_am is null then
+    update pep.benutzer set bestaetigt_am = now() where user_id = v_b.user_id and bestaetigt_am is null;
+    perform pep.protokolliere(v_b.filiale_id, 'anmelden', 'benutzer', v_b.user_id::text, null,
+      jsonb_build_object('bestaetigt_am', now()));
+  end if;
   select * into v_o from urlaub.organisatoren where user_id = v_b.user_id;
   select * into v_f from pep.filialen where id = v_b.filiale_id;
   return jsonb_build_object(
@@ -1037,7 +1061,8 @@ begin
                                from pep.schulferien s where s.filiale_id = v_f), '[]'::jsonb),
     'benutzer', coalesce((select jsonb_agg(jsonb_build_object(
                                    'user_id', bn.user_id, 'benutzername', o.benutzername,
-                                   'anzeigename', o.anzeigename, 'rolle', bn.rolle)
+                                   'anzeigename', o.anzeigename, 'rolle', bn.rolle,
+                                   'angemeldet', bn.bestaetigt_am is not null)
                                  order by o.benutzername)
                             from pep.benutzer bn
                             join urlaub.organisatoren o on o.user_id = bn.user_id
@@ -1455,7 +1480,10 @@ begin
   end if;
 
   insert into pep.benutzer (user_id, filiale_id, rolle) values (v_uid, v_b.filiale_id, p_rolle)
-  on conflict (user_id) do update set rolle = excluded.rolle, filiale_id = excluded.filiale_id
+  on conflict (user_id) do update set rolle = excluded.rolle, filiale_id = excluded.filiale_id,
+    -- andere Filiale: muss sich dort erst selbst anmelden (pep.umfrage_erlaubt)
+    bestaetigt_am = case when pep.benutzer.filiale_id is not distinct from excluded.filiale_id
+                         then pep.benutzer.bestaetigt_am end
   returning * into v_neu;
   perform pep.protokolliere(v_b.filiale_id, case when v_alt.user_id is null then 'anlegen' else 'aendern' end,
     'benutzer', v_uid::text,
@@ -2201,7 +2229,7 @@ $$;
 
 -- Umfragen, die die Filiale einschalten darf (pep.umfrage_erlaubt: Urlaubswochen-Frage und Organisator ist eine
 -- Leitung der Filiale, oder schon für die Filiale eingeschaltet); organisator = Anzeigename im Urlaubstool,
--- eigene = vom Aufrufer.
+-- eigene = vom Aufrufer. Wer nicht Leitung ist (kann nicht einschalten), sieht nur die eingeschalteten.
 create or replace function public.pep_urlaub_umfragen()
 returns jsonb
 language plpgsql stable
@@ -2209,7 +2237,8 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_f bigint := (pep.leitung_oder_stellvertretung()).filiale_id;
+  v_b pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_f bigint := v_b.filiale_id;
 begin
   return coalesce((
     select jsonb_agg(jsonb_build_object(
@@ -2223,15 +2252,18 @@ begin
       from urlaub.umfragen u
       join urlaub.fragen f on f.umfrage_id = u.id and f.typ = 'urlaubswochen'
       left join urlaub.organisatoren o on o.user_id = u.organisator_id
-     where pep.umfrage_erlaubt(v_f, u.id)), '[]'::jsonb);
+     where pep.umfrage_erlaubt(v_f, u.id)
+       and (v_b.rolle = 'leitung'
+            or exists (select 1 from pep.urlaub_umfragen s where s.umfrage_id = u.id and s.filiale_id = v_f))), '[]'::jsonb);
 end;
 $$;
 
 -- Darf die Filiale diese Umfrage sehen und einschalten? Die Umfrage hat eine Urlaubswochen-Frage, und ihr Organisator
 -- ist eine Leitung dieser Filiale (pep.benutzer mit Rolle leitung; Stellvertretung und Mitarbeiter genügen nicht,
--- Entscheidung dtn: „die Umfragen der anderen Leiter“) oder sie ist schon für die Filiale eingeschaltet. Einzige Stelle
+-- Entscheidung dtn: „die Umfragen der anderen Leiter“), die sich seit der Zuordnung selbst angemeldet hat
+-- (bestaetigt_am) oder der Aufrufer selbst ist; oder sie ist schon für die Filiale eingeschaltet. Einzige Stelle
 -- der Regel: Liste (pep_urlaub_umfragen), Einschalten und Einspielen einer Sicherung (dort sind die Benutzer der Datei
--- zu diesem Zeitpunkt schon der Filiale zugeordnet). Hängt nicht vom Aufrufer ab.
+-- zu diesem Zeitpunkt schon der Filiale zugeordnet, aber ohne bestaetigt_am: ihre Umfragen werden ausgelassen).
 create or replace function pep.umfrage_erlaubt(p_filiale_id bigint, p_umfrage_id bigint)
 returns boolean
 language sql stable
@@ -2242,7 +2274,8 @@ as $$
                   where u.id = p_umfrage_id
                     and (exists (select 1 from pep.benutzer b
                                   where b.user_id = u.organisator_id and b.filiale_id = p_filiale_id
-                                    and b.rolle = 'leitung')
+                                    and b.rolle = 'leitung'
+                                    and (b.bestaetigt_am is not null or b.user_id = auth.uid()))
                          or exists (select 1 from pep.urlaub_umfragen s
                                      where s.umfrage_id = u.id and s.filiale_id = p_filiale_id)))
 $$;
@@ -2255,6 +2288,7 @@ set search_path = ''
 as $$
 declare
   v_b pep.benutzer := pep.leitung();
+  v_n bigint := 0;
 begin
   if p_aktiv is null then
     raise exception 'WERT_UNGUELTIG';
@@ -2279,16 +2313,24 @@ begin
     end if;
   else
     delete from pep.urlaub_umfragen where umfrage_id = p_umfrage_id and filiale_id = v_b.filiale_id;
+    -- Zuordnungen dieser Umfrage in der Filiale gehen mit (nach einer Übergabe an eine andere Filiale gehörten sie
+    -- sonst noch der alten). Freigaben hängen nicht daran: Sie tragen den Wunsch als Schnappschuss, und
+    -- pep.wunsch_vorhanden / pep.freigabe_zum_wunsch lesen keine Zuordnung.
+    delete from pep.urlaub_zuordnung z using urlaub.mitarbeiter t
+     where t.id = z.urlaub_mitarbeiter_id and t.umfrage_id = p_umfrage_id and z.filiale_id = v_b.filiale_id;
+    get diagnostics v_n = row_count;
   end if;
   perform pep.protokolliere(v_b.filiale_id, 'schalten', 'urlaub_umfragen', p_umfrage_id::text, null,
-    jsonb_build_object('aktiv', p_aktiv));
+    jsonb_build_object('aktiv', p_aktiv) || case when p_aktiv then '{}'::jsonb
+                                                 else jsonb_build_object('zuordnungen_geloescht', v_n) end);
 end;
 $$;
 
 -- Teilnehmer der eingeschalteten Umfragen mit Zuordnung und Namensvorschlag (vorschlag_id): Namen als Menge von
--- Namensteilen (pep.namensteile, Reihenfolge egal). Vorschlag ist der eine aktive Mitarbeiter der Filiale mit derselben
--- Menge, sonst der eine, dessen Menge alle Teile des Teilnehmers enthält (dann mindestens ein Teil mit ≥ 2 Zeichen);
--- mehrdeutig → null. Schon zugeordnete Mitarbeiter bleiben Kandidaten.
+-- Namensteilen (pep.namensteile, Reihenfolge egal). Gezählt wird über ALLE Mitarbeiter der Filiale: genau einer mit
+-- derselben Menge → dieser, sonst genau einer, dessen Menge alle Teile des Teilnehmers enthält (dann mindestens ein
+-- Teil mit ≥ 2 Zeichen); mehrdeutig → null. Vorgeschlagen wird nur ein aktiver (passt der eine nur auf einen
+-- Inaktiven, gibt es keinen Vorschlag). Schon zugeordnete Mitarbeiter bleiben Kandidaten.
 create or replace function public.pep_urlaub_zuordnung()
 returns jsonb
 language plpgsql stable
@@ -2300,7 +2342,7 @@ declare
 begin
   return coalesce((
     with ma as (
-      select m.id, pep.namensteile(m.name) as teile from pep.mitarbeiter m where m.filiale_id = v_f and m.aktiv
+      select m.id, m.aktiv, pep.namensteile(m.name) as teile from pep.mitarbeiter m where m.filiale_id = v_f
     ), tn as (
       select t.id, t.name, u.id as umfrage_id, u.titel, z.mitarbeiter_id, pep.namensteile(t.name) as teile
         from pep.urlaub_umfragen s
@@ -2313,10 +2355,10 @@ begin
              'urlaub_mitarbeiter_id', tn.id, 'umfrage_id', tn.umfrage_id, 'umfrage_titel', tn.titel, 'name', tn.name,
              'mitarbeiter_id', tn.mitarbeiter_id,
              'vorschlag_id', (select case when count(*) filter (where ma.teile = tn.teile) = 1
-                                          then min(ma.id) filter (where ma.teile = tn.teile)
+                                          then min(ma.id) filter (where ma.teile = tn.teile and ma.aktiv)
                                           when count(*) filter (where ma.teile = tn.teile) = 0 and count(*) = 1
                                                and exists (select 1 from unnest(tn.teile) x where char_length(x) >= 2)
-                                          then min(ma.id) end
+                                          then min(ma.id) filter (where ma.aktiv) end
                                 from ma
                                where cardinality(tn.teile) > 0 and ma.teile @> tn.teile))
            order by tn.umfrage_id, tn.name, tn.id)
@@ -2346,7 +2388,8 @@ begin
     v_m := pep.eigener_mitarbeiter(p_mitarbeiter_id);
     insert into pep.urlaub_zuordnung (urlaub_mitarbeiter_id, mitarbeiter_id, filiale_id)
     values (p_urlaub_mitarbeiter_id, v_m.id, v_b.filiale_id)
-    on conflict (urlaub_mitarbeiter_id) do update set mitarbeiter_id = excluded.mitarbeiter_id;
+    -- filiale_id mit: eine Zeile aus der Zeit, als die Umfrage einer anderen Filiale gehörte, geht über
+    on conflict (urlaub_mitarbeiter_id) do update set mitarbeiter_id = excluded.mitarbeiter_id, filiale_id = excluded.filiale_id;
   end if;
   perform pep.protokolliere(v_b.filiale_id, 'zuordnen', 'urlaub_zuordnung', p_urlaub_mitarbeiter_id::text, null,
     jsonb_build_object('mitarbeiter_id', p_mitarbeiter_id));
@@ -6413,8 +6456,8 @@ $$;
 -- Urlaubstool: Dessen eigene Sicherung (urlaub.umfrage_aus_json) vergibt beim Einspielen NEUE Ids. Umfragen werden
 -- darum über Organisator (Benutzername), Titel und Jahr gefunden, Teilnehmer über die Umfrage und den Namen
 -- (pep.name_normal); nur eindeutige Treffer und nur Umfragen, die die Filiale einschalten darf (pep.umfrage_erlaubt;
--- die Benutzer der Datei werden vorher zugeordnet, damit auch Umfragen anderer Leitungen der Filiale zählen; als
--- Stellvertretung eingetragene Organisatoren genügen nicht).
+-- Umfragen anderer Leitungen erst, wenn diese sich nach dem Einspielen selbst angemeldet haben: bis dahin ausgelassen
+-- und gezählt, danach von Hand einschalten).
 -- Damit werden urlaub_umfragen.umfrage_id, urlaub_zuordnung.urlaub_mitarbeiter_id und die Ids in
 -- urlaub_freigaben.wunsch umgeschlüsselt (sonst erschienen genehmigte Wünsche wieder als offen). Ohne Treffer:
 -- Schaltung und Zuordnung ausgelassen und gezählt; die Freigabe bleibt (sie trägt die U-Tage und die Entscheidung),
@@ -6699,8 +6742,9 @@ as $$
   select lower(regexp_replace(urlaub.trim_alles(p_text), '\s+', ' ', 'g'))
 $$;
 
--- Namensteile für den Zuordnungsvorschlag (pep_urlaub_zuordnung): pep.name_normal, Kommas entfernt, Bindestriche und
--- Leerraum trennen, leere Teile weg; sortiert und ohne Doppelte ('Muster-Beispiel, Anna' → {anna,beispiel,muster}).
+-- Namensteile für den Zuordnungsvorschlag (pep_urlaub_zuordnung): pep.name_normal, Kommas und Punkte entfernt,
+-- Bindestrich, Halbgeviert- und Geviertstrich (- – —) und Leerraum trennen, leere Teile weg; sortiert und ohne Doppelte
+-- ('Muster-Beispiel, Anna' → {anna,beispiel,muster}). pep.name_normal selbst bleibt für die Sicherung, wie es ist.
 -- Einzige Stelle dieser Regel.
 create or replace function pep.namensteile(p_text text)
 returns text[]
@@ -6708,7 +6752,8 @@ language sql stable
 set search_path = ''
 as $$
   select array(select distinct x
-                 from unnest(regexp_split_to_array(replace(coalesce(pep.name_normal(p_text), ''), ',', ' '), '[\s-]+')) x
+                 from unnest(regexp_split_to_array(translate(coalesce(pep.name_normal(p_text), ''), ',.', '  '),
+                                                   '[\s–—-]+')) x
                 where x <> ''
                 order by x)
 $$;
@@ -6924,8 +6969,9 @@ begin
     from jsonb_each_text(coalesce(p_daten -> 'konten', '{}'::jsonb)) k
     join urlaub.organisatoren o on o.benutzername = k.value;
 
-  -- Benutzer der Datei vor dem Urlaubstool zuordnen: pep.umfrage_erlaubt erlaubt die Umfragen aller Leitungen der
-  -- Filiale, also auch die einer anderen Leitung aus der Datei.
+  -- Benutzer der Datei vor dem Urlaubstool zuordnen. Neu eingetragene haben kein bestaetigt_am (sie müssen sich in
+  -- diesem Projekt erst selbst anmelden): Umfragen anderer Leitungen aus der Datei werden darum ausgelassen und gezählt;
+  -- die eigenen der einspielenden Leitung zählen (pep.umfrage_erlaubt).
   for v_e in select b from jsonb_array_elements(coalesce(p_daten -> 'benutzer', '[]'::jsonb)) b loop
     v_uid := null;
     select o.user_id into v_uid from urlaub.organisatoren o where o.benutzername = v_e ->> 'benutzername';
@@ -6937,7 +6983,9 @@ begin
       continue;
     end if;
     insert into pep.benutzer (user_id, filiale_id, rolle) values (v_uid, v_f, v_e ->> 'rolle')
-    on conflict (user_id) do update set filiale_id = excluded.filiale_id, rolle = excluded.rolle;
+    on conflict (user_id) do update set filiale_id = excluded.filiale_id, rolle = excluded.rolle,
+      bestaetigt_am = case when pep.benutzer.filiale_id is not distinct from excluded.filiale_id
+                           then pep.benutzer.bestaetigt_am end;
     v_ben_ein := v_ben_ein + 1;
   end loop;
   if v_ben_ein > 0 then

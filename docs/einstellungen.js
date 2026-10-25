@@ -379,7 +379,9 @@ function zeichneBenutzer() {
     const rolle = auswahlfeld(ROLLEN, b.rolle);
     return zeilenformular(
       () => speichere(() => aufruf('pep_benutzer_setzen', { p_benutzername: b.benutzername, p_rolle: rolle.value }), 'benutzer'),
-      element('strong', { class: 'zeilentitel' }, `${b.benutzername} · ${b.anzeigename}`),
+      element('strong', { class: 'zeilentitel' }, `${b.benutzername} · ${b.anzeigename}`,
+        // Umfragen einer Leitung erscheinen unter Urlaubstool erst nach ihrer ersten eigenen Anmeldung
+        b.angemeldet === false ? element('span', { class: 'hinweis' }, ' · noch nicht angemeldet') : null),
       feld('Rolle', rolle), knopfSpeichern(),
       knopf('Entfernen', () => speichere(() => aufruf('pep_benutzer_entfernen', { p_user_id: b.user_id }), 'benutzer')));
   };
