@@ -5589,8 +5589,10 @@ $$;
 -- G5: Gleicht abgeschlossene Wochen ab: je (Mitarbeiter, Woche) eine Buchung korrektur = diff jetzt − Summe der
 -- Buchungen woche und korrektur dieser Woche, wenn ≠ 0. Ist die Wochenrechnung inzwischen NULL (nicht mehr beschäftigt),
 -- ist das Ziel 0. p_paare = [{mitarbeiter_id, montag}] oder null = alle Mitarbeiter der Filiale; p_ab = nur Wochen,
--- deren Sonntag ≥ p_ab (null = alle). Nur abgeschlossene Wochen und aktive Mitarbeiter (Inaktive bekommen auch beim
--- Abschluss keine Zeile). Grund „KW <kw>/<isojahr>: p_grund“. Liefert die Zahl der Korrekturen.
+-- deren Sonntag ≥ p_ab (null = alle). Nur aktive Mitarbeiter und nur Wochen, für die der Mitarbeiter beim Abschluss
+-- eine Zeile woche bekommen hat (aktiv mit Vertrag, auch 0): Wer damals nicht dazugehörte (inaktiv, Vertrag erst
+-- später angelegt), bekommt für diese Woche nie eine Korrektur. Grund „KW <kw>/<isojahr>: p_grund“. Liefert die Zahl
+-- der Korrekturen.
 create or replace function pep.zeitkonto_abgleichen(p_filiale_id bigint, p_paare jsonb, p_ab date, p_grund text)
 returns int
 language plpgsql
@@ -5608,6 +5610,8 @@ begin
       join pep.mitarbeiter m on m.filiale_id = a.filiale_id and m.aktiv
      where a.filiale_id = p_filiale_id
        and (p_ab is null or a.montag + 6 >= p_ab)
+       and exists (select 1 from pep.zeitkonto_buchungen w
+                    where w.mitarbeiter_id = m.id and w.datum = a.montag and w.art = 'woche')
        and (p_paare is null or exists (select 1 from jsonb_array_elements(p_paare) e
                                         where (e ->> 'mitarbeiter_id')::bigint = m.id
                                           and (e ->> 'montag')::date = a.montag))
@@ -5666,6 +5670,7 @@ as $$
     from unnest(p_mitarbeiter_ids, p_von, p_bis) x (mitarbeiter_id, von, bis)
     join pep.mitarbeiter m on m.id = x.mitarbeiter_id
     join pep.wochen_abschluesse a on a.filiale_id = m.filiale_id and a.montag <= x.bis and a.montag + 6 >= x.von
+   order by m.id, a.montag
   on conflict do nothing
 $$;
 
@@ -5784,7 +5789,8 @@ begin
 end;
 $$;
 
--- Auslöser abwesenheitscodes (nur Änderungen an gutschrift): alle Tage mit Abwesenheiten dieses Codes.
+-- Auslöser abwesenheitscodes: alle Tage mit Abwesenheiten eines Codes, dessen gutschrift (zählt als Zeit) oder sperrt
+-- (IST-Zeit während der Abwesenheit ist unbesetzt und zählt nicht, pep.abschnitte) sich geändert hat.
 create or replace function pep.nachbuchen_codes()
 returns trigger
 language plpgsql
@@ -5803,32 +5809,75 @@ begin
     join pep.abwesenheiten a on a.code_id = n.id
    where n.gutschrift is distinct from o.gutschrift;
   perform pep.zeitkonto_vormerken(v_ids, v_tage, v_tage, 'Gutschrift eines Codes geändert');
+  select array_agg(a.mitarbeiter_id), array_agg(a.datum) into v_ids, v_tage
+    from neu n
+    join alt o on o.id = n.id
+    join pep.abwesenheiten a on a.code_id = n.id
+   where n.sperrt is distinct from o.sperrt;
+  perform pep.zeitkonto_vormerken(v_ids, v_tage, v_tage, 'Sperre eines Codes geändert');
+  return null;
+end;
+$$;
+
+-- Auslöser einstellungen (nur feiertag_teiler mit neuem Wert): die Feiertagsgutschrift ist wochenstunden /
+-- feiertag_teiler, also alle Mitarbeiter der Filiale in jeder abgeschlossenen Woche mit einem gesetzlichen Feiertag
+-- Mo–Sa (ob die Filiale an dem Tag geöffnet hatte, entscheidet die Wochenrechnung).
+create or replace function pep.nachbuchen_einstellungen()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_filialen bigint[];
+  v_ids      bigint[];
+  v_tage     date[];
+begin
+  if pep.einspielen() then
+    return null;
+  end if;
+  if tg_op = 'INSERT' then
+    select array_agg(n.filiale_id) into v_filialen from neu n where n.schluessel = 'feiertag_teiler';
+  else
+    select array_agg(n.filiale_id) into v_filialen
+      from neu n join alt o on o.filiale_id = n.filiale_id and o.schluessel = n.schluessel
+     where n.schluessel = 'feiertag_teiler' and o.wert is distinct from n.wert;
+  end if;
+  select array_agg(m.id order by m.id, a.montag), array_agg(a.montag order by m.id, a.montag) into v_ids, v_tage
+    from unnest(v_filialen) g (filiale_id)
+    join pep.wochen_abschluesse a on a.filiale_id = g.filiale_id
+    join pep.mitarbeiter m on m.filiale_id = g.filiale_id
+   where exists (select 1 from generate_series(0, 5) i where pep.feiertag(g.filiale_id, a.montag + i) is not null);
+  perform pep.zeitkonto_vormerken(v_ids, v_tage, v_tage, 'Feiertagsteiler geändert');
   return null;
 end;
 $$;
 
 -- Postgres erlaubt Transition-Tabellen nur bei Triggern mit genau einem Ereignis: je Tabelle und Ereignis ein Trigger.
+-- Update immer; Insert und Delete, wo neue oder gelöschte Zeilen diff ändern können.
 do $$
 declare
   v record;
 begin
   for v in select * from (values
-      ('ist_bloecke',      'pep.nachbuchen_tage(''IST geändert'')',         true),
-      ('ist_tage',         'pep.nachbuchen_tage(''IST geändert'')',         true),
-      ('abwesenheiten',    'pep.nachbuchen_tage(''Abwesenheit geändert'')', true),
-      ('vertraege',        'pep.nachbuchen_vertraege()',                    true),
-      ('tag_abweichungen', 'pep.nachbuchen_abweichungen()',                 true),
-      ('mitarbeiter',      'pep.nachbuchen_mitarbeiter()',                  false),
-      ('abwesenheitscodes','pep.nachbuchen_codes()',                        false)) x (tabelle, funktion, alle)
+      ('ist_bloecke',      'pep.nachbuchen_tage(''IST geändert'')',         true,  true),
+      ('ist_tage',         'pep.nachbuchen_tage(''IST geändert'')',         true,  true),
+      ('abwesenheiten',    'pep.nachbuchen_tage(''Abwesenheit geändert'')', true,  true),
+      ('vertraege',        'pep.nachbuchen_vertraege()',                    true,  true),
+      ('tag_abweichungen', 'pep.nachbuchen_abweichungen()',                 true,  true),
+      ('mitarbeiter',      'pep.nachbuchen_mitarbeiter()',                  false, false),
+      ('abwesenheitscodes','pep.nachbuchen_codes()',                        false, false),
+      ('einstellungen',    'pep.nachbuchen_einstellungen()',                true,  false)) x (tabelle, funktion, neu, weg)
   loop
     execute format('drop trigger if exists %I on pep.%I', v.tabelle || '_nachbuchen_neu', v.tabelle);
     execute format('drop trigger if exists %I on pep.%I', v.tabelle || '_nachbuchen_aenderung', v.tabelle);
     execute format('drop trigger if exists %I on pep.%I', v.tabelle || '_nachbuchen_weg', v.tabelle);
     execute format('create trigger %I after update on pep.%I referencing old table as alt new table as neu '
                    'for each statement execute function %s', v.tabelle || '_nachbuchen_aenderung', v.tabelle, v.funktion);
-    if v.alle then
+    if v.neu then
       execute format('create trigger %I after insert on pep.%I referencing new table as neu '
                      'for each statement execute function %s', v.tabelle || '_nachbuchen_neu', v.tabelle, v.funktion);
+    end if;
+    if v.weg then
       execute format('create trigger %I after delete on pep.%I referencing old table as alt '
                      'for each statement execute function %s', v.tabelle || '_nachbuchen_weg', v.tabelle, v.funktion);
     end if;
@@ -5846,15 +5895,22 @@ security definer
 set search_path = ''
 as $$
 declare
-  v pep.zeitkonto_vormerkungen;
+  v_id bigint;
+  v    pep.zeitkonto_vormerkungen;
 begin
-  delete from pep.zeitkonto_vormerkungen
-   where xid = new.xid and mitarbeiter_id = new.mitarbeiter_id and montag = new.montag
-  returning * into v;
-  if found then
+  -- Der erste Aufruf der Transaktion bucht alle Vormerkungen; die weiteren finden nichts mehr. Erst alle Sperren je
+  -- Mitarbeiter aufsteigend, dann buchen – gleiche Reihenfolge wie pep_wochenabschluss, damit sich zwei Commits nicht
+  -- gegenseitig blockieren (Deadlock).
+  for v_id in select distinct z.mitarbeiter_id from pep.zeitkonto_vormerkungen z where z.xid = new.xid
+               order by z.mitarbeiter_id loop
+    perform pg_advisory_xact_lock(v_id);
+  end loop;
+  for v in select * from pep.zeitkonto_vormerkungen z where z.xid = new.xid order by z.mitarbeiter_id, z.montag loop
+    delete from pep.zeitkonto_vormerkungen z
+     where z.xid = v.xid and z.mitarbeiter_id = v.mitarbeiter_id and z.montag = v.montag;
     perform pep.zeitkonto_abgleichen(v.filiale_id,
       jsonb_build_array(jsonb_build_object('mitarbeiter_id', v.mitarbeiter_id, 'montag', v.montag)), null, v.grund);
-  end if;
+  end loop;
   return null;
 end;
 $$;
@@ -5869,9 +5925,10 @@ create constraint trigger zeitkonto_vormerkungen_buchen
 -- Journal und Abschluss: Funktionen für den Browser
 -- ---------------------------------------------------------------------------
 
--- G4 (nur Leitung): schließt die ISO-Woche ab und bucht je aktivem Mitarbeiter mit Wochenrechnung eine Zeile woche mit
--- diff (auch 0). Prüfungen: Woche vorbei (Sonntag < heute), nicht schon abgeschlossen, genau die Woche nach dem
--- letzten Abschluss der Filiale (wenn es einen gibt), keine offenen IST-Zeilen (pep.ist_zeilen). Antwort {gebucht: n}.
+-- G4 (nur Leitung): schließt die ISO-Woche ab und bucht je aktivem Mitarbeiter mit Vertrag in der Woche
+-- (pep.wochenvertrag) eine Zeile woche mit diff (auch 0; ohne Wochenrechnung 0). Prüfungen: Woche vorbei
+-- (Sonntag < heute), nicht schon abgeschlossen, genau die Woche nach dem letzten Abschluss der Filiale (wenn es einen
+-- gibt), keine offenen IST-Zeilen (pep.ist_zeilen). Antwort {gebucht: n}.
 create or replace function public.pep_wochenabschluss(p_jahr int, p_kw int)
 returns jsonb
 language plpgsql
@@ -5891,6 +5948,12 @@ begin
   end if;
   -- Zwei Leitungen gleichzeitig: die zweite wartet hier und sieht danach den Abschluss der ersten (WOCHE_GEBUCHT).
   perform 1 from pep.filialen where id = v_b.filiale_id for no key update;
+  -- Alles, was diff speist und ein Nachbuchen auslöst, bis zum Commit gegen Änderungen sperren. Ohne Sperre sähe eine
+  -- gleichzeitige Änderung (deren Anweisung vor dem Abschluss lief) die Woche noch offen und merkte nichts vor, während
+  -- die Zeile woche schon ohne sie gerechnet ist – die Änderung ginge im Zeitkonto verloren. share wartet auf laufende
+  -- Schreiber und hält neue bis zum Commit auf; danach sehen deren Trigger die Woche als abgeschlossen.
+  lock table pep.ist_bloecke, pep.ist_tage, pep.abwesenheiten, pep.vertraege, pep.mitarbeiter, pep.tag_abweichungen,
+             pep.abwesenheitscodes, pep.einstellungen in share mode;
   if exists (select 1 from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id and a.montag = v_mo) then
     raise exception 'WOCHE_GEBUCHT';
   end if;
@@ -5907,14 +5970,14 @@ begin
   returning * into v_a;
   perform pep.protokolliere(v_b.filiale_id, 'abschliessen', 'wochen_abschluesse', to_char(v_mo, 'YYYY-MM-DD'),
     null, to_jsonb(v_a));
-  for v_m in select m.id, (pep.zeitkonto_woche(m.id, v_mo) ->> 'diff')::numeric as diff
+  -- Jeder Aktive mit Vertrag in der Woche bekommt eine Zeile, auch 0 (etwa Eintritt erst nach der Woche): Nur Wochen
+  -- mit Zeile woche werden später nachgebucht (pep.zeitkonto_abgleichen).
+  for v_m in select m.id, coalesce((pep.zeitkonto_woche(m.id, v_mo) ->> 'diff')::numeric, 0) as diff
                from pep.mitarbeiter m
-              where m.filiale_id = v_b.filiale_id and m.aktiv
+              where m.filiale_id = v_b.filiale_id and m.aktiv and (pep.wochenvertrag(m.id, v_mo)).id is not null
               order by m.id loop
-    if v_m.diff is not null then
-      perform pep.zeitkonto_buchen(v_b.filiale_id, v_m.id, v_mo, 'woche', v_m.diff, null);
-      v_n := v_n + 1;
-    end if;
+    perform pep.zeitkonto_buchen(v_b.filiale_id, v_m.id, v_mo, 'woche', v_m.diff, null);
+    v_n := v_n + 1;
   end loop;
   return jsonb_build_object('gebucht', v_n);
 end;

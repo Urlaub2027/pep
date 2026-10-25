@@ -65,8 +65,8 @@ async function aufbau(heute = HEUTE) {
 }
 
 let A; // KW 46 abgeschlossen: Anna, Berta, Ina (inaktiv)
-let B; // KW 45 und 46 abgeschlossen: Uwe, Vera, Zora (ZA am Mo KW 46), Emil
-let C; // KW 52/2026, 53/2026, 1/2027 abgeschlossen: Fritz, Tina (Teilzeit 20), Otto (ohne Vertrag)
+let B; // KW 45 und 46 abgeschlossen: Uwe, Vera, Zora (ZA am Mo KW 46), Emil, Sam (Eintritt erst 16.11.)
+let C; // KW 52/2026, 53/2026, 1/2027 abgeschlossen: Fritz, Tina (Teilzeit 20), Otto (ohne Vertrag), Ines (inaktiv)
 
 before(async () => {
   A = await aufbau();
@@ -90,11 +90,15 @@ before(async () => {
   B.zora = await B.ma('Ausgleich, Zora');
   B.emil = await B.ma('Ende, Emil');
   await B.abwesend(B.zora, 'ZA', KW46);
+  B.sam = await B.ma('Spaet, Sam');
+  await B.speichern(B.sam, { eintritt: '2026-11-16' }); // Vertrag seit 01.01., beschäftigt aber erst nach KW 46
 
   C = await aufbau('2027-01-11');
   C.fritz = await C.ma('Feier, Fritz');
   C.tina = await C.ma('Teil, Tina', { stunden: 20, art: 'teilzeit' });
   C.otto = await C.json(C.leitung, `select public.pep_mitarbeiter_speichern(null, '{"name":"Ohne, Otto"}') as r`);
+  C.ines = await C.ma('Inaktiv, Ines');
+  await C.speichern(C.ines, { aktiv: false });
 });
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -275,16 +279,28 @@ test('Führung ohne eingetragene Grenze: grenze = größer von 42 und Vertragsst
 // Datenbank B
 // ---------------------------------------------------------------------------------------------------------------
 
-test('Abschluss KW 45 und KW 46 hintereinander: ohne IST je −37,5, ZA ohne Gutschrift', async () => {
-  const { wocheBestaetigen, abschluss, zeilen, uwe, zora } = B;
+test('Abschluss KW 45 und KW 46 hintereinander: ohne IST je −37,5, ZA ohne Gutschrift; mit Vertrag, aber noch nicht eingetreten → 0', async () => {
+  const { wocheBestaetigen, abschluss, zeilen, uwe, zora, sam } = B;
   await wocheBestaetigen(KW45);
   await wocheBestaetigen(KW46);
-  assert.deepEqual(await abschluss(2026, 45), { gebucht: 4 });
-  assert.deepEqual(await abschluss(2026, 46), { gebucht: 4 });
+  assert.deepEqual(await abschluss(2026, 45), { gebucht: 5 });
+  assert.deepEqual(await abschluss(2026, 46), { gebucht: 5 });
+  assert.deepEqual((await zeilen(sam)).map((z) => [z.art, z.datum, z.stunden]), [['woche', KW45, 0], ['woche', KW46, 0]]);
   assert.deepEqual(await zeilen(uwe), [
     { art: 'woche', datum: KW45, stunden: -37.5, saldo_nach: -37.5, grund: null },
     { art: 'woche', datum: KW46, stunden: -37.5, saldo_nach: -75, grund: null }]);
   assert.deepEqual((await zeilen(zora)).map((z) => z.stunden), [-37.5, -37.5]);
+});
+
+test('Nur Wochen mit Zeile woche: Eintritt vorverlegt → Korrektur; neuer Mitarbeiter mit rückdatiertem Vertrag → keine', async () => {
+  const { speichern, korrekturen, saldoStimmt, zeilen, ma, sam } = B;
+  // Sam war beim Abschluss mit Vertrag dabei (Zeilen 0): Eintritt Mi 11.11. → KW 46 Soll 25, KW 45 weiter ohne Rechnung
+  await speichern(sam, { eintritt: '2026-11-11' });
+  assert.deepEqual(await korrekturen(sam), [{ datum: KW46, stunden: -25, grund: 'KW 46/2026: Ein-/Austritt geändert' }]);
+  assert.equal(await saldoStimmt(sam), -25);
+  // Nach den Abschlüssen angelegt, Vertrag seit 01.01.: gehörte zu keiner abgeschlossenen Woche
+  const nina = await ma('Neu, Nina');
+  assert.deepEqual(await zeilen(nina), []);
 });
 
 test('Urlaub nachträglich über KW 45 und KW 46: genau eine Korrektur je Woche, Saldo = Summe des Journals', async () => {
@@ -368,12 +384,26 @@ test('Weiche pep.einspielen: Änderung in abgeschlossener Woche bucht nichts; oh
   assert.deepEqual((await korrekturen(vera)).at(-1), { datum: KW46, stunden: 6, grund: 'KW 46/2026: IST geändert' });
 });
 
+test('Sperre eines Codes umgeschaltet: IST während der Abwesenheit zählt wieder bzw. nicht mehr → Korrektur', async () => {
+  const { db, fil, json, leitung, code, vera, korrekturen, anzahl, saldoStimmt } = B;
+  // Termin 10–12 am 10.11. (sperrt): IST 10–12 wird unbesetzt (−2), der Termin zählt 2 → diff unverändert
+  const vorher = await anzahl();
+  await json(leitung, `select public.pep_abwesenheit_setzen($1, $2, '2026-11-10', '2026-11-10', 2, '10:00', '12:00', null) as r`,
+    [vera, code.T]);
+  assert.equal(await anzahl(), vorher);
+  await db.query(`update pep.abwesenheitscodes set sperrt = false where filiale_id = $1 and code = 'T'`, [fil]);
+  assert.deepEqual((await korrekturen(vera)).at(-1), { datum: KW46, stunden: 2, grund: 'KW 46/2026: Sperre eines Codes geändert' });
+  await db.query(`update pep.abwesenheitscodes set sperrt = true where filiale_id = $1 and code = 'T'`, [fil]);
+  assert.deepEqual((await korrekturen(vera)).at(-1), { datum: KW46, stunden: -2, grund: 'KW 46/2026: Sperre eines Codes geändert' });
+  await saldoStimmt(vera);
+});
+
 // ---------------------------------------------------------------------------------------------------------------
 // Datenbank C (heute = 11.01.2027)
 // ---------------------------------------------------------------------------------------------------------------
 
 test('Jahreswechsel: Abschlüsse KW 52, 53/2026 und KW 1/2027; saldo_vorwoche von KW 1/2027 enthält KW 53', async () => {
-  const { wocheBestaetigen, abschluss, zeilen, zkWoche, fritz, tina, otto } = C;
+  const { wocheBestaetigen, abschluss, zeilen, zkWoche, fritz, tina, otto, ines } = C;
   for (const [mo, jahr, kw] of [['2026-12-21', 2026, 52], ['2026-12-28', 2026, 53], ['2027-01-04', 2027, 1]]) {
     await wocheBestaetigen(mo);
     assert.deepEqual(await abschluss(jahr, kw), { gebucht: 2 }, `KW ${kw}`);
@@ -382,6 +412,7 @@ test('Jahreswechsel: Abschlüsse KW 52, 53/2026 und KW 1/2027; saldo_vorwoche vo
     [['2026-12-21', -25], ['2026-12-28', -31.25], ['2027-01-04', -31.25]]);
   assert.deepEqual((await zeilen(tina)).map((z) => z.stunden), [-13.34, -16.67, -16.67]);
   assert.deepEqual(await zeilen(otto), []);
+  assert.deepEqual(await zeilen(ines), [], 'inaktiv: keine Zeile woche');
   const kw1 = (await zkWoche(2027, 1)).mitarbeiter.find((m) => m.id === fritz);
   assert.deepEqual([Number(kw1.saldo_vorwoche), Number(kw1.saldo_aktuell)], [-56.25, -87.5]);
   const kw53 = (await zkWoche(2026, 53)).mitarbeiter.find((m) => m.id === fritz);
@@ -389,14 +420,37 @@ test('Jahreswechsel: Abschlüsse KW 52, 53/2026 und KW 1/2027; saldo_vorwoche vo
 });
 
 test('Feiertag 06.01.2027 nachträglich geöffnet: Korrektur für alle mit Vertrag (auch ohne Abwesenheit); zurück → Gegenbuchung', async () => {
-  const { korrekturen, saldoStimmt, fritz, tina, otto, leitung } = C;
+  const { korrekturen, saldoStimmt, fritz, tina, otto, ines, leitung, speichern } = C;
+  await speichern(ines, { aktiv: true }); // wieder aktiv, war beim Abschluss aber nicht dabei
   await als(C.db, 'authenticated', leitung, 'select public.pep_abweichung_speichern($1::date, $2::jsonb)', ['2027-01-06',
     JSON.stringify({ art: 'feiertag', geoeffnet: true, oeffnung_von: '07:00', oeffnung_bis: '20:00', rahmen_von: '06:00', rahmen_bis: '21:30' })]);
   assert.deepEqual(await korrekturen(fritz), [{ datum: '2027-01-04', stunden: -6.25, grund: 'KW 1/2027: Öffnungstag geändert' }]);
   assert.deepEqual(await korrekturen(tina), [{ datum: '2027-01-04', stunden: -3.33, grund: 'KW 1/2027: Öffnungstag geändert' }]);
   assert.deepEqual(await C.zeilen(otto), []);
+  assert.deepEqual(await C.zeilen(ines), [], 'beim Abschluss inaktiv: keine Korrektur');
   await als(C.db, 'authenticated', leitung, 'select public.pep_abweichung_loeschen($1::date)', ['2027-01-06']);
   assert.deepEqual((await korrekturen(fritz)).map((k) => k.stunden), [-6.25, 6.25]);
   assert.deepEqual((await korrekturen(tina)).map((k) => k.stunden), [-3.33, 3.33]);
+  assert.equal(await saldoStimmt(fritz), -87.5);
+});
+
+test('Feiertagsteiler geändert: Korrektur in jeder abgeschlossenen Woche mit Feiertag; anderer Schlüssel oder gleicher Wert nichts', async () => {
+  const { korrekturen, saldoStimmt, anzahl, fritz, tina, otto, ines, leitung, db } = C;
+  const setzen = (k, w) => als(db, 'authenticated', leitung, 'select public.pep_einstellung_setzen($1, $2::jsonb)', [k, w]);
+  const vorher = (await korrekturen(fritz)).length;
+  await setzen('feiertag_teiler', '5');
+  assert.deepEqual((await korrekturen(fritz)).slice(vorher), [
+    { datum: '2026-12-21', stunden: 2.5, grund: 'KW 52/2026: Feiertagsteiler geändert' },
+    { datum: '2026-12-28', stunden: 1.25, grund: 'KW 53/2026: Feiertagsteiler geändert' },
+    { datum: '2027-01-04', stunden: 1.25, grund: 'KW 1/2027: Feiertagsteiler geändert' }]);
+  assert.deepEqual((await korrekturen(tina)).slice(-3).map((k) => k.stunden), [1.34, 0.67, 0.67]);
+  assert.deepEqual(await C.zeilen(otto), []);
+  assert.deepEqual(await C.zeilen(ines), []);
+  const n = await anzahl();
+  await setzen('feiertag_teiler', '5');
+  await setzen('spaet_grenze', '"19:00"');
+  assert.equal(await anzahl(), n);
+  await setzen('feiertag_teiler', '6');
+  assert.deepEqual((await korrekturen(fritz)).slice(-3).map((k) => k.stunden), [-2.5, -1.25, -1.25]);
   assert.equal(await saldoStimmt(fritz), -87.5);
 });
