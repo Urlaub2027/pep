@@ -1237,14 +1237,23 @@ await szenario('Einstellungen: Rahmen, Bereich, Code, Parameter, Schulferien, Ab
 await szenario('Vorausplanung: Stundenleistung gleich dem Standardwert eintippen', async () => {
   await reiter('vorausplanung');
   const f = '#ansicht-vorausplanung input[aria-label="Stundenleistung KW 50"]';
-  const angezeigt = await c.werte((x) => document.querySelector(x).value, f);
-  const vorher = (await sql('select stundenleistung_eur_pro_h::float as s from pep.wochen where jahr = 2026 and kw = 50'))[0]?.s ?? null;
-  notiz(`Feld zeigt vor der Eingabe „${angezeigt}“, DB-Wert ${vorher} (Standard aus den Einstellungen: 200)`);
+  const feldWert = () => c.werte((x) => document.querySelector(x).value, f);
+  const dbWert = async () => (await sql('select stundenleistung_eur_pro_h::float as s from pep.wochen where jahr = 2026 and kw = 50'))[0]?.s ?? null;
+  gleich(await dbWert(), null, 'DB vorher: kein eigener Wert');
+  gleich(await feldWert(), '', 'Feld ohne eigenen Wert ist leer (Hinweis: „leer = Standard aus den Einstellungen“)');
+  gleich(await c.werte((x) => document.querySelector(x).placeholder, f), 'Standard 200', 'Platzhalter nennt den Standard');
+  gleich(await c.werte(() => document.querySelector('#ansicht-vorausplanung input[aria-label="Stundenleistung KW 48"]').value), '210',
+    'KW 48 zeigt ihren eigenen Wert');
   await c.tippe(f, '200', { tab: true });
   await ruhe();
-  const nachher = (await sql('select stundenleistung_eur_pro_h::float as s from pep.wochen where jahr = 2026 and kw = 50'))[0]?.s ?? null;
-  pruefe(nachher === 200, 'Getippte Stundenleistung 200 wird für die Woche gespeichert', nachher);
-  pruefe(angezeigt === '', 'Feld ohne eigenen Wert ist leer (Hinweis: „leer = Standard aus den Einstellungen“)', angezeigt);
+  gleich(await dbWert(), 200, 'Getippte Stundenleistung 200 wird für die Woche gespeichert');
+  gleich(await feldWert(), '200', 'Feld zeigt den eigenen Wert 200');
+  await c.foto(`${FOTOS}vorausplanung-stundenleistung.png`);
+  await c.tippe(f, '', { tab: true });
+  await ruhe();
+  gleich(await dbWert(), null, 'Leeren speichert null (wieder Standard)');
+  gleich(await feldWert(), '', 'Feld nach dem Leeren leer');
+  gleich((await meldungen()).fehler, '', 'keine Fehlermeldung');
 });
 
 await szenario('Abwesenheiten: Ziehen per Touch (Tablet)', async () => {

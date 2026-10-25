@@ -2922,6 +2922,7 @@ begin
     'montag', to_char(v_mo, 'YYYY-MM-DD'),
     'planumsatz', v_w.planumsatz,
     'stundenleistung', v_leistung,
+    'stundenleistung_eigen', v_w.stundenleistung_eur_pro_h, -- eigener Wert der Woche; null = Standard aus den Einstellungen
     'soll', v_soll,
     'vertragsstunden', v_vertrag,
     'abwesend', v_abw,
