@@ -201,4 +201,9 @@ schreib('pep_startseite', await q('select public.pep_startseite() as r'));
 // Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
 schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
 schreib('pep_einstellungen', await q('select public.pep_einstellungen() as r'));
+// Stundenblatt (nur lesend, ändert nichts): 31 Tage Mo 12.10.–Mi 11.11. – vor dem Start der IST-Erfassung (ist_ab
+// 02.11.), KW 45 bestätigt und abgeschlossen, KW 46 gemischt. Die ersten drei Personen von „alle“ (Anna mit Urlaub,
+// Ben, Cem mit KM), damit der PDF-Druck drei Seiten zeigen muss.
+const blatt = await q('select public.pep_stundenblatt(null, $1::date, $2::date) as r', ['2026-10-12', '2026-11-11']);
+schreib('pep_stundenblatt', { ...blatt, mitarbeiter: blatt.mitarbeiter.slice(0, 3) });
 console.log('Vorschau-Daten geschrieben');

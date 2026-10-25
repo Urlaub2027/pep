@@ -49,8 +49,9 @@ export async function start() {
     for (const k of Object.keys(aktionen)) aktionen[k] ??= () => meldung(`Vorschau: „${k}“ folgt mit einer späteren Aufgabe.`, 'ok');
   }
   zeigeAnsicht(ansicht);
-  // ?ansicht=druck&art=tag|tage|woche|monat|resturlaub baut die Druckansicht wie der Knopf „Drucken“, aber ohne
-  // window.print(): foto.mjs mit Ausgabe *.pdf druckt sie dann per Chrome --print-to-pdf (?tag= wählt den Tag).
+  // ?ansicht=druck&art=tag|tage|woche|monat|resturlaub|wochenist|stundenblatt baut die Druckansicht wie der Knopf
+  // „Drucken“, aber ohne window.print(): foto.mjs mit Ausgabe *.pdf druckt sie dann per Chrome --print-to-pdf (?tag=
+  // wählt den Tag). wochenist = IST-Woche KW 46 mit ihrem Zeitkonto, stundenblatt = pep_stundenblatt.json.
   if (ansicht === 'druck') {
     const { baueDruck } = await import('/docs/druck.js');
     const art = parameter.get('art') || 'woche';
@@ -58,7 +59,9 @@ export async function start() {
     const daten = art === 'monat'
       ? { daten: await aufruf('pep_abwesenheiten'), jahr: Number(parameter.get('jahr')) || 2026, monat: Number(parameter.get('monat')) || 11 }
       : art === 'resturlaub' ? await aufruf('pep_resturlaub')
-        : { woche, datum: parameter.get('tag') || woche.montag };
+        : art === 'wochenist' ? { ist: await aufruf('pep_ist_woche'), zeitkonto: await aufruf('pep_zeitkonto_woche') }
+          : art === 'stundenblatt' ? await aufruf('pep_stundenblatt')
+            : { woche, datum: parameter.get('tag') || woche.montag };
     baueDruck(art, daten);
   }
   // ?toast=<Text> zeigt die Erfolgsmeldung, damit sie im Foto zu sehen ist (verzögert: das Foto entsteht

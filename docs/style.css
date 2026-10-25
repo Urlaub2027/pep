@@ -785,6 +785,9 @@ table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); f
 
 /* ---------------------------------------------------------------- Zeitkonto (zeitkonto.js)
    Plus grün, Minus rot (wie Vorausplanung); Saldo über dem Warnwert zusätzlich ⚠ auf gelbem Hinweisgrund. */
+.zk-knoepfe { display: flex; flex-wrap: wrap; gap: var(--a2); }
+.zk-zeitraum { display: flex; flex-wrap: wrap; gap: 0 var(--a3); }
+.zk-zeitraum .feld { flex: 1 1 140px; }
 .zk-status-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a2) var(--a3); margin-left: auto; }
 .zk-status { margin: 0; color: var(--text-2); }
 .zk-gebucht { margin-left: auto; color: var(--text); font-weight: 600; }
@@ -923,4 +926,23 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   /* Resturlaub */
   .dr-resturlaub tbody tr { height: 6mm; }
   .dr-resturlaub thead th { font-size: 7pt; }
+
+  /* Wocheneinsatz-IST (Stufe 2): wie der Wochenplan; „offen“ grau und kursiv (zählt nicht) */
+  .dr-wochenist td.dr-offen { color: #555; font-style: italic; }
+
+  /* Stundenblatt (Stufe 2): A4 hoch über die benannte Seite „hoch“, eine Seite je Mitarbeiter (.dr-seite) */
+  @page hoch { size: A4 portrait; margin: 10mm 12mm; }
+  .dr-hoch { page: hoch; }
+  .dr-stundenblatt tbody tr { height: 5.4mm; }
+  .dr-stundenblatt tfoot { display: table-row-group; } /* Summe nur am Ende, nicht auf jeder Seite (über 31 Tage) */
+  .dr-stundenblatt tbody tr.dr-we td { background: #f2f2f2; }
+  .dr-stundenblatt tbody tr.dr-offen td:last-child { font-style: italic; }
+  .dr-stundenblatt-wochen tbody tr { height: 5.4mm; }
+  .dr-hoch .dr-kopf-rechts { flex-direction: column; align-items: flex-end; gap: 0; white-space: nowrap; }
+  .dr-person { display: block; margin-top: 1.5mm; font-size: 11pt; }
+  .dr-zwischentitel { margin: 4mm 0 1.5mm; font-size: 9pt; }
+  .dr-c-sb-tag { width: 20mm; }
+  .dr-c-sb-zeit { width: 18mm; }
+  .dr-c-sb-abw { width: 24mm; }
+  .dr-c-sb-kw { width: 20mm; }
 }

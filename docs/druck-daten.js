@@ -1,11 +1,13 @@
 // Reine Aufbereitung für die Ausdrucke (Spec 13) und den Excel-Export des Wochenplans (kein DOM).
-// Eingaben sind die Antworten von pep_einsatzplan_woche, pep_abwesenheiten und pep_resturlaub.
+// Eingaben sind die Antworten von pep_einsatzplan_woche, pep_abwesenheiten und pep_resturlaub; Stufe 2: pep_ist_woche
+// mit pep_zeitkonto_woche (Wocheneinsatz-IST), pep_stundenblatt und pep_zeitkonto_journal (Excel).
 // Stunden folgen F2/F4: unbesetzte Abschnitte und Pausen zählen nicht; Soll und Differenz wie die Seitenleiste
 // des Einsatzplans (wochenSummen aus plan-raster.js).
-import { minuten, halbstunden, zeitspanne, stundenText } from './zeit.js';
+import { minuten, halbstunden, zeitspanne, stundenText, plusTage } from './zeit.js';
 import { zellen as rasterZellen, tagesStunden, wochenSummen, tagKurz } from './plan-raster.js';
 import { stundenAnzeige } from './kalender.js';
 import { WOCHENTAGE } from './hilfe.js';
+import { vorzeichen, ART_TEXT } from './zeitkonto-daten.js';
 
 const rund = (n) => Math.round(Number(n) * 100) / 100 || 0; // Rechenreste und −0 werden 0
 const summe = (liste) => rund(liste.reduce((s, x) => s + (Number(x) || 0), 0));
@@ -161,5 +163,116 @@ export function resturlaubZeilen(daten) {
       genehmigt: spalte('genehmigt'),
       rest: spalte('rest'),
     },
+  };
+}
+
+// ---------------------------------------------------------------- Stufe 2
+
+const zahlOderNull = (n) => (n == null ? null : Number(n));
+
+// Wocheneinsatz-IST aus pep_ist_woche (Blöcke, Abwesenheiten, Status je IST-Zeile) und pep_zeitkonto_woche (Soll, IST,
+// Spät, Diff, Saldo). Je Mitarbeiter der IST-Woche eine Zeile; die Zahlen kommen aus dem Zeitkonto (ohne Vertrag null).
+// Tagestext: bestätigt → wie im Wochenplan „07:00–15:30 / 8,00 (P 0:30)“ aus den IST-Blöcken (Vorschläge zählen nie),
+// bestätigt ohne IST „–“; offene IST-Zeile → „offen“ (keine Stunden, auch nicht das schon erfasste IST); keine IST-Zeile
+// (künftig, ganztägig abwesend, vor dem Start der IST-Erfassung) → nur die Abwesenheit „U/6,25“; geschlossen → „–“.
+// Eine Abwesenheit steht immer vorn („KM/2,00“, darunter Zeiten bzw. „offen“).
+export function wochenIstZeilen(ist, zeitkonto) {
+  const pausen = pauseIds(ist);
+  const konto = new Map((zeitkonto?.mitarbeiter ?? []).map((m) => [m.id, m]));
+  const status = new Map((ist.status ?? []).map((s) => [`${s.mitarbeiter_id}|${s.datum}`, s]));
+  return (ist.mitarbeiter ?? []).map((m) => {
+    const eigene = (ist.bloecke ?? []).filter((b) => b.mitarbeiter_id === m.id && !b.vorschlag);
+    const abwesenheiten = (ist.abwesenheiten ?? []).filter((a) => a.mitarbeiter_id === m.id);
+    const k = konto.get(m.id);
+    const tage = ist.tage.map((t) => {
+      const s = status.get(`${m.id}|${t.datum}`);
+      const abw = abwesenheiten.find((a) => a.datum === t.datum);
+      if (s && !s.bestaetigt) return [abw ? abwesenheitText(abw) : null, 'offen'].filter(Boolean).join('\n');
+      const text = s ? tagText(eigene.filter((b) => b.datum === t.datum), abw, pausen) : abw ? abwesenheitText(abw) : '';
+      return text || (s || !t.geoeffnet ? '–' : '');
+    });
+    return {
+      id: m.id,
+      name: m.name,
+      personalnummer: m.personalnummer ?? '',
+      vertrag: zahlOderNull(m.wochenstunden),
+      tage,
+      soll: zahlOderNull(k?.soll),
+      ist: zahlOderNull(k?.ist),
+      spaet: zahlOderNull(k?.spaet),
+      diff: zahlOderNull(k?.diff),
+      saldo_vorwoche: zahlOderNull(k?.saldo_vorwoche),
+      saldo_aktuell: zahlOderNull(k?.saldo_aktuell),
+    };
+  });
+}
+
+// Stunden als „H:MM“ (Pause „0:30“), leer bei 0 oder ohne Wert.
+function stundenMinuten(n) {
+  const min = Math.round(Number(n) * 60);
+  return min ? `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}` : '';
+}
+
+const kurzDatum = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
+
+// Stundenblatt aus pep_stundenblatt: je Mitarbeiter eine Seite mit Tageszeilen (alles als Text), Summen der Tageszeilen
+// und Wochenzeilen. Hinweis je Tag: „vor IST-Start“, „offen“ (nicht bestätigt) oder der Name des Feiertags.
+// Wochen: Saldo = gebuchter Saldo bis zum Sonntag; nicht abgeschlossene Wochen sind markiert, ihre Diff fehlt im Saldo.
+export function stundenblattSeiten(daten) {
+  return (daten?.mitarbeiter ?? []).map((m) => {
+    const zeilen = (m.tage ?? []).map((t) => ({
+      datum: t.datum,
+      tag: tagKurz(t.datum),
+      von: t.anwesend_von ?? '',
+      bis: t.anwesend_bis ?? '',
+      pause: t.pause == null ? '' : stundenMinuten(t.pause),
+      abwesend: t.abwesend ? abwesenheitText(t.abwesend) : '',
+      arbeitszeit: t.arbeitszeit == null ? '' : stundenText(t.arbeitszeit),
+      hinweis: t.vor_start ? 'vor IST-Start' : t.offen ? 'offen' : t.feiertag ?? '',
+    }));
+    const wochen = (m.wochen ?? []).map((w) => ({
+      montag: w.montag,
+      kw: `KW ${w.kw}/${w.jahr}`,
+      zeitraum: `${kurzDatum(w.montag)}–${kurzDatum(plusTage(w.montag, 6))}`,
+      soll: stundenText(w.soll),
+      ist: stundenText(w.ist),
+      abwesend: stundenText(w.abwesend),
+      feiertag: stundenText(w.feiertag),
+      diff: vorzeichen(w.diff),
+      saldo: vorzeichen(w.saldo_nach),
+      hinweis: w.abgeschlossen ? '' : w.vor_ist_start ? 'vor IST-Start, nicht gebucht' : 'nicht abgeschlossen',
+    }));
+    return {
+      id: m.id,
+      name: m.name,
+      personalnummer: m.personalnummer ?? '',
+      zeilen,
+      wochen,
+      summe: {
+        arbeitszeit: stundenText(summe((m.tage ?? []).map((t) => t.arbeitszeit))),
+        abwesend: stundenText(summe((m.tage ?? []).map((t) => t.abwesend?.stunden))),
+      },
+    };
+  });
+}
+
+const datumText = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
+
+// Journal als Excel-Blatt (ein Blatt) aus pep_zeitkonto_journal: je Mitarbeiter (nach Name) in Buchungsreihenfolge (id),
+// denn saldo_nach ist der Saldo nach der Buchung in id-Reihenfolge (G3) – nach Datum sortiert spränge die Spalte, sobald
+// eine Korrektur für eine alte Woche später gebucht wird. KW, Stunden und Saldo als Zahlen, Datum als Text TT.MM.JJJJ.
+export function journalTabelle(buchungen) {
+  const liste = [...(buchungen ?? [])].sort((a, b) => String(a.name).localeCompare(String(b.name), 'de')
+    || a.mitarbeiter_id - b.mitarbeiter_id || a.id - b.id);
+  return {
+    name: 'Journal',
+    fixiereSpalten: 0,
+    spalten: [
+      { titel: 'Datum', breite: 12 }, { titel: 'KW', breite: 6 }, { titel: 'Mitarbeiter', breite: 26 },
+      { titel: 'Art', breite: 22 }, { titel: 'Stunden', breite: 10 }, { titel: 'Saldo', breite: 10 },
+      { titel: 'Grund', breite: 40 }, { titel: 'Von', breite: 16 },
+    ],
+    zeilen: liste.map((b) => [datumText(b.datum), Number(b.kw), b.name, ART_TEXT[b.art] ?? b.art,
+      Number(b.stunden), Number(b.saldo_nach), b.grund ?? '', b.angelegt_von_name ?? '']),
   };
 }

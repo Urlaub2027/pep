@@ -1,13 +1,15 @@
 // Reiter „Zeitkonto“: Wochenübersicht je Mitarbeiter (Soll, IST, Abwesend, Feiertag, Diff, Saldo), Wochenabschluss
 // („Woche buchen“) und das Journal je Mitarbeiter mit Startsaldo und Korrektur von Hand. Gerechnet und gebucht wird in
 // der Datenbank (pep_zeitkonto_woche, pep_wochenabschluss, pep_zeitkonto_journal, pep_zeitkonto_buchen).
-// Ansehen dürfen Leitung und Stellvertretung; buchen (Woche, Startsaldo, Korrektur) nur die Leitung.
+// Ansehen, drucken (Stundenblatt, Wocheneinsatz-IST) und das Journal als Excel dürfen Leitung und Stellvertretung;
+// buchen (Woche, Startsaldo, Korrektur) nur die Leitung.
 import { $, meldung, fehlerText, element, stundenDE, datumDE } from './hilfe.js';
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { dialog } from './dialog.js';
 import { isoWoche, kwVorZurueck, plusTage, heuteDatum, montagDerKw } from './zeit.js';
 import { kurz } from './plan-raster.js';
 import { oeffneIst } from './einsatzplan.js';
+import { druckAuswahlZeitkonto, journalExcelDialog } from './druck.js';
 import {
   vorzeichen, journalZeilen, wochenSumme, stundenEingabe, saldoWarnung, laufendeWoche,
 } from './zeitkonto-daten.js';
@@ -149,6 +151,16 @@ function zeichneKopf() {
       element('button', { type: 'button', class: 'knopf pfeil', 'aria-label': 'Eine Woche weiter', onclick: () => verschiebe(1) }, '▶'),
       element('span', { class: 'hinweis' }, `${kurzDatum(woche.montag)}–${kurzDatum(so)}${so.slice(0, 4)}`),
       element('button', { type: 'button', class: 'knopf', onclick: vorwoche }, 'Vorwoche')),
+    // Drucken und Journal als Excel: nur lesend, darum auch für die Stellvertretung.
+    element('div', { class: 'zk-knoepfe' },
+      element('button', {
+        type: 'button', class: 'knopf', 'data-aktion': 'zk-drucken', onclick: () => druckAuswahlZeitkonto(woche),
+        title: 'Stundenblatt oder Wocheneinsatz-IST drucken',
+      }, 'Drucken'),
+      element('button', {
+        type: 'button', class: 'knopf', 'data-aktion': 'zk-journal-excel', onclick: () => journalExcelDialog(heuteIso()),
+        title: 'Alle Buchungen eines Zeitraums als Excel-Datei',
+      }, 'Journal als Excel')),
     abschlussTeil()));
 }
 

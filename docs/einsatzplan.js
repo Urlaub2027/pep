@@ -14,7 +14,7 @@ import {
   tagesReiterText, grundDialog, istKnopfLeiste, zukunftKarte, tagBestaetigenDialog, GRUND_ABGESCHLOSSEN,
 } from './ist-ansicht.js';
 import { kopierenDialog, vorlagenDialog, krankDialog, ersatzDialog, eckdatenDialog } from './plan-dialoge.js';
-import { druckAuswahlPlan } from './druck.js';
+import { druckAuswahlPlan, druckeWochenIst } from './druck.js';
 
 // Dialoge späterer Tasks tragen sich hier ein; ein Knopf erscheint erst, wenn sein Eintrag gesetzt ist.
 // ersatz(mitarbeiterId, datum), eckdaten(mitarbeiterId, datum), die übrigen ohne Argumente.
@@ -290,15 +290,19 @@ function zeichneKopf() {
       element('div', { class: 'ep-knoepfe' }, rahmen.speichert, rahmen.rueckgaengig, knoepfe))));
 }
 
-// IST-Knöpfe: Zeitrahmen 04:00–24:00 ein/aus und „Tag bestätigen“ (alle offenen Zeilen des Tages).
-const istKnoepfe = () => istKnopfLeiste({
+// IST-Knöpfe: Zeitrahmen 04:00–24:00 ein/aus, „Tag bestätigen“ (alle offenen Zeilen des Tages) und der Ausdruck
+// Wocheneinsatz-IST der geladenen Woche (lädt das Zeitkonto dazu).
+const istKnoepfe = () => [...istKnopfLeiste({
   woche, datum, erweitert, gesperrt: bestaetigtGerade, darfBestaetigen: darfZeichnen() && tag()?.ist_erlaubt,
   umschalten: () => { erweitert = !erweitert; zeichneAlles(); },
   bestaetigen: () => tagBestaetigenDialog({
     offen: (woche.status ?? []).filter((s) => s.datum === datum && !s.bestaetigt).length,
     datum, heute: woche.heute, weiter: () => bestaetige(null),
   }),
-});
+}), element('button', {
+  type: 'button', class: 'knopf', 'data-aktion': 'wochenist-drucken', title: 'Bestätigtes IST der Woche mit Zeitkonto (A4 quer)',
+  onclick: () => { const ist = woche; starte(() => druckeWochenIst(ist)); },
+}, 'Wocheneinsatz-IST drucken')];
 
 // ---------------------------------------------------------------- Raster
 

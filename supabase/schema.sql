@@ -6176,6 +6176,130 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Ausdruck Stundenblatt (Stufe 2)
+-- ---------------------------------------------------------------------------
+
+-- Ein Mitarbeiter im Stundenblatt: je Tag von p_von bis p_bis die Werte aus dem bestätigten IST, je berührter Woche die
+-- Wochenrechnung (pep.zeitkonto_woche) mit dem Saldo nach allen Buchungen bis zu ihrem Sonntag.
+-- Tag: vor_start (vor pep.ist_ab) trägt keine Werte. Sonst: abwesend = Abwesenheit des Tages {code, stunden} (ein
+-- Eintrag, kein IST), feiertag = Name, wenn die Filiale an einem Feiertag geschlossen ist; offen = offene IST-Zeile nach
+-- pep.ist_zeilen (dann keine Stunden, auch nicht das schon erfasste IST: nur Bestätigtes gilt). Nur an bestätigten
+-- Tagen (pep.ist_tage): anwesend_von/bis = frühester Beginn / spätestes Ende der IST-Blöcke (Pausen eingeschlossen,
+-- Mitternacht '24:00'), pause = Summe der Pausenblöcke, arbeitszeit = pep.arbeitsstunden (ohne Pause und ohne
+-- unbesetzte Abschnitte, dieselbe Rechnung wie ist in pep.zeitkonto_woche).
+-- Woche: Wochen, die der Zeitraum berührt, ganz (auch Tage außerhalb des Zeitraums); abgeschlossen = Woche gebucht,
+-- vor_ist_start = Woche vor dem Start der IST-Erfassung (wird nie gebucht). saldo_nach enthält nur Gebuchtes: in einer
+-- nicht abgeschlossenen Woche fehlt die Diff noch.
+create or replace function pep.stundenblatt_person(p_mitarbeiter_id bigint, p_von date, p_bis date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  with m as (
+    select x.*, pep.ist_ab(x.filiale_id) as ist_ab from pep.mitarbeiter x where x.id = p_mitarbeiter_id
+  ), offen as (
+    select z.datum from m, pep.ist_zeilen(m.filiale_id, p_von, p_bis, array[p_mitarbeiter_id]) z
+     where z.bestaetigt_am is null
+  ), tage as (
+    select d::date as tag, d::date < m.ist_ab as vor_start, m.filiale_id
+      from m, generate_series(p_von::timestamp, p_bis::timestamp, interval '1 day') d
+  ), wochen as (
+    select d::date as mo, m.filiale_id, m.ist_ab
+      from m, generate_series(date_trunc('week', p_von::timestamp), p_bis::timestamp, interval '7 days') d
+  )
+  select jsonb_build_object(
+    'id', m.id, 'name', m.name, 'personalnummer', m.personalnummer,
+    'tage', (
+      select jsonb_agg(jsonb_build_object(
+               'datum', to_char(t.tag, 'YYYY-MM-DD'),
+               'vor_start', t.vor_start,
+               'offen', exists (select 1 from offen o where o.datum = t.tag),
+               'feiertag', case when not t.vor_start and not st.geoeffnet then st.feiertag end,
+               'anwesend_von', to_char(b.von, 'HH24:MI'),
+               'anwesend_bis', to_char(b.bis, 'HH24:MI'),
+               'pause', b.pause,
+               'abwesend', a.abwesend,
+               'arbeitszeit', case when b.bestaetigt
+                                   then pep.arbeitsstunden(p_mitarbeiter_id, t.tag, pep.ist_zeile_lesen(p_mitarbeiter_id, t.tag))
+                              end)
+             order by t.tag)
+        from tage t
+        cross join lateral pep.tag_status(t.filiale_id, t.tag) st
+        left join lateral (
+          select true as bestaetigt, min(ib.von) as von, max(ib.bis) as bis,
+                 round(coalesce(sum(extract(epoch from ib.bis - ib.von) / 3600) filter (where r.art = 'pause'), 0), 2) as pause
+            from pep.ist_tage it
+            left join pep.ist_bloecke ib on ib.mitarbeiter_id = it.mitarbeiter_id and ib.datum = it.datum
+            left join pep.bereiche r on r.id = ib.bereich_id
+           where it.mitarbeiter_id = p_mitarbeiter_id and it.datum = t.tag and not t.vor_start
+           group by it.mitarbeiter_id) b on true
+        left join lateral (
+          select jsonb_build_object('code', c.code, 'stunden', ab.stunden) as abwesend
+            from pep.abwesenheiten ab
+            join pep.abwesenheitscodes c on c.id = ab.code_id
+           where ab.mitarbeiter_id = p_mitarbeiter_id and ab.datum = t.tag and not t.vor_start
+           limit 1) a on true),
+    'wochen', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'montag', to_char(w.mo, 'YYYY-MM-DD'),
+               'kw', extract(week from w.mo)::int, 'jahr', extract(isoyear from w.mo)::int,
+               'soll', z.zk -> 'soll', 'ist', z.zk -> 'ist', 'abwesend', z.zk -> 'abwesend',
+               'feiertag', z.zk -> 'feiertag', 'diff', z.zk -> 'diff',
+               'saldo_nach', (select coalesce(sum(k.stunden), 0) from pep.zeitkonto_buchungen k
+                               where k.mitarbeiter_id = p_mitarbeiter_id and k.datum <= w.mo + 6),
+               'abgeschlossen', exists (select 1 from pep.wochen_abschluesse x
+                                         where x.filiale_id = w.filiale_id and x.montag = w.mo),
+               'vor_ist_start', w.mo < w.ist_ab)
+             order by w.mo)
+        from wochen w
+        cross join lateral (select pep.zeitkonto_woche(p_mitarbeiter_id, w.mo) as zk) z
+       where z.zk is not null), '[]'::jsonb))
+  from m
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Ausdruck Stundenblatt: Funktion für den Browser
+-- ---------------------------------------------------------------------------
+
+-- Stundenblatt (Leitung und Stellvertretung, nur lesend): {von, bis, mitarbeiter: [pep.stundenblatt_person]} für einen
+-- Mitarbeiter der eigenen Filiale (auch inaktiv) oder – p_mitarbeiter_id null – alle aktiven Mitarbeiter mit Vertrag im
+-- Zeitraum (gueltig_ab ≤ bis, eintritt leer oder ≤ bis, austritt leer oder ≥ von), sortiert wie das Raster.
+-- Höchstens 62 Tage (ZEITRAUM_ZU_LANG), von ≤ bis (ZEITRAUM_UNGUELTIG), beide Daten Pflicht (DATUM_UNGUELTIG).
+create or replace function public.pep_stundenblatt(p_mitarbeiter_id bigint, p_von date, p_bis date)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung_oder_stellvertretung();
+begin
+  if p_mitarbeiter_id is not null then
+    perform pep.eigener_mitarbeiter(p_mitarbeiter_id); -- MITARBEITER_NICHT_GEFUNDEN
+  end if;
+  if p_von is null or p_bis is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if p_von > p_bis then
+    raise exception 'ZEITRAUM_UNGUELTIG';
+  end if;
+  if p_bis - p_von + 1 > 62 then
+    raise exception 'ZEITRAUM_ZU_LANG';
+  end if;
+  return jsonb_build_object(
+    'von', to_char(p_von, 'YYYY-MM-DD'), 'bis', to_char(p_bis, 'YYYY-MM-DD'),
+    'mitarbeiter', coalesce((
+      select jsonb_agg(pep.stundenblatt_person(m.id, p_von, p_bis) order by m.aktiv desc, m.position, m.name, m.id)
+        from pep.mitarbeiter m
+       where m.filiale_id = v_b.filiale_id
+         and case when p_mitarbeiter_id is not null then m.id = p_mitarbeiter_id
+                  else m.aktiv and (m.eintritt is null or m.eintritt <= p_bis) and (m.austritt is null or m.austritt >= p_von)
+                       and exists (select 1 from pep.vertraege v where v.mitarbeiter_id = m.id and v.gueltig_ab <= p_bis)
+             end), '[]'::jsonb));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Rechte
 -- ---------------------------------------------------------------------------
 
@@ -6337,5 +6461,9 @@ revoke all on function public.pep_zeitkonto_journal(bigint, date, date) from pub
 grant execute on function public.pep_wochenabschluss(int, int) to authenticated;
 grant execute on function public.pep_zeitkonto_buchen(bigint, text, numeric, text, date) to authenticated;
 grant execute on function public.pep_zeitkonto_journal(bigint, date, date) to authenticated;
+
+-- Ausdrucke Stufe 2
+revoke all on function public.pep_stundenblatt(bigint, date, date) from public, anon, authenticated;
+grant execute on function public.pep_stundenblatt(bigint, date, date) to authenticated;
 
 commit;

@@ -1,9 +1,11 @@
 // Druckzeilen (docs/druck-daten.js): reine Aufbereitung der Antworten von pep_einsatzplan_woche,
-// pep_abwesenheiten und pep_resturlaub für die Ausdrucke und den Excel-Export.
+// pep_abwesenheiten und pep_resturlaub für die Ausdrucke und den Excel-Export; Stufe 2: pep_ist_woche mit
+// pep_zeitkonto_woche (Wocheneinsatz-IST), pep_stundenblatt (Stundenblatt) und pep_zeitkonto_journal (Excel).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   tagesplanZeilen, wochenplanZeilen, monatZeilen, resturlaubZeilen, wochenplanBlatt,
+  wochenIstZeilen, stundenblattSeiten, journalTabelle,
 } from '../docs/druck-daten.js';
 
 const TAGE = ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'];
@@ -189,4 +191,162 @@ test('Resturlaub: Zeilen wie geliefert, Summenzeile über Anspruch, Monate, gene
   assert.equal(r.summe.rest_vorjahr, 10);
   assert.equal(r.summe.genehmigt, 47.5);
   assert.equal(r.summe.rest, 112.5);
+});
+
+// ---------------------------------------------------------------- Stufe 2: Wocheneinsatz-IST, Stundenblatt, Journal
+
+// IST-Woche KW 46 im Format von pep_ist_woche, heute = Do 12.11.: Blöcke = IST bzw. Vorschlag (vorschlag: true),
+// status je IST-Zeile (fehlt = keine IST-Zeile: künftig, geschlossen, ganztägig abwesend).
+function istWoche() {
+  const w = woche();
+  const seg = (mid, datum, von, bis, bereich, extra = {}) =>
+    ({ id: 1, mitarbeiter_id: mid, datum, von, bis, bereich_id: bereich, unbesetzt: false, vorschlag: false, ...extra });
+  const st = (mid, datum, bestaetigt) =>
+    ({ mitarbeiter_id: mid, datum, bestaetigt, bestaetigt_am: bestaetigt ? '2026-11-12T20:00:00+01:00' : null });
+  return {
+    ...w, modus: 'ist', heute: '2026-11-12',
+    bloecke: [
+      // Anna Mo bestätigt 07:00–15:30 mit Pause; Mi offen nur mit Vorschlag; Do offen mit eigenem IST
+      seg(1, TAGE[0], '07:00', '12:00', KA), seg(1, TAGE[0], '12:00', '12:30', PA), seg(1, TAGE[0], '12:30', '15:30', KA),
+      seg(1, TAGE[2], '08:00', '12:00', KA, { id: null, vorschlag: true }),
+      seg(1, TAGE[3], '07:00', '09:00', KA),
+      // Dana Mo: KM 08–10, danach IST 10–14 bestätigt; Di: KM 08–10, offen mit Vorschlag
+      seg(4, TAGE[0], '10:00', '14:00', TS),
+      seg(4, TAGE[1], '10:00', '14:00', TS, { id: null, vorschlag: true }),
+    ],
+    abwesenheiten: [
+      ...TAGE.slice(0, 6).map((datum) => ({ mitarbeiter_id: 3, datum, code: 'U', name: 'Urlaub', farbe: '#4CAF50',
+        sperrt: true, stunden: 6.25, von: null, bis: null })),
+      ...[0, 1].map((t) => ({ mitarbeiter_id: 4, datum: TAGE[t], code: 'KM', name: 'Krank', farbe: '#E53935', sperrt: true,
+        stunden: 2, von: '08:00', bis: '10:00' })),
+    ],
+    status: [
+      st(1, TAGE[0], true), st(1, TAGE[1], true), st(1, TAGE[2], false), st(1, TAGE[3], false),
+      st(4, TAGE[0], true), st(4, TAGE[1], false),
+    ],
+  };
+}
+
+// pep_zeitkonto_woche KW 46 (Ben ohne Vertrag, also ohne Zeile).
+const zkWoche = () => ({
+  jahr: 2026, kw: 46, montag: TAGE[0], abgeschlossen: null, offene_tage: 3,
+  mitarbeiter: [
+    { id: 1, name: 'Test, Anna', aktiv: true, vertragsart: 'vollzeit', wochenstunden: 37.5, soll: 37.5, ist: 8, abwesend: 0,
+      feiertag: 0, summe: 8, diff: -29.5, spaet: 1.5, offene_tage: 2, saldo_vorwoche: 4, saldo_aktuell: -25.5, warnung: null },
+    { id: 3, name: 'Beispiel, Cem', aktiv: true, vertragsart: 'vollzeit', wochenstunden: 37.5, soll: 37.5, ist: 0,
+      abwesend: 37.5, feiertag: 0, summe: 37.5, diff: 0, spaet: 0, offene_tage: 0, saldo_vorwoche: -2.25,
+      saldo_aktuell: -2.25, warnung: null },
+    { id: 4, name: 'Probe, Dana', aktiv: true, vertragsart: 'teilzeit', wochenstunden: 25, soll: 25, ist: 4, abwesend: 4,
+      feiertag: 0, summe: 8, diff: -17, spaet: 0, offene_tage: 1, saldo_vorwoche: 0, saldo_aktuell: -17, warnung: null },
+  ],
+});
+
+test('Wocheneinsatz-IST: bestätigt „07:00–15:30 / 8,00 (P 0:30)“, offen „offen“, Vorschlag zählt nicht, geschlossen „–“', () => {
+  const [anna] = wochenIstZeilen(istWoche(), zkWoche());
+  assert.equal(anna.name, 'Test, Anna');
+  assert.equal(anna.personalnummer, '1001');
+  // Mo bestätigt, Di bestätigt ohne IST, Mi offen (nur Vorschlag), Do offen mit IST, Fr/Sa künftig, So geschlossen
+  assert.deepEqual(anna.tage, ['07:00–15:30 / 8,00 (P 0:30)', '–', 'offen', 'offen', '', '', '–']);
+  assert.deepEqual([anna.vertrag, anna.soll, anna.ist, anna.spaet, anna.diff, anna.saldo_vorwoche, anna.saldo_aktuell],
+    [37.5, 37.5, 8, 1.5, -29.5, 4, -25.5]);
+});
+
+test('Wocheneinsatz-IST: Abwesenheit „U/6,25“; Teil-KM vor dem IST bzw. vor „offen“; ohne Zeitkonto-Zeile leer', () => {
+  const [, ben, cem, dana] = wochenIstZeilen(istWoche(), zkWoche());
+  assert.deepEqual(cem.tage, ['U/6,25', 'U/6,25', 'U/6,25', 'U/6,25', 'U/6,25', 'U/6,25', '–']);
+  assert.equal(cem.saldo_vorwoche, -2.25);
+  assert.equal(dana.tage[0], 'KM/2,00\n10:00–14:00 / 4,00');
+  assert.equal(dana.tage[1], 'KM/2,00\noffen');
+  assert.equal(ben.name, 'Muster, Ben');
+  assert.deepEqual([ben.vertrag, ben.soll, ben.ist, ben.diff, ben.saldo_aktuell], [20, null, null, null, null]);
+  assert.deepEqual(ben.tage, ['', '', '', '', '', '', '–'], 'Plan-Blöcke stehen nicht in der IST-Woche');
+});
+
+// pep_stundenblatt: eine Person, Fr 01.01.–Fr 08.01.2027 (IST ab 04.01.), Tage gekürzt.
+const tagZeile = (datum, werte = {}) => ({ datum, vor_start: false, offen: false, feiertag: null, anwesend_von: null,
+  anwesend_bis: null, pause: null, abwesend: null, arbeitszeit: null, ...werte });
+const stundenblatt = () => ({
+  von: '2027-01-01', bis: '2027-01-08',
+  mitarbeiter: [{
+    id: 1, name: 'Test, Anna', personalnummer: '1001',
+    tage: [
+      tagZeile('2027-01-01', { vor_start: true }),
+      tagZeile('2027-01-04', { anwesend_von: '07:00', anwesend_bis: '15:30', pause: 0.5, arbeitszeit: 8 }),
+      tagZeile('2027-01-05', { abwesend: { code: 'U', stunden: 6.25 } }),
+      tagZeile('2027-01-06', { feiertag: 'Heilige Drei Könige' }),
+      tagZeile('2027-01-07', { offen: true }),
+      tagZeile('2027-01-08', { anwesend_von: '22:00', anwesend_bis: '24:00', pause: 0, abwesend: { code: 'KM', stunden: 2 }, arbeitszeit: 2 }),
+    ],
+    wochen: [
+      { montag: '2026-12-28', kw: 53, jahr: 2026, soll: 37.5, ist: 0, abwesend: 0, feiertag: 6.25, diff: -31.25,
+        saldo_nach: -3.5, abgeschlossen: false, vor_ist_start: true },
+      { montag: '2027-01-04', kw: 1, jahr: 2027, soll: 37.5, ist: 10, abwesend: 6.25, feiertag: 6.25, diff: -15,
+        saldo_nach: -1.5, abgeschlossen: false, vor_ist_start: false },
+      { montag: '2027-01-11', kw: 2, jahr: 2027, soll: 37.5, ist: 40, abwesend: 0, feiertag: 0, diff: 2.5,
+        saldo_nach: 1, abgeschlossen: true, vor_ist_start: false },
+    ],
+  }],
+});
+
+test('Stundenblatt: Tageszeilen mit Zeiten, Pause „0:30“, Abwesenheit, Arbeitszeit und Hinweis', () => {
+  const [seite] = stundenblattSeiten(stundenblatt());
+  assert.equal(seite.name, 'Test, Anna');
+  assert.equal(seite.personalnummer, '1001');
+  assert.deepEqual(seite.zeilen.map((z) => [z.tag, z.von, z.bis, z.pause, z.abwesend, z.arbeitszeit, z.hinweis]), [
+    ['Fr 01.01.', '', '', '', '', '', 'vor IST-Start'],
+    ['Mo 04.01.', '07:00', '15:30', '0:30', '', '8,00', ''],
+    ['Di 05.01.', '', '', '', 'U/6,25', '', ''],
+    ['Mi 06.01.', '', '', '', '', '', 'Heilige Drei Könige'],
+    ['Do 07.01.', '', '', '', '', '', 'offen'],
+    ['Fr 08.01.', '22:00', '24:00', '', 'KM/2,00', '2,00', ''],
+  ]);
+  assert.deepEqual(seite.zeilen.map((z) => z.datum),
+    ['2027-01-01', '2027-01-04', '2027-01-05', '2027-01-06', '2027-01-07', '2027-01-08']);
+  assert.deepEqual(seite.summe, { arbeitszeit: '10,00', abwesend: '8,25' });
+});
+
+test('Stundenblatt: Wochenzeilen mit Soll, IST, Abwesend, Feiertag, Diff und Saldo; nicht Gebuchtes markiert', () => {
+  const [seite] = stundenblattSeiten(stundenblatt());
+  assert.deepEqual(seite.wochen.map((w) => [w.kw, w.zeitraum, w.soll, w.ist, w.abwesend, w.feiertag, w.diff, w.saldo, w.hinweis]), [
+    ['KW 53/2026', '28.12.–03.01.', '37,50', '0,00', '0,00', '6,25', '−31,25', '−3,50', 'vor IST-Start, nicht gebucht'],
+    ['KW 1/2027', '04.01.–10.01.', '37,50', '10,00', '6,25', '6,25', '−15,00', '−1,50', 'nicht abgeschlossen'],
+    ['KW 2/2027', '11.01.–17.01.', '37,50', '40,00', '0,00', '0,00', '+2,50', '+1,00', ''],
+  ]);
+});
+
+test('Stundenblatt: ohne Mitarbeiter keine Seite', () => {
+  assert.deepEqual(stundenblattSeiten({ von: '2027-01-01', bis: '2027-01-08', mitarbeiter: [] }), []);
+});
+
+// pep_zeitkonto_journal (Sortierung datum, id) mit zwei Mitarbeitern; die Korrektur für KW 45 wurde nach dem Abschluss
+// von KW 46 gebucht (id 5), ihr saldo_nach folgt der Buchungsreihenfolge.
+const journal = () => [
+  { id: 1, mitarbeiter_id: 2, name: 'Muster, Ben', datum: '2026-11-01', kw: 44, jahr: 2026, art: 'start', stunden: 45,
+    saldo_nach: 45, grund: 'Übernahme', angelegt_von_name: 'chef', angelegt_am: '2026-11-02T08:00:00+01:00' },
+  { id: 2, mitarbeiter_id: 1, name: 'Test, Anna', datum: '2026-11-01', kw: 44, jahr: 2026, art: 'start', stunden: -40,
+    saldo_nach: -40, grund: 'Übernahme', angelegt_von_name: 'chef', angelegt_am: '2026-11-02T08:00:00+01:00' },
+  { id: 3, mitarbeiter_id: 1, name: 'Test, Anna', datum: '2026-11-02', kw: 45, jahr: 2026, art: 'woche', stunden: 2.5,
+    saldo_nach: -37.5, grund: null, angelegt_von_name: 'chef', angelegt_am: '2026-11-09T08:00:00+01:00' },
+  { id: 5, mitarbeiter_id: 1, name: 'Test, Anna', datum: '2026-11-02', kw: 45, jahr: 2026, art: 'korrektur', stunden: 1,
+    saldo_nach: -38.5, grund: 'KW 45/2026: IST geändert', angelegt_von_name: 'vize', angelegt_am: '2026-11-17T08:00:00+01:00' },
+  { id: 4, mitarbeiter_id: 1, name: 'Test, Anna', datum: '2026-11-09', kw: 46, jahr: 2026, art: 'woche', stunden: -2,
+    saldo_nach: -39.5, grund: null, angelegt_von_name: null, angelegt_am: '2026-11-16T08:00:00+01:00' },
+];
+
+test('Journal-Excel: ein Blatt, Spalten Datum, KW, Mitarbeiter, Art, Stunden, Saldo, Grund, Von; nach Name, dann id', () => {
+  const blatt = journalTabelle(journal());
+  assert.equal(blatt.name, 'Journal');
+  assert.deepEqual(blatt.spalten.map((s) => s.titel), ['Datum', 'KW', 'Mitarbeiter', 'Art', 'Stunden', 'Saldo', 'Grund', 'Von']);
+  assert.deepEqual(blatt.zeilen, [
+    ['01.11.2026', 44, 'Muster, Ben', 'Startsaldo', 45, 45, 'Übernahme', 'chef'],
+    ['01.11.2026', 44, 'Test, Anna', 'Startsaldo', -40, -40, 'Übernahme', 'chef'],
+    ['02.11.2026', 45, 'Test, Anna', 'Wochenabschluss', 2.5, -37.5, '', 'chef'],
+    ['09.11.2026', 46, 'Test, Anna', 'Wochenabschluss', -2, -39.5, '', ''],
+    ['02.11.2026', 45, 'Test, Anna', 'Korrektur (automatisch)', 1, -38.5, 'KW 45/2026: IST geändert', 'vize'],
+  ]);
+  // Zahlen bleiben Zahlen (xlsx.js schreibt nur echte Zahlen als Zahlzellen)
+  for (const z of blatt.zeilen) for (const i of [1, 4, 5]) assert.equal(typeof z[i], 'number');
+  // Zahlen aus der Datenbank kommen als JSON-Zahl, numeric kann aber auch als Text ankommen
+  const text = journalTabelle([{ ...journal()[0], stunden: '45.00', saldo_nach: '45.00' }]);
+  assert.deepEqual(text.zeilen[0].slice(4, 6), [45, 45]);
 });
