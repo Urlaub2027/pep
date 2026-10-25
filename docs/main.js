@@ -11,3 +11,8 @@ import './vorausplanung.js';
 import './start.js';
 
 start();
+
+// Nach einem Update sofort die neue Fassung laden (sw.js). Nur über https (GitHub Pages), nicht auf den Testservern.
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* ohne Service Worker gilt der normale Zwischenspeicher */ });
+}

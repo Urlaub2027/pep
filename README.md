@@ -18,7 +18,7 @@ Einrichtung und Bedienung: [ANLEITUNG.md](ANLEITUNG.md).
 
 | Pfad | Inhalt |
 |---|---|
-| `docs/` | Statische Seite (GitHub Pages), ohne Framework und ohne Build. `index.html`, `main.js` (Einstieg), `app.js` (Anmeldung, Reiter), `api.js`, `sitzung.js`, `config.js`, `hilfe.js` (Helfer, Fehlertexte), `dialog.js`, `style.css` |
+| `docs/` | Statische Seite (GitHub Pages), ohne Framework und ohne Build. `index.html`, `main.js` (Einstieg), `app.js` (Anmeldung, Reiter), `api.js`, `sitzung.js`, `config.js`, `hilfe.js` (Helfer, Fehlertexte), `dialog.js`, `style.css`, `sw.js` (Service Worker: nach einem Update lädt ein normales Neuladen sofort die neue Fassung statt bis zu 10 Minuten der alten aus dem Browser-Zwischenspeicher; nur über https) |
 | `docs/` – Reiter | `start.js` (Startseite), `abwesenheiten.js`, `vorausplanung.js`, `einsatzplan.js` (Plan und IST), `zeitkonto.js`, `mitarbeiter.js`, `einstellungen.js`, `sicherung.js` (Abschnitt „Sicherung“ der Einstellungen und Hinweis der Startseite) |
 | `docs/` – Einsatzplan | `plan-raster.js` (reine Logik: Zeitraster, Striche, Abdeckung, Stunden, Rückgängig), `plan-dialoge.js` (Kopieren, Vorlagen, Krank/ZA, Ersatz, Eckdaten), `ist-ansicht.js` (Modus IST: Status, Vorschlag, Bestätigen, Grund-Dialog) |
 | `docs/` – Zeitkonto | `zeitkonto.js` (Reiter: Woche, „Woche buchen“, Journal, Startsaldo, Korrektur von Hand), `zeitkonto-daten.js` (reine Logik: Vorzeichen, Journalzeilen, Stunden-Eingabe) |
