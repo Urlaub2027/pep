@@ -128,6 +128,17 @@ async function feldUnter(scope, beschriftung, nr = 0) {
   if (!ok) throw new Error(`Feld „${beschriftung}“ in ${scope} nicht gefunden`);
   return `[data-t="${marke}"]`;
 }
+// Einstellungen: öffnet den Unterreiter, in dem der Abschnitt mit dieser Überschrift steht, und liefert dessen Selektor.
+async function einstellungsAbschnitt(titel) {
+  const ziel = await c.werte((t) => {
+    const box = [...document.querySelectorAll('#ansicht-einstellungen .box')].find((b) => b.querySelector('h2')?.textContent === t);
+    const huelle = box?.closest('[data-abschnitt]');
+    return huelle ? [huelle.dataset.abschnitt, huelle.dataset.teil] : null;
+  }, titel);
+  if (!ziel) throw new Error(`Abschnitt „${titel}“ nicht gefunden`);
+  await c.klick(`#ansicht-einstellungen .einst-teile [data-teil="${ziel[1]}"]`);
+  return `#ansicht-einstellungen [data-abschnitt="${ziel[0]}"]`;
+}
 // deutsche Zahl aus der Oberfläche: „−3,5“ → -3.5, „60.000“ → 60000, „–“/leer → null
 const zahlDE = (t) => {
   const x = String(t ?? '').replace(/\s|h|€/g, '').replace('−', '-').replace(/\.(?=\d{3})/g, '').replace(',', '.');
@@ -1186,11 +1197,17 @@ await szenario('Mitarbeiter: Reihenfolge ▲/▼, Stammdaten, Kompetenz, Vertrag
 
 await szenario('Einstellungen: Rahmen, Bereich, Code, Parameter, Schulferien, Abweichung', async () => {
   await reiter('einstellungen');
-  const box = (titel) => c.werte((t) => {
-    const b = [...document.querySelectorAll('#ansicht-einstellungen .box')].findIndex((x) => x.querySelector('h2')?.textContent === t);
-    return b;
-  }, titel);
-  const boxSel = async (titel) => `#ansicht-einstellungen > div:nth-child(${(await box(titel)) + 1})`;
+  const boxSel = einstellungsAbschnitt; // wechselt in den passenden Unterreiter
+  // Unterreiter: fünf Teile, sichtbar sind nur die Abschnitte des gewählten
+  const sichtbareTitel = () => c.werte(() => [...document.querySelectorAll('#ansicht-einstellungen [data-abschnitt]')]
+    .filter((h) => !h.hidden && h.offsetParent !== null).map((h) => h.querySelector('h2')?.textContent));
+  gleich(await texte('#ansicht-einstellungen .einst-teile button'),
+    ['Filiale & Zeiten', 'Bereiche & Codes', 'Regeln & Zeitkonto', 'Urlaubstool', 'Benutzer & Sicherung'], 'Unterreiter');
+  await c.klick('#ansicht-einstellungen .einst-teile [data-teil="regeln"]');
+  gleich(await sichtbareTitel(), ['Regelparameter', 'IST-Erfassung'], 'Unterreiter „Regeln & Zeitkonto“ zeigt nur seine Abschnitte');
+  gleich(await c.werte(() => document.querySelector('#ansicht-einstellungen .einst-teile [data-teil="regeln"]').getAttribute('aria-pressed')),
+    'true', 'Unterreiter gedrückt');
+  await c.foto(`${FOTOS}einstellungen-unterreiter.png`);
   // Rahmen Samstag bis 21:00
   const rahmen = await boxSel('Öffnungs- und Rahmenzeiten');
   await c.setzeWert(await feldUnter(`${rahmen} form:nth-of-type(6)`, 'Rahmen bis'), '21:00');
@@ -2171,11 +2188,14 @@ await szenario('Urlaubstool: Umfrage einer zweiten Leitung einschalten, Vorschl�
   const fremd = (await sql("select u.id from urlaub.umfragen u join urlaub.organisatoren o on o.user_id = u.organisator_id where o.benutzername = 'leiterin'"))[0].id;
   const maId = async (name) => (await sql('select id from pep.mitarbeiter where filiale_id = $1 and name = $2', [B.fil, name]))[0].id;
   const box = '#ansicht-einstellungen .box';
-  const urlaubBox = async () => c.werte((sel) => {
-    const b = [...document.querySelectorAll(sel)].find((x) => x.querySelector('h2')?.textContent === 'Urlaubstool');
-    if (b) b.dataset.t = 'urlaubbox';
-    return Boolean(b);
-  }, box);
+  const urlaubBox = async () => {
+    await einstellungsAbschnitt('Urlaubstool'); // Unterreiter „Urlaubstool“ öffnen
+    return c.werte((sel) => {
+      const b = [...document.querySelectorAll(sel)].find((x) => x.querySelector('h2')?.textContent === 'Urlaubstool');
+      if (b) b.dataset.t = 'urlaubbox';
+      return Boolean(b);
+    }, box);
+  };
   // Haken „aktiv“ der Umfragezeile, deren Titel mit `titel` beginnt
   const haken = async (titel) => {
     const ok = await c.werte((t) => {
@@ -2366,6 +2386,7 @@ await szenario('Hilfe: „?“ auf jedem Reiter, Escape, Klick daneben, IST, Tab
   await pause(300);
   await reiter('zeitkonto');
   await oeffne();
+  await pause(300); // Einblende-Animation (180 ms, translateX) abwarten, sonst misst man die Leiste mitten im Hereinschieben
   const masse = await c.werte(() => {
     const r = document.querySelector('dialog.hilfe-leiste[open]').getBoundingClientRect();
     return { links: Math.round(r.left), breite: Math.round(r.width), hoehe: Math.round(r.height), fenster: [innerWidth, innerHeight] };

@@ -169,6 +169,19 @@ Mitarbeiter in der Liste tauscht er den Platz mit dem Nachbarn. Jeder Klick wird
 sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck.
 
 ### Einstellungen (Leitung)
+Oben fünf Unterreiter; die PEP merkt sich im Browser, welcher zuletzt offen war:
+
+| Unterreiter | Abschnitte |
+| --- | --- |
+| Filiale & Zeiten | Öffnungs- und Rahmenzeiten, Abweichende Tage, Schulferien |
+| Bereiche & Codes | Abteilungen und Bereiche, Abwesenheitscodes |
+| Regeln & Zeitkonto | Regelparameter, IST-Erfassung |
+| Urlaubstool | Umfragen, Teilnehmer zuordnen |
+| Benutzer & Sicherung | Benutzer, Sicherung |
+
+„Einstellungen → Sicherung“ in dieser Anleitung heißt also: Unterreiter „Benutzer & Sicherung“,
+Abschnitt Sicherung. „Sicherung →“ auf der Startseite öffnet ihn direkt.
+
 - **Rahmen:** Öffnungszeiten je Wochentag.
 - **Abweichende Tage:** Feiertage erscheinen grau; „öffnen …“ macht daraus eine
   Abweichung mit eigenen Zeiten. Eigene Abweichungen mit Datum, Art, Name.

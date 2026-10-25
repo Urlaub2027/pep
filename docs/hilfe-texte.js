@@ -143,8 +143,8 @@ export const HILFE = {
 
   einstellungen: {
     titel: 'Einstellungen',
-    wozu: 'Hier wird festgelegt, wie die Filiale arbeitet: Öffnungszeiten, Bereiche, Codes, Regeln, Urlaubstool, '
-      + 'Benutzer und Sicherung. Diesen Reiter sieht nur die Leitung.',
+    wozu: 'Hier steht, wie die Filiale arbeitet; den Reiter sieht nur die Leitung. Oben den Teil wählen: „Filiale & Zeiten“, '
+      + '„Bereiche & Codes“, „Regeln & Zeitkonto“, „Urlaubstool“ oder „Benutzer & Sicherung“.',
     schritte: [
       'Wert ändern, dann in der Zeile „Speichern“ bzw. „Anlegen“. Sofort gespeichert werden die Regelparameter, '
         + '„IST-Erfassung ab“ und der Haken „aktiv“ einer Umfrage.',
@@ -158,9 +158,9 @@ export const HILFE = {
       '„Gutschrift im Zeitkonto“: Die Stunden des Codes zählen wie Arbeitszeit (bei ZA aus).',
       'Eine Umfrage lässt sich nur in einer Filiale einschalten. Ausschalten behält die Zuordnungen. '
         + 'Umfragen anderer Leitungen erscheinen erst nach deren erster Anmeldung.',
-      'Unter „Benutzer“ eine Stellvertretung hinzufügen. Sie braucht ein Konto im Urlaubstool.',
+      'Stellvertretung unter „Benutzer“ hinzufügen; sie braucht ein Urlaubstool-Konto.',
       'Die Sicherung enthält das Protokoll nur der letzten 12 Monate. Einspielen geht nur in eine leere Filiale.',
-      'GitHub weckt die Datenbank alle zwei Tage, damit sie nicht pausiert. Dafür ist nichts zu tun.',
+      'GitHub weckt die Datenbank alle zwei Tage; nichts zu tun.',
     ],
   },
 };
