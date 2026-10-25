@@ -6,7 +6,11 @@ Abwesenheitscodes, Schulferien) und ein Abwesenheitskalender, in den auch die
 Urlaubswünsche aus dem Urlaubstool einfließen (Stufe 0). Dazu kommen in Stufe 1
 der Einsatzplan in halben Stunden mit Regelprüfung, Kopieren und Vorlagen,
 Krankmeldung mit Ersatzsuche, Eckdaten, die Vorausplanung über sechs Wochen, die
-Ausdrucke mit Excel-Export und die Startseite.
+Ausdrucke mit Excel-Export und die Startseite. Stufe 2 bringt die IST-Erfassung
+(tatsächliche Zeiten je Tag, Vorschlag aus dem Plan, Bestätigen, Grund bei Änderungen)
+und das Zeitkonto (Wochenabschluss, Journal mit automatischen Korrekturen,
+Startsaldo, Korrektur von Hand) mit Stundenblatt, Wocheneinsatz-IST und dem Journal
+als Excel.
 Einrichtung und Bedienung: [ANLEITUNG.md](ANLEITUNG.md).
 
 ## Aufbau
@@ -14,11 +18,12 @@ Einrichtung und Bedienung: [ANLEITUNG.md](ANLEITUNG.md).
 | Pfad | Inhalt |
 |---|---|
 | `docs/` | Statische Seite (GitHub Pages), ohne Framework und ohne Build. `index.html`, `main.js` (Einstieg), `app.js` (Anmeldung, Reiter), `api.js`, `sitzung.js`, `config.js`, `hilfe.js` (Helfer, Fehlertexte), `dialog.js`, `style.css` |
-| `docs/` – Reiter | `start.js` (Startseite), `abwesenheiten.js`, `vorausplanung.js`, `einsatzplan.js`, `mitarbeiter.js`, `einstellungen.js` |
-| `docs/` – Einsatzplan | `plan-raster.js` (reine Logik: Zeitraster, Striche, Abdeckung, Stunden, Rückgängig), `plan-dialoge.js` (Kopieren, Vorlagen, Krank/ZA, Ersatz, Eckdaten) |
-| `docs/` – Druck | `druck.js` (Druckansicht und Auswahl-Dialoge), `druck-daten.js` (reine Aufbereitung), `xlsx.js` (Excel-Datei ohne Bibliothek) |
+| `docs/` – Reiter | `start.js` (Startseite), `abwesenheiten.js`, `vorausplanung.js`, `einsatzplan.js` (Plan und IST), `zeitkonto.js`, `mitarbeiter.js`, `einstellungen.js` |
+| `docs/` – Einsatzplan | `plan-raster.js` (reine Logik: Zeitraster, Striche, Abdeckung, Stunden, Rückgängig), `plan-dialoge.js` (Kopieren, Vorlagen, Krank/ZA, Ersatz, Eckdaten), `ist-ansicht.js` (Modus IST: Status, Vorschlag, Bestätigen, Grund-Dialog) |
+| `docs/` – Zeitkonto | `zeitkonto.js` (Reiter: Woche, „Woche buchen“, Journal, Startsaldo, Korrektur von Hand), `zeitkonto-daten.js` (reine Logik: Vorzeichen, Journalzeilen, Stunden-Eingabe) |
+| `docs/` – Druck | `druck.js` (Druckansicht und Auswahl-Dialoge, auch Stundenblatt und Wocheneinsatz-IST), `druck-daten.js` (reine Aufbereitung), `xlsx.js` (Excel-Datei ohne Bibliothek, mit Datumszellen) |
 | `docs/` – reine Logik | `kalender.js` (Monatsraster der Abwesenheiten), `zeit.js` (Uhrzeiten, ISO-Wochen, KW 53) |
-| `supabase/schema.sql` | Schema `pep` mit allen Tabellen, Prüffunktionen (z. B. `pep.pruefung`, `pep.woche_kennzahlen`) und den Browser-Funktionen `public.pep_*`. Eine idempotente Datei: erneutes Ausführen ist unschädlich und behält die Daten |
+| `supabase/schema.sql` | Schema `pep` mit allen Tabellen, Prüffunktionen (z. B. `pep.pruefung`, `pep.woche_kennzahlen`, `pep.zeitkonto_woche`), den Nachbuch-Triggern des Zeitkontos und den Browser-Funktionen `public.pep_*`. Eine idempotente Datei: erneutes Ausführen ist unschädlich und behält die Daten |
 | `supabase/schulferien-BY.sql` | Schulferien Bayern 2026/27 und 2027/28 für Filiale 2558 (Quelle im Kopf), idempotent |
 | `tests/` | Tests gegen eine lokale Postgres-Instanz (PGlite) mit nachgebildeten Supabase-Rollen und dem eingefrorenen Urlaubstool-Schema (`tests/fixtures/`); reine JS-Module ohne DOM mit `node --test` |
 | `tests/vorschau/` | Vorschau der Oberfläche ohne Supabase (siehe unten) |
@@ -35,6 +40,18 @@ ausführen. Die Datei ist idempotent (`create … if not exists`, `create or rep
 Kommentare, Vorlagen und Wochenwerte sowie die feste Bedeutung „Kasse“/„VP“ der
 Bereiche KA und VP. `tests/umstellung.test.mjs` belegt das: Eine Stufe-0-Datenbank
 mit Daten bekommt das aktuelle Schema zweimal, die Daten bleiben gleich.
+
+**Von Stufe 1 auf Stufe 2:** ebenfalls nur `supabase/schema.sql` im SQL-Editor
+**erneut** ausführen; die Datei ist idempotent und behält alle Daten. Neu sind die
+Tabellen für IST (`ist_bloecke`, `ist_tage`, `ist_leer`), Wochenabschlüsse und das
+Zeitkonto-Journal samt Nachbuch-Triggern, die Spalte „Gutschrift im Zeitkonto“ der
+Abwesenheitscodes (ZA aus) und die Einstellung `ist_ab`. **`ist_ab` steht danach auf
+dem Montag der Woche, in der das Schema eingespielt wurde** (Start der IST-Erfassung);
+früher oder später starten geht nur vor dem ersten Wochenabschluss (Einstellungen →
+„IST-Erfassung ab“). Startsalden aus der bisherigen Zeiterfassung vor dem ersten
+Abschluss eintragen (ANLEITUNG, Abschnitt 1). `tests/umstellung.test.mjs` spielt das
+aktuelle Schema auch auf eine eingefrorene Stufe-1-Datenbank
+(`tests/fixtures/pep-schema-stufe-1.sql`).
 
 ## Sicherheitsprinzip
 
@@ -61,7 +78,7 @@ npm install
 npm test
 ```
 
-Stand Stufe 1: **246 Tests, alle grün** (rund 30 s). Die zwei Startbestand-Tests
+Stand Stufe 2: **343 Tests, alle grün** (rund 30 s). Die zwei Startbestand-Tests
 lesen `privat/stammdaten-aschaffenburg.sql` und werden ohne diese Datei
 übersprungen; alle anderen Tests laufen in jedem Checkout.
 
@@ -88,11 +105,13 @@ Die Oberfläche lässt sich ohne Supabase ansehen, mit erfundenen Daten.
 Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funktionen.
 
 - **Lauf:** `node tests/browser/szenarien.mjs [filter]` startet den Testserver und Chrome,
-  spielt alle Szenarien der Stufe 1 durch (Maus und Touch, Tablet 1024×768) und prüft
-  jeweils Oberfläche und Datenbankstand. Fotos, PDFs, die Excel-Datei und
-  `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
+  spielt **54 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 2,5 min) und
+  prüft jeweils Oberfläche und Datenbankstand. Die Szenarien 1–44 decken Stufe 1 ab,
+  45–54 IST-Erfassung, Zeitkonto, die neuen Kacheln und Ausdrucke von Stufe 2. Fotos,
+  PDFs, die Excel-Dateien und `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
 - **Server:** `tests/browser/server.mjs` baut die Datenbank wie `tests/helfer.mjs` in
-  PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026) und bildet
+  PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026, Start der
+  IST-Erfassung 02.11.2026; ab Szenario 45 stellt der Test heute auf 16.11.2026) und bildet
   PostgREST (`/rest/v1/rpc/…`) und die Anmeldung nach. `docs/` läuft unverändert, nur
   `config.js` zeigt auf den Testserver und die CSP erlaubt `connect-src 'self'`.
   Allein gestartet (`node tests/browser/server.mjs 8124`) lässt sich unter
@@ -108,6 +127,5 @@ Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funk
 
 ## Ausblick
 
-Nächste Stufen: Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), IST-Erfassung
-und Zeitkonto, eine Seite für die Rolle „Mitarbeiter“, Tausch und Fairness auf der
-Startseite.
+Nächste Stufen: Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), eine Seite für die
+Rolle „Mitarbeiter“, Tausch und Fairness auf der Startseite.

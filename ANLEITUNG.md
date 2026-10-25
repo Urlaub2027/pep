@@ -4,8 +4,11 @@ Für die Filialleitung und für dtn (Einrichtung). PEP läuft als statische Seit
 (GitHub Pages) auf der Supabase-Datenbank des Urlaubstools.
 
 - **Stufe 0** (Grundgerüst): Mitarbeiter, Einstellungen, Abwesenheitskalender.
-- **Stufe 1** (dieser Stand): Einsatzplan mit Regelprüfung, Kopieren und Vorlagen,
+- **Stufe 1:** Einsatzplan mit Regelprüfung, Kopieren und Vorlagen,
   Krankmeldung mit Ersatzsuche, Eckdaten, Vorausplanung, Ausdrucke und Startseite.
+- **Stufe 2** (dieser Stand): IST-Erfassung (tatsächliche Arbeitszeiten je Tag bestätigen)
+  und Zeitkonto (Woche buchen, Journal, Korrekturen), dazu Stundenblatt,
+  Wocheneinsatz-IST und das Journal als Excel.
 
 **Datenschutz:** Das Repository ist öffentlich. Echte Namen, Vertragsstunden und
 Geburtsdaten gehören nie hinein. Die Startdatei mit den Namen liegt in `privat/`
@@ -53,12 +56,39 @@ mit Daten, dann das neue Schema zweimal.
 
 Danach die Seite im Browser neu laden (Strg+F5), damit die neuen Dateien kommen.
 
+### Umstellung von Stufe 1 auf Stufe 2
+
+1. Im SQL-Editor den **aktuellen** Inhalt von `supabase/schema.sql` noch einmal
+   ausführen. Das Schema ist idempotent: Plan, Mitarbeiter, Verträge und
+   Abwesenheiten bleiben stehen; neu kommen die Tabellen für IST, Wochenabschlüsse
+   und das Zeitkonto-Journal. Der Test `tests/umstellung.test.mjs` spielt das mit
+   einer eingefrorenen Stufe-1-Datenbank durch.
+2. Die Seite im Browser neu laden (Strg+F5).
+
+**Start von IST und Zeitkonto (einmalig, wichtig):**
+
+1. **Startwoche prüfen.** Nach dem Einspielen steht unter Einstellungen →
+   „IST-Erfassung ab“ der **Montag der Woche, in der das Schema eingespielt wurde**.
+   Ab diesem Tag gibt es IST, offene Tage und Wochenabschlüsse; davor nur den Plan.
+   Wer früher oder später anfangen will, ändert das Datum **vor dem ersten
+   „Woche buchen“**. Nach dem ersten Abschluss ist das Feld gesperrt.
+2. **Startsalden eintragen.** Den Stand des Zeitkontos aus der bisherigen
+   Zeiterfassung (tegut) je Mitarbeiter im Reiter Zeitkonto eintragen: Namen
+   anklicken → Journal → „Startsaldo“. Als Datum den **Sonntag vor der Startwoche**
+   nehmen (ist die Startwoche angezeigt, ist das Feld so vorbelegt; ein früheres
+   Datum geht auch, eines in der Startwoche nicht). Dann steht der Startsaldo in der
+   Startwoche als „Saldo Vorwoche“. Das geht nur als erste
+   Buchung eines Mitarbeiters, also **vor dem ersten Abschluss**. Danach geht nur
+   noch „Korrektur von Hand“.
+3. **Wochen der Reihe nach abschließen.** Die erste Woche, die sich buchen lässt,
+   ist die Startwoche; danach immer die folgende.
+
 ## 2. Rollen
 
 | Rolle | Darf |
 |---|---|
-| Leitung | alles: Mitarbeiter und Reihenfolge, Einstellungen, Abwesenheiten, Urlaubswünsche freigeben, Einsatzplan, Vorausplanung, Drucken, Benutzer verwalten |
-| Stellvertretung | Startseite, Abwesenheiten eintragen, Einsatzplan (Malen, Kommentare, Kopieren, Vorlagen, Krank/ZA, Ersatz), Vorausplanung eintragen, Drucken; Mitarbeiter nur ansehen; kein Reiter Einstellungen, keine Freigabe von Urlaubswünschen |
+| Leitung | alles: Mitarbeiter und Reihenfolge, Einstellungen, Abwesenheiten, Urlaubswünsche freigeben, Einsatzplan, IST erfassen und bestätigen, Zeitkonto (Woche buchen, Startsaldo, Korrektur von Hand), Vorausplanung, Drucken, Benutzer verwalten |
+| Stellvertretung | Startseite, Abwesenheiten eintragen, Einsatzplan (Malen, Kommentare, Kopieren, Vorlagen, Krank/ZA, Ersatz), IST erfassen und bestätigen, Zeitkonto ansehen (Journal, Drucken, Excel), Vorausplanung eintragen, Drucken; Mitarbeiter nur ansehen; kein Reiter Einstellungen, keine Freigabe von Urlaubswünschen, kein „Woche buchen“, keine Buchungen im Zeitkonto |
 | Mitarbeiter | noch keine Seite |
 
 Weitere Benutzer legt die Leitung unter Einstellungen → Benutzer an. Der Benutzer
@@ -66,12 +96,12 @@ braucht dafür ein Konto im Urlaubstool.
 
 ## 3. Bedienung
 
-Reiter: Start, Abwesenheiten, Vorausplanung, Einsatzplan, Mitarbeiter,
+Reiter: Start, Abwesenheiten, Vorausplanung, Einsatzplan, Zeitkonto, Mitarbeiter,
 Einstellungen (nur Leitung). Es gibt keinen Speichern-Knopf: Jede Änderung wird
 sofort gespeichert („Gespeichert.“ erscheint unten kurz).
 
 ### Startseite
-Nach dem Anmelden erscheint die Startseite mit vier Kacheln. Jede zeigt eine große
+Nach dem Anmelden erscheint die Startseite mit sechs Kacheln. Jede zeigt eine große
 Zahl und hat einen Knopf, der zur passenden Stelle springt. Eine Kachel ohne Befund
 hat einen grünen Rand und zeigt „alles im grünen Bereich“.
 
@@ -97,13 +127,21 @@ hat einen grünen Rand und zeigt „alles im grünen Bereich“.
 - **Offene Urlaubswünsche:** Wünsche aus dem Urlaubstool für die nächsten zwölf
   Monate, die noch weder genehmigt noch abgelehnt sind. Sprung: Abwesenheiten im
   Monat des frühesten Wunsches.
+- **IST offen:** an wie vielen Tagen der letzten sechs Wochen (bis gestern, frühestens
+  ab dem Start der IST-Erfassung) noch Zeilen nicht bestätigt sind; darunter die Zahl
+  der offenen Zeilen und der früheste Tag. Offene Tage verhindern „Woche buchen“.
+  Sprung: Einsatzplan im Modus IST am ersten offenen Tag.
+- **Zeitkonto auffällig:** wer nach der zuletzt abgeschlossenen Woche zu viel Plus
+  oder zu viel Minus hat (Warnfaktor × Wochenstunden, siehe Einstellungen). Gezählt
+  wird nur Gebuchtes bis zum Sonntag dieser Woche. Ohne Abschluss: „Noch keine Woche
+  abgeschlossen.“ Sprung: Reiter Zeitkonto in dieser Woche.
 
 ### Mitarbeiter
 Links die Liste (inaktive grau am Ende, Kompetenz-Kürzel als Badges), rechts die
 Karte der gewählten Person. „Neuer Mitarbeiter“ legt eine Person an. Auf der Karte:
 Stammdaten (Name, Personalnummer, Geburtsdatum, Eintritt/Austritt, aktiv, Notiz),
-**Verträge** (Gültig ab, Art, Wochenstunden; pro Datum nur einer, der letzte lässt
-sich nicht löschen), **Kompetenzen** (Haken je Bereich/Funktion), **Wochenvorgaben**
+**Verträge** (Gültig ab, Art, Wochenstunden, bei Führung die Zeitkonto-Grenze; pro
+Datum nur einer, der letzte lässt sich nicht löschen), **Kompetenzen** (Haken je Bereich/Funktion), **Wochenvorgaben**
 (Wochentag, nicht verfügbar / nur zwischen, Pflicht, Gültigkeit) und **Urlaubsjahre**
 (Anspruch und Rest aus dem Vorjahr in Stunden).
 
@@ -117,8 +155,16 @@ sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck
   Abweichung mit eigenen Zeiten. Eigene Abweichungen mit Datum, Art, Name.
 - **Bereiche:** Kürzel, Name, Farbe, Art, ob eine Kompetenz nötig ist, aktiv.
 - **Codes:** Abwesenheitscodes (z. B. U, KM, BS) mit Stundenregel, sperren, neu anlegen.
+  „Gutschrift im Zeitkonto“ heißt: Die Stunden zählen im Zeitkonto wie Arbeitszeit
+  (Standard: an; bei ZA aus, weil ZA das Zeitkonto abbaut). Wer den Haken oder
+  „sperrt“ ändert, nachdem schon Wochen abgeschlossen sind, bekommt für diese Wochen
+  automatisch Korrekturen.
 - **Parameter:** Rechenwerte mit Erklärung (z. B. Teiler 6 für Urlaubsstunden je Tag,
-  Ruhezeit, Pausen, Stundenleistung in €/h für die Vorausplanung).
+  Feiertags-Teiler, Ruhezeit, Pausen, „Späte Schicht ab“ für die Spalte „Spät“,
+  Zeitkonto-Warnfaktor, Stundenleistung in €/h für die Vorausplanung).
+- **IST-Erfassung ab:** Montag, ab dem es IST und Wochenabschlüsse gibt (siehe
+  „Start von IST und Zeitkonto“ in Abschnitt 1). Nach dem ersten Wochenabschluss
+  gesperrt.
 - **Schulferien:** anlegen und löschen.
 - **Urlaubstool:** welche Umfragen als Urlaubswünsche einfließen; Zuordnung der
   Teilnehmer zu Mitarbeitern (Vorschläge übernehmen). Die Umfrage muss der
@@ -151,7 +197,8 @@ gelb, Schulferien hellgrün.
 - **Drucken:** Monat wie angezeigt oder Resturlaub des Jahres (siehe „Drucken“).
 
 ### Einsatzplan
-Oben die Woche (◀ ▶, Datumsfeld, „Heute“) und die Tage Mo–So mit Öffnungszeit.
+Ganz links der Umschalter **Plan | IST** (IST siehe nächster Abschnitt). Daneben die
+Woche (◀ ▶, Datumsfeld, „Heute“) und die Tage Mo–So mit Öffnungszeit.
 Darunter die Pinsel (ein Bereich je Knopf, dazu „Radieren“) und die Knöpfe
 Rückgängig, Kopieren, Vorlagen, Krank/ZA und Drucken. Das Raster zeigt je
 Mitarbeiter eine Zeile in halben Stunden, rechts die Kommentarspalte. Unter dem
@@ -170,8 +217,8 @@ Raster stehen die Abdeckungszeilen Kasse und VP: Rot heißt „niemand da“.
   der Plan springt dann zu diesem Tag.
 - **Kommentar:** in die Kommentarspalte klicken, Text tippen, Enter. Escape verwirft,
   leeren löscht.
-- **Vergangene Tage** sind schreibgeschützt (die IST-Erfassung kommt später); nur
-  Kommentare lassen sich dort noch schreiben.
+- **Vergangene Tage** sind im Plan schreibgeschützt; nur Kommentare lassen sich dort
+  noch schreiben. Der Knopf „IST erfassen“ öffnet den Tag im Modus IST.
 - **Unbesetzt:** Wird jemand krank oder abwesend, der schon geplant ist, bleiben seine
   Blöcke stehen, werden aber rot gestreift. Sie zählen nirgends mit. Daneben steht
   der Knopf „Ersatz“.
@@ -190,8 +237,10 @@ Raster stehen die Abdeckungszeilen Kasse und VP: Rot heißt „niemand da“.
 
 **Eckdaten:** Klick auf den Namen öffnet ein Fenster mit Vertrag und Kompetenzen,
 Stunden der Woche, Wochenvorgaben, Abwesenheiten dieser und nächster Woche, Samstagen
-im Monat, Lage der Vorwoche und Kommentar. Von dort: „Krank melden“,
-„Zeitausgleich“ und „Zur Mitarbeiterkarte“.
+im Monat, Lage der Vorwoche, Zeitkonto und Kommentar. Die Zeile „Zeitkonto: +6,50 h
+(aktuell · zuletzt gebucht KW 45)“ zeigt die Summe aller Buchungen (⚠ bei Warnung);
+ein Klick öffnet das Journal. Von dort außerdem: „Krank melden“, „Zeitausgleich“ und
+„Zur Mitarbeiterkarte“.
 
 **Krank/ZA:** Mitarbeiter, Code (KM oder ZA) und Zeitraum wählen. Ganze Tage werden
 eingetragen, auch rückwirkend; geschlossene Tage werden übersprungen. Geplante Blöcke
@@ -222,6 +271,88 @@ Das Ergebnis steht danach oben als Meldung (kopiert, gekürzt, unbesetzt, ausgel
 den gewählten Tag bzw. die angezeigte Woche laden (gleiche Rückfrage wie beim Kopieren)
 oder löschen. Der Plan selbst ändert sich beim Löschen nicht.
 
+### IST-Erfassung
+Im Einsatzplan oben auf **IST** schalten. IST sind die Zeiten, die wirklich gearbeitet
+wurden. Es gibt sie für heute und vergangene Tage ab dem Start der IST-Erfassung
+(Einstellungen); künftige Tage und Tage vor dem Start zeigen nur den Plan.
+
+- **Vorschlag:** Solange ein Tag offen ist und niemand etwas eingetragen hat, steht der
+  Plan blass und gestrichelt in der Zeile. Nur besetzte Blöcke werden vorgeschlagen
+  (nicht, was wegen Krankheit oder Urlaub unbesetzt ist). Der dünne Rahmen zeigt
+  immer den Plan, auch wenn das IST schon abweicht.
+- **Ändern:** malen wie im Plan (Pinsel, „Radieren“, Rückgängig). Der erste Strich
+  übernimmt den Vorschlag und ändert ihn. Länger geblieben: weiter malen; früher
+  gegangen: radieren. „Zeitrahmen erweitern“ zeigt 04:00 bis 24:00. Im IST gibt es
+  keine Regelprüfung und keine Kompetenzprüfung; gesperrt sind nur künftige Zeiten,
+  Zeiten ohne Vertrag, außerhalb 04:00–24:00, während einer sperrenden Abwesenheit
+  und Überschneidungen.
+- **Nicht gekommen:** die ganze Zeile radieren. Sie heißt dann „offen, leer“; beim
+  Bestätigen zählen 0 Stunden. Krankheit gehört trotzdem als KM eingetragen.
+- **Rechts in jeder Zeile:** Status („offen“, „offen, leer“, „bestätigt ✓“) und
+  „Abw.“ = IST minus Plan in Stunden. Die Seitenleiste zeigt Plan und IST des Tages
+  und welche Zeilen der Woche noch offen sind (Klick wählt den Tag).
+
+**Jeden Tag** (nach Feierabend oder am nächsten Morgen):
+1. Den Tag im Modus IST öffnen (die Startseite „IST offen“ springt zum ersten offenen Tag).
+2. Abweichungen vom Plan malen.
+3. **„Tag bestätigen“** – PEP fragt nach („… offene Zeilen bestätigen?“). Zeilen ohne
+   eigenes IST übernehmen dabei den Vorschlag. Bestätigen lässt sich nicht
+   zurücknehmen. Einzelne Zeilen bestätigt der Haken ✓ in der Zeile.
+
+**Bestätigte Zeilen ändern:** Beim ersten Strich fragt PEP nach dem **Grund** (Pflicht,
+z. B. „Inventur länger“). Der Grund gilt für alle Striche in dieser Zeile, bis der Tag
+gewechselt wird, und steht im Protokoll. Ist die Woche schon gebucht, sagt der Dialog
+das; PEP bucht die Änderung dann automatisch als Korrektur ins Zeitkonto.
+
+**Ausdruck:** „Wocheneinsatz-IST drucken“ (siehe „Drucken“).
+
+### Zeitkonto
+Der Reiter zeigt eine Woche, zuerst die **Vorwoche** (das ist die Woche, die man am
+Montag bucht). Je Mitarbeiter:
+
+- **Soll:** Wochenstunden laut Vertrag, anteilig für die Tage Mo–Sa, an denen er
+  beschäftigt ist (Eintritt oder Austritt mitten in der Woche zählt anteilig).
+- **IST:** bestätigte Arbeitszeit ohne Pausen. Nicht bestätigte Tage zählen nicht.
+- **Abwesend:** Abwesenheiten mit „Gutschrift im Zeitkonto“ (z. B. Urlaub, krank; ZA
+  nicht).
+- **Feiertag:** gesetzlicher Feiertag Mo–Sa, an dem die Filiale geschlossen ist:
+  Wochenstunden ÷ Feiertags-Teiler.
+- **Diff** = IST + Abwesend + Feiertag − Soll. Bei Führung zählt Plus erst über der
+  Zeitkonto-Grenze (Vertrag, Standard 42 h).
+- **Saldo Vorwoche**, **Saldo aktuell**, **Spät** (Arbeitszeit ab „Späte Schicht ab“)
+  und **Offen** (Tage, die im IST noch offen sind; Klick springt hin).
+- ⚠ auf gelbem Grund: Der Saldo liegt über Warnfaktor × Wochenstunden (Plus oder
+  Minus). In der laufenden Woche sind Diff und Saldo aktuell grau („vorläufig“), weil
+  das Soll der ganzen Woche gegen das IST bis heute steht.
+
+**Jede Woche (Montag, nur Leitung):**
+1. Reiter Zeitkonto öffnen; er zeigt die Vorwoche.
+2. Steht dort „n Tage im IST offen“, darauf klicken und die Tage bestätigen.
+   Solange etwas offen ist, ist „Woche buchen“ gesperrt.
+3. **„Woche buchen“** – nach einer Rückfrage bucht PEP für jeden aktiven Mitarbeiter
+   mit Vertrag die Diff dieser Woche ins Journal, auch 0. Ein Abschluss lässt sich
+   nicht zurücknehmen. Wochen gehen nur der Reihe nach; vor dem ersten Abschluss
+   erinnert der Dialog an die Startsalden.
+
+**Korrekturen kommen automatisch.** Ändert sich nach dem Abschluss etwas, das die
+Woche betrifft (IST, Abwesenheit, Vertrag, Ein- oder Austritt, Öffnungstag, Gutschrift
+oder „sperrt“ eines Codes, Feiertags-Teiler), bucht PEP sofort für jeden Betroffenen
+genau eine „Korrektur (automatisch)“ mit der Differenz. Der Grund im Journal beginnt
+mit der Woche, z. B. „KW 46/2026: Inventur länger“ (bei IST-Änderungen der
+eingegebene Grund, sonst z. B. „Abwesenheit geändert“).
+
+**Journal:** Klick auf einen Namen. Alle Buchungen in der Reihenfolge, in der sie
+gebucht wurden: Gebucht am, KW (für welche Woche), Art (Startsaldo, Wochenabschluss,
+Korrektur (automatisch), Korrektur von Hand), Stunden, Saldo danach, Grund, Von.
+Buchungen lassen sich nicht ändern oder löschen.
+
+**Korrektur von Hand** (nur Leitung): im Journal „Korrektur buchen“. Stunden mit
+Vorzeichen (z. B. „−4,5“ für ausgezahlte Überstunden, „2,25“), Datum (die Buchung
+zählt in der Woche dieses Datums) und Grund (Pflicht). **Startsaldo** heißt der Knopf,
+solange das Journal eines Mitarbeiters leer ist (siehe Abschnitt 1).
+
+**Drucken** und **Journal als Excel** (auch für die Stellvertretung): siehe „Drucken“.
+
 ### Vorausplanung
 Sechs Wochen nebeneinander, ◀ ▶ blättert, „Aktuelle Woche“ springt zurück.
 - **Planumsatz** (von Hand, in €): „60.000“ heißt sechzigtausend, „60000,50“ hat Cent.
@@ -237,12 +368,25 @@ Sechs Wochen nebeneinander, ◀ ▶ blättert, „Aktuelle Woche“ springt zur�
 Ein Klick auf den Kopf einer Woche öffnet den Einsatzplan dieser Woche.
 
 ### Drucken
-Alle Ausdrucke sind A4 quer, mit Kopf (Titel, Zeitraum, Filiale, „erstellt am“).
+Die Ausdrucke sind A4 quer (das Stundenblatt A4 hoch), mit Kopf (Titel, Zeitraum,
+Filiale, „erstellt am“).
 Jede Zelle trägt Kürzel **und** Farbe, damit Schwarz-Weiß lesbar bleibt. Fehlen die
 Farben, im Druckdialog „Hintergrundgrafiken“ einschalten.
 - **Einsatzplan → Drucken:** Wochenplan, Tagesplan des gewählten Tags, Tagespläne der
   ganzen Woche, „Excel (Wochenplan)“ lädt eine .xlsx-Datei herunter.
 - **Abwesenheiten → Drucken:** der angezeigte Monat oder „Resturlaub <Jahr>“.
+- **Zeitkonto → Drucken:**
+  - **Stundenblatt** für einen oder alle Mitarbeiter und einen Zeitraum (höchstens
+    62 Tage, vorbelegt mit der angezeigten Woche), A4 hoch. Jeder Mitarbeiter beginnt
+    auf einer neuen Seite: je Tag Anwesend von/bis, Pause, Abwesenheit, Arbeitszeit;
+    darunter die Wochen mit Soll, IST, Diff und Saldo, am Ende Unterschriftszeilen
+    für Mitarbeiter und Filialleitung. Nur Bestätigtes zählt; offene Tage stehen als
+    „offen“ da.
+  - **Wocheneinsatz-IST** der angezeigten Woche, A4 quer: je Mitarbeiter und Tag das
+    bestätigte IST, dazu Soll, IST, Spät, Diff und Saldo. Derselbe Ausdruck kommt im
+    Einsatzplan (Modus IST) über „Wocheneinsatz-IST drucken“.
+- **Zeitkonto → Journal als Excel:** alle Buchungen eines Zeitraums (vorbelegt:
+  01.01. bis heute) als .xlsx; das Datum ist eine echte Datumsspalte (TT.MM.JJJJ).
 
 ## 4. Handprüf-Checkliste
 
@@ -379,7 +523,7 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
 5. „Excel (Wochenplan)“: Datei öffnet sich in Excel, Zahlen sind Zahlen (Summe geht).
 
 **Startseite**
-1. Nach dem Anmelden erscheint die Startseite mit vier Kacheln.
+1. Nach dem Anmelden erscheint die Startseite mit sechs Kacheln.
 2. Jede Zahl mit dem Reiter vergleichen: Abwesende der Woche im Reiter Abwesenheiten
    (ohne Feiertag FT und ohne nicht sperrende Codes),
    Lücke in der Vorausplanung (Summe der roten Überhänge), Warnungen in der
@@ -390,11 +534,27 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
 4. Eine Kachel ohne Befund zeigt „alles im grünen Bereich“ mit grünem Rand.
 5. Tablet (1024 px): zwei Kacheln nebeneinander.
 
-## 5. Bekannte Grenzen (Stufe 1)
+**IST und Zeitkonto (nach dem Einspielen von Stufe 2 in Supabase)**
+
+Diese Punkte kann der automatische Test nicht abdecken: Er läuft gegen eine
+nachgebildete Datenbank, nicht gegen Supabase, und ohne echtes Excel und echten Drucker.
+1. **Automatische Korrektur auf Supabase:** In einer schon gebuchten Woche bei einem
+   Mitarbeiter das IST eines Tages ändern (Grund eingeben). Danach im Journal dieses
+   Mitarbeiters nachsehen: Es muss **genau eine** neue Zeile „Korrektur (automatisch)“
+   mit „KW …: <Grund>“ und der richtigen Stundenzahl stehen. Das prüft den Trigger, der
+   erst beim Speichern bucht; in Supabase ist er nie gelaufen.
+2. **Excel:** „Journal als Excel“ herunterladen und in Excel öffnen. Die Spalte Datum
+   muss TT.MM.JJJJ zeigen und sich nach Datum richtig sortieren lassen (nicht wie Text).
+3. **Stundenblatt drucken:** einmal für alle Mitarbeiter auf Papier oder als PDF. Jede
+   Person auf einer eigenen Seite, mit beiden Unterschriftszeilen.
+4. Einstellungen → „IST-Erfassung ab“ zeigt den Montag der Einspielwoche (oder den
+   gewünschten Start, siehe Abschnitt 1).
+5. Als Stellvertretung: Zeitkonto ansehen, drucken, Excel – aber kein „Woche buchen“,
+   im Journal nur „Schließen“.
+
+## 5. Bekannte Grenzen
 - Die Reihenfolge der Mitarbeiter wird mit ▲/▼ geändert, nicht per Ziehen.
-- Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), IST-Erfassung und Zeitkonto
-  folgen in späteren Stufen. Vergangene Tage im Einsatzplan sind bis dahin schreibgeschützt
-  (außer Kommentaren).
+- Bedarfsplanung (Vorgaben je Bereich und Uhrzeit) folgt in einer späteren Stufe.
 - Kopieren fügt Blöcke eines Mitarbeiters, der am Ziel abwesend ist, trotzdem ein
   (unbesetzt) und prüft dabei die Pflicht-Vorgaben gegen diese Zeit nicht. Wird die
   Abwesenheit später gelöscht, kann ein Block einer Pflicht-Vorgabe widersprechen,
@@ -402,3 +562,18 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
 - Freie Samstage im Jahr zählen erst ab dem Eintritt (bzw. ab 01.01.).
 - Eine Wiederholung bei den Abwesenheiten lässt sich nur löschen, nicht ändern.
 - Der Reiter für die Rolle „Mitarbeiter“ fehlt noch.
+
+**IST und Zeitkonto (Stufe 2)**
+- Die Spalte „Spät“ zählt nur die Stunden ab „Späte Schicht ab“. Einen Zeitzuschlag
+  (z. B. Prozent auf Spätstunden) rechnet PEP nicht.
+- Wochen lassen sich nur der Reihe nach abschließen, beginnend mit der Startwoche. Ein
+  Abschluss lässt sich nicht zurücknehmen, und der Start der IST-Erfassung lässt sich
+  danach nicht mehr ändern.
+- Deaktivierte Mitarbeiter und solche, deren Austritt vor der Woche liegt, bekommen
+  beim Abschluss keine Zeile – und damit auch keine automatischen Korrekturen für
+  diese Woche.
+- Wer nachträglich angelegt wird und einen Vertrag rückwirkend bekommt, erhält für
+  schon abgeschlossene Wochen keine automatischen Korrekturen. Das bei Bedarf mit
+  „Korrektur von Hand“ nachbuchen.
+- Selten meldet PEP einen Fehler, wenn „Woche buchen“ und das Speichern eines Vertrags
+  genau gleichzeitig laufen. Dann einfach noch einmal klicken.
