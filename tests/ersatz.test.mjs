@@ -93,7 +93,7 @@ test('Kandidaten: ohne Kassenkompetenz, abwesend, zur Zeit schon geplant, Pflich
   const D = '2026-11-10'; // Dienstag
   const krank = await t.ma('Krank, Karl');
   await t.malen(t.leitung, krank, D, '14:00', '20:00', 'KA');
-  const olga = await t.ma('Test, Olga'); // frei, Kasse → dabei
+  const odile = await t.ma('Test, Odile'); // frei, Kasse → dabei
   const nils = await t.ma('Test, Nils'); // morgens schon geplant, ohne Überschneidung → dabei
   await t.malen(t.leitung, nils, D, '08:00', '12:00', 'KA');
   const otto = await t.ma('Test, Otto', { kompetenzen: ['OG'] }); // ohne Kassenkompetenz
@@ -120,7 +120,7 @@ test('Kandidaten: ohne Kassenkompetenz, abwesend, zur Zeit schon geplant, Pflich
   // Die Probe-Übernahme ist zurückgerollt: keine Blöcke, kein Protokoll
   assert.deepEqual({ bloecke: await bloecke(), protokoll: await t.protokolle() }, vorher);
   assert.deepEqual(r.unbesetzt, [{ von: '14:00', bis: '20:00', bereich_id: t.bereich.KA }]);
-  assert.deepEqual(ids(r), [olga, nils].sort((x, y) => x - y));
+  assert.deepEqual(ids(r), [odile, nils].sort((x, y) => x - y));
   for (const k of r.kandidaten) {
     assert.deepEqual(Object.keys(k).sort(), ['hinweise', 'luecke', 'mitarbeiter_id', 'name', 'samstage_monat', 'spaet_woche']);
     assert.deepEqual(k.hinweise, []);
@@ -128,7 +128,7 @@ test('Kandidaten: ohne Kassenkompetenz, abwesend, zur Zeit schon geplant, Pflich
   // Gegenprobe: ohne die jeweilige Sperre wären sie dabei
   await t.malen(t.leitung, rolf, '2026-11-11', '06:00', '07:00', null);
   await t.malen(t.leitung, hans, D, '06:00', '07:00', null);
-  assert.deepEqual(ids(await t.kandidaten(krank, D)), [olga, nils, rolf, hans].sort((x, y) => x - y));
+  assert.deepEqual(ids(await t.kandidaten(krank, D)), [odile, nils, rolf, hans].sort((x, y) => x - y));
   for (const x of [otto, ulla, bea, gerd, pia, ines, vera]) assert.ok(x);
   // Ohne unbesetzte Blöcke
   const leer = await t.ma('Test, Leer');
@@ -176,7 +176,7 @@ test('bevorzugte Vorgabe „nur bis 14:00“ → Kandidat bleibt, hinweise enth�
   await t.vorgabe(wim, { pflicht: false, wochentag: 4, art: 'nur_zwischen', von: '06:00', bis: '14:00' });
   const lars = await t.ma('Test, Lars'); // Vorwoche überwiegend spät, 12–19 ist wieder spät
   for (const d of ['2026-11-02', '2026-11-03', '2026-11-04']) await t.malen(t.leitung, lars, d, '16:00', '20:00', 'KA');
-  const olga = await t.ma('Test, Olga'); // ohne Hinweis
+  const odile = await t.ma('Test, Odile'); // ohne Hinweis
   // Ein Hinweis, der schon vorher besteht, entsteht nicht durch die Übernahme
   const jan = await t.ma('Test, Jan');
   await t.vorgabe(jan, { pflicht: false, wochentag: 4, art: 'nur_zwischen', von: '06:00', bis: '08:00', notiz: 'lieber früh' });
@@ -187,7 +187,7 @@ test('bevorzugte Vorgabe „nur bis 14:00“ → Kandidat bleibt, hinweise enth�
   assert.deepEqual(hinweise[vivi], ['nur bis 14:00']);
   assert.deepEqual(hinweise[wim], ['Bevorzugt: nur 06:00–14:00']);
   assert.deepEqual(hinweise[lars], ['Letzte Woche überwiegend spät']);
-  assert.deepEqual(hinweise[olga], []);
+  assert.deepEqual(hinweise[odile], []);
   assert.deepEqual(hinweise[jan], []);
   assert.equal(r.kandidaten[r.kandidaten.length - 1].mitarbeiter_id, jan); // 2 h in KW 46 geplant: kleinste Lücke
 });
@@ -298,4 +298,54 @@ test('fremde Filiale → MITARBEITER_NICHT_GEFUNDEN; uebernehmen schreibt Protok
   assert.deepEqual(neu[1].nachher, [{ von: '08:00', bis: '12:00', bereich_id: ka }]);
   assert.deepEqual(neu[2].nachher, { ersatz_id: b, bloecke: [{ von: '08:00', bis: '12:00', bereich_id: ka }] });
   assert.ok(neu.every((p) => p.user_id === t.leitung));
+});
+
+test('Ruhezeit und Höchstarbeitszeit: nur neue oder verschärfte Verstöße schließen aus, schon bestehende nicht', async () => {
+  const t = await aufbau();
+  const D = '2026-11-10'; // Dienstag; Vortag Montag 09.11., Folgetag Mittwoch 11.11.
+  const krank = await t.ma('Krank, Karl'); // 20:00–21:30 unbesetzt
+  await t.malen(t.leitung, krank, D, '20:00', '21:30', 'KA');
+  await t.schnell(krank, 'KM', D);
+  const odile = await t.ma('Test, Odile'); // frei → dabei
+  // Rita: Montag bis 21:30, Dienstag ab 06:00 → schon vorher 8,5 h Ruhezeit „vor 06:00“; die Übernahme am Abend
+  // ändert daran nichts → dabei
+  const rita = await t.ma('Test, Rita');
+  await t.malen(t.leitung, rita, '2026-11-09', '17:00', '21:30', 'KA');
+  await t.malen(t.leitung, rita, D, '06:00', '08:00', 'KA');
+  // Rolf: Mittwoch ab 06:00; mit der Übernahme bis 21:30 nur 8,5 h Ruhezeit → neu → nicht dabei
+  const rolf = await t.ma('Test, Rolf');
+  await t.malen(t.leitung, rolf, '2026-11-11', '06:00', '10:00', 'KA');
+  // Hans: 06:00–15:00 = 9 h; mit 1,5 h dazu 10,5 h am Tag → neue Höchstarbeitszeit → nicht dabei
+  const hans = await t.ma('Test, Hans');
+  await t.malen(t.leitung, hans, D, '06:00', '15:00', 'KA');
+  // Hugo: 06:00–17:30 = 11,5 h schon vorher über 10 h; mit der Übernahme 13 h → verschärft → nicht dabei
+  const hugo = await t.ma('Test, Hugo');
+  await t.malen(t.leitung, hugo, D, '06:00', '17:30', 'KA');
+
+  // Ausgangslage: Rita und Hugo haben ihre Warnung schon ohne Übernahme
+  const pr = (await t.json(t.leitung, `select public.pep_pruefung_zeitraum($1::date, $1::date) as r`, [D]))[D];
+  const warn = (m) => pr.filter((e) => e.mitarbeiter_id === m && ['ruhezeit', 'hoechstarbeitszeit'].includes(e.art))
+    .map((e) => e.text);
+  assert.deepEqual(warn(rita), ['Ruhezeit 8,50 h (mind. 11 h) vor 06:00']);
+  assert.deepEqual(warn(hugo), ['11,50 h am Tag (höchstens 10 h)']);
+  assert.deepEqual(warn(rolf), []);
+  assert.deepEqual(warn(hans), []);
+
+  assert.deepEqual(ids(await t.kandidaten(krank, D)), [odile, rita].sort((x, y) => x - y));
+
+  // Verschärfte Ruhezeit: Kurt fehlt 06:00–07:00. Rudi hat Montag bis 21:30 und Dienstag ab 08:00 → 10,5 h
+  // „vor 08:00“; mit der Übernahme ab 06:00 nur noch 8,5 h → nicht dabei. Rita ist 06:00–08:00 schon geplant.
+  const kurt = await t.ma('Test, Kurt');
+  await t.malen(t.leitung, kurt, D, '06:00', '07:00', 'KA');
+  await t.schnell(kurt, 'KM', D);
+  const rudi = await t.ma('Test, Rudi');
+  await t.malen(t.leitung, rudi, '2026-11-09', '17:00', '21:30', 'KA');
+  await t.malen(t.leitung, rudi, D, '08:00', '10:00', 'KA');
+  const r = await t.kandidaten(kurt, D);
+  assert.ok(!ids(r).includes(rudi), 'Rudi: verschärfte Ruhezeit');
+  assert.ok(!ids(r).includes(rita), 'Rita: zur Zeit schon geplant');
+  assert.ok(ids(r).includes(odile));
+  // Gegenprobe: ohne den Montag hätte Rudi keine Ruhezeit-Warnung und wäre dabei
+  await t.malen(t.leitung, rudi, '2026-11-09', '17:00', '21:30', null);
+  assert.ok(ids(await t.kandidaten(kurt, D)).includes(rudi));
 });

@@ -6,7 +6,12 @@ Abwesenheitscodes, Schulferien) und ein Abwesenheitskalender, in den auch die
 Urlaubswünsche aus dem Urlaubstool einfließen (Stufe 0). Dazu kommen in Stufe 1
 der Einsatzplan in halben Stunden mit Regelprüfung, Kopieren und Vorlagen,
 Krankmeldung mit Ersatzsuche, Eckdaten, die Vorausplanung über sechs Wochen, die
-Ausdrucke mit Excel-Export und die Startseite.
+Ausdrucke mit Excel-Export und die Startseite. Stufe 2 bringt die IST-Erfassung
+(tatsächliche Zeiten je Tag, Vorschlag aus dem Plan, Bestätigen, Grund bei Änderungen)
+und das Zeitkonto (Wochenabschluss, Journal mit automatischen Korrekturen,
+Startsaldo, Korrektur von Hand) mit Stundenblatt, Wocheneinsatz-IST und dem Journal
+als Excel, dazu eine eigene Sicherung (Datei herunterladen und in eine leere Filiale
+einspielen; Supabase sichert im kostenlosen Tarif nichts).
 Einrichtung und Bedienung: [ANLEITUNG.md](ANLEITUNG.md).
 
 ## Aufbau
@@ -14,11 +19,12 @@ Einrichtung und Bedienung: [ANLEITUNG.md](ANLEITUNG.md).
 | Pfad | Inhalt |
 |---|---|
 | `docs/` | Statische Seite (GitHub Pages), ohne Framework und ohne Build. `index.html`, `main.js` (Einstieg), `app.js` (Anmeldung, Reiter), `api.js`, `sitzung.js`, `config.js`, `hilfe.js` (Helfer, Fehlertexte), `dialog.js`, `style.css` |
-| `docs/` – Reiter | `start.js` (Startseite), `abwesenheiten.js`, `vorausplanung.js`, `einsatzplan.js`, `mitarbeiter.js`, `einstellungen.js` |
-| `docs/` – Einsatzplan | `plan-raster.js` (reine Logik: Zeitraster, Striche, Abdeckung, Stunden, Rückgängig), `plan-dialoge.js` (Kopieren, Vorlagen, Krank/ZA, Ersatz, Eckdaten) |
-| `docs/` – Druck | `druck.js` (Druckansicht und Auswahl-Dialoge), `druck-daten.js` (reine Aufbereitung), `xlsx.js` (Excel-Datei ohne Bibliothek) |
+| `docs/` – Reiter | `start.js` (Startseite), `abwesenheiten.js`, `vorausplanung.js`, `einsatzplan.js` (Plan und IST), `zeitkonto.js`, `mitarbeiter.js`, `einstellungen.js`, `sicherung.js` (Abschnitt „Sicherung“ der Einstellungen und Hinweis der Startseite) |
+| `docs/` – Einsatzplan | `plan-raster.js` (reine Logik: Zeitraster, Striche, Abdeckung, Stunden, Rückgängig), `plan-dialoge.js` (Kopieren, Vorlagen, Krank/ZA, Ersatz, Eckdaten), `ist-ansicht.js` (Modus IST: Status, Vorschlag, Bestätigen, Grund-Dialog) |
+| `docs/` – Zeitkonto | `zeitkonto.js` (Reiter: Woche, „Woche buchen“, Journal, Startsaldo, Korrektur von Hand), `zeitkonto-daten.js` (reine Logik: Vorzeichen, Journalzeilen, Stunden-Eingabe) |
+| `docs/` – Druck | `druck.js` (Druckansicht und Auswahl-Dialoge, auch Stundenblatt und Wocheneinsatz-IST), `druck-daten.js` (reine Aufbereitung), `xlsx.js` (Excel-Datei ohne Bibliothek, mit Datumszellen) |
 | `docs/` – reine Logik | `kalender.js` (Monatsraster der Abwesenheiten), `zeit.js` (Uhrzeiten, ISO-Wochen, KW 53) |
-| `supabase/schema.sql` | Schema `pep` mit allen Tabellen, Prüffunktionen (z. B. `pep.pruefung`, `pep.woche_kennzahlen`) und den Browser-Funktionen `public.pep_*`. Eine idempotente Datei: erneutes Ausführen ist unschädlich und behält die Daten |
+| `supabase/schema.sql` | Schema `pep` mit allen Tabellen, Prüffunktionen (z. B. `pep.pruefung`, `pep.woche_kennzahlen`, `pep.zeitkonto_woche`), den Nachbuch-Triggern des Zeitkontos und den Browser-Funktionen `public.pep_*`. Eine idempotente Datei: erneutes Ausführen ist unschädlich und behält die Daten |
 | `supabase/schulferien-BY.sql` | Schulferien Bayern 2026/27 und 2027/28 für Filiale 2558 (Quelle im Kopf), idempotent |
 | `tests/` | Tests gegen eine lokale Postgres-Instanz (PGlite) mit nachgebildeten Supabase-Rollen und dem eingefrorenen Urlaubstool-Schema (`tests/fixtures/`); reine JS-Module ohne DOM mit `node --test` |
 | `tests/vorschau/` | Vorschau der Oberfläche ohne Supabase (siehe unten) |
@@ -36,16 +42,85 @@ Kommentare, Vorlagen und Wochenwerte sowie die feste Bedeutung „Kasse“/„VP
 Bereiche KA und VP. `tests/umstellung.test.mjs` belegt das: Eine Stufe-0-Datenbank
 mit Daten bekommt das aktuelle Schema zweimal, die Daten bleiben gleich.
 
+**Von Stufe 1 auf Stufe 2:** ebenfalls nur `supabase/schema.sql` im SQL-Editor
+**erneut** ausführen; die Datei ist idempotent und behält alle Daten. **Reihenfolge:
+erst das Schema in Supabase, dann nach `main` mergen** (bzw. die Seiten aktualisieren).
+Die Seite der Stufe 1 läuft mit der Datenbank der Stufe 2 weiter, umgekehrt nicht; auch
+der Weckruf braucht `pep_lebenszeichen` aus dem neuen Schema. Neu sind die
+Tabellen für IST (`ist_bloecke`, `ist_tage`, `ist_leer`), Wochenabschlüsse und das
+Zeitkonto-Journal samt Nachbuch-Triggern, die Spalte „Gutschrift im Zeitkonto“ der
+Abwesenheitscodes (ZA aus) und die Einstellung `ist_ab`. **`ist_ab` steht danach auf
+dem Montag der Woche, in der das Schema eingespielt wurde** (Start der IST-Erfassung);
+früher oder später starten geht nur vor dem ersten Wochenabschluss (Einstellungen →
+„IST-Erfassung ab“). Startsalden aus der bisherigen Zeiterfassung vor dem ersten
+Abschluss eintragen (ANLEITUNG, Abschnitt 1). `tests/umstellung.test.mjs` spielt das
+aktuelle Schema auch auf eine eingefrorene Stufe-1-Datenbank
+(`tests/fixtures/pep-schema-stufe-1.sql`).
+
 ## Sicherheitsprinzip
 
 Das Repository ist öffentlich, die Daten sind es nicht. Alle Tabellen liegen im
 Schema `pep`; Row Level Security ist eingeschaltet, es gibt bewusst keine Policies,
 und `anon`/`authenticated` haben keinen Zugriff auf das Schema. Der Browser ruft
 ausschließlich `SECURITY DEFINER`-Funktionen `public.pep_*` auf, die Anmeldung,
-Rolle (Leitung, Stellvertretung, Mitarbeiter) und Filiale serverseitig prüfen.
+Rolle (Leitung, Stellvertretung, Mitarbeiter) und Filiale serverseitig prüfen;
+`anon` (ohne Anmeldung) darf davon nur `pep_lebenszeichen` aufrufen (Weckruf, liest nichts).
 Die Anmeldung läuft über die Konten des Urlaubstools. Der Schlüssel in
 `docs/config.js` ist absichtlich öffentlich. `tests/rechte.test.mjs` prüft jede
 `public.pep_*`-Funktion: neue Funktionen müssen dort eingetragen werden.
+
+## Pausieren verhindern und Projekt wiederherstellen
+
+Das kostenlose Supabase-Projekt wird nach etwa sieben Tagen mit wenig Aktivität
+pausiert. Dagegen ruft GitHub alle zwei Tage von selbst eine harmlose Funktion
+(`pep_lebenszeichen`) auf; sie liest keine Daten. Das erledigt der Workflow
+„Weckruf“ (`.github/workflows/weckruf.yml`), es ist nichts zu tun.
+
+- **Vor dem ersten Lauf** muss `pep_lebenszeichen` in Supabase eingespielt sein.
+  Sie gehört zum Schema-Update (`supabase/schema.sql` im SQL-Editor ausführen).
+- **Schlägt ein Lauf fehl**, schickt GitHub eine E-Mail.
+- **GitHub schaltet zeitgesteuerte Workflows ab**, wenn das Repository 60 Tage
+  ohne Änderung bleibt. Dann auf GitHub unter Actions → Weckruf auf
+  „Enable workflow“ klicken.
+- **Wurde das Projekt trotzdem pausiert:** im Supabase-Dashboard das Projekt
+  öffnen und „Restore project“ wählen. Die Daten bleiben erhalten, wenn das
+  innerhalb von 90 Tagen geschieht.
+- Ein Projekt trägt PEP und das Urlaubstool zusammen; der Weckruf schützt beide.
+
+## Sicherung
+
+Supabase sichert im kostenlosen Tarif nichts. Die Leitung lädt unter Einstellungen →
+Sicherung eine JSON-Datei mit allen Daten der Filiale herunter (`pep_sicherung`) und
+kann sie in eine **leere** Filiale einspielen (`pep_sicherung_pruefen` für die Vorschau,
+`pep_sicherung_einspielen`), z. B. nach einem Datenverlust in ein neues Projekt.
+Schritte und Grenzen: [ANLEITUNG.md](ANLEITUNG.md), Abschnitt „Sicherung“.
+
+- **Format** (`version: 1`, im Kopf des Abschnitts „Sicherung“ in `schema.sql`):
+  `filiale`, `benutzer` (Benutzername und Rolle), `konten` (user_id → Benutzername),
+  `tabellen` (jede Tabelle mit allen Spalten, nach Primärschlüssel; `protokoll` nur ab
+  `protokoll_ab` = jetzt − 12 Monate), `anzahl`, `urlaub` (Titel, Jahr und Organisator
+  jeder Umfrage, Name jedes Teilnehmers) und `pruefsumme` = md5 über den Text von
+  `tabellen`. Zahlen stehen in der Form, die JavaScript schreibt, damit die Prüfsumme
+  `JSON.parse`/`JSON.stringify` im Browser übersteht. Geprüft wird auch die Kette des
+  Journals (`saldo_nach` = vorheriges + `stunden`).
+- **Vollständigkeit:** `pep.sicherung_tabellen()` (gesichert, in Einspiel-Reihenfolge)
+  und `pep.sicherung_ausnahmen()` (mit Grund: `sicherungen`, `zeitkonto_vormerkungen`,
+  `filialen` und `benutzer` als eigene Abschnitte). `tests/sicherung.test.mjs` schlägt
+  fehl, wenn eine Tabelle des Schemas `pep` in keiner der beiden Listen steht, wenn eine
+  `…_id`-Spalte kein Fremdschlüssel ist, eine jsonb-Spalte nicht eingeordnet ist oder ein
+  Fremdschlüssel-Ziel in der Liste nach der verweisenden Tabelle steht.
+  **Neue Tabelle in einer späteren Stufe → dort eintragen.**
+- **Einspielen:** neue Ids; Verweise zwischen pep-Tabellen über die Fremdschlüssel im
+  Katalog umgeschlüsselt, dazu die Ids in `vorlagen.daten`; Benutzer über den
+  Benutzernamen; die Nachbuch-Trigger laufen nicht (`pep.einspielen`), das Journal kommt
+  mit seinen Werten. Urlaubstool-Verweise (Schaltung, Zuordnung, Ids im Wunsch einer
+  Freigabe) über Organisator/Titel/Jahr bzw. Namen, weil das Urlaubstool beim eigenen
+  Einspielen neue Ids vergibt; erlaubt sind nur Umfragen nach `pep.umfrage_erlaubt`
+  (dieselbe Regel wie beim Einschalten: Organisator ist Leitung der Filiale und hat sich
+  seit der Zuordnung selbst angemeldet, `benutzer.bestaetigt_am`; Benutzer aus der Datei
+  sind das im neuen Projekt noch nicht, ihre Umfragen werden ausgelassen und gezählt). Eine Datei einer neueren Stufe (unbekannte Tabelle
+  mit Zeilen oder Spalte mit Werten) lehnt schon die Vorschau ab (`SICHERUNG_NEUER`);
+  einer älteren fehlende Einstellungen ergänzt `pep.grundausstattung`.
 
 ## Verhältnis zum Urlaubstool
 
@@ -61,7 +136,7 @@ npm install
 npm test
 ```
 
-Stand Stufe 1: **246 Tests, alle grün** (rund 30 s). Die zwei Startbestand-Tests
+Stand Stufe 2: **386 Tests, alle grün** (rund 37 s). Die zwei Startbestand-Tests
 lesen `privat/stammdaten-aschaffenburg.sql` und werden ohne diese Datei
 übersprungen; alle anderen Tests laufen in jedem Checkout.
 
@@ -88,11 +163,17 @@ Die Oberfläche lässt sich ohne Supabase ansehen, mit erfundenen Daten.
 Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funktionen.
 
 - **Lauf:** `node tests/browser/szenarien.mjs [filter]` startet den Testserver und Chrome,
-  spielt alle Szenarien der Stufe 1 durch (Maus und Touch, Tablet 1024×768) und prüft
-  jeweils Oberfläche und Datenbankstand. Fotos, PDFs, die Excel-Datei und
-  `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
+  spielt **59 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 3 min) und
+  prüft jeweils Oberfläche und Datenbankstand. Die Szenarien 1–44 decken Stufe 1 ab,
+  45–54 IST-Erfassung, Zeitkonto, die neuen Kacheln und Ausdrucke von Stufe 2, 55 die
+  Sicherung (herunterladen, in eine zweite, leere Filiale einspielen), 56 die
+  Urlaubstool-Umfrage einer zweiten Leitung samt Zuordnungsvorschlägen, 57 die Hilfe,
+  58 eine nicht gebuchte Diff (Reiter und Ausdrucke), 59 die Hinweise zu Teiler und
+  Codes in den Einstellungen. Fotos,
+  PDFs, die Excel-Dateien und `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
 - **Server:** `tests/browser/server.mjs` baut die Datenbank wie `tests/helfer.mjs` in
-  PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026) und bildet
+  PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026, Start der
+  IST-Erfassung 02.11.2026; ab Szenario 45 stellt der Test heute auf 16.11.2026) und bildet
   PostgREST (`/rest/v1/rpc/…`) und die Anmeldung nach. `docs/` läuft unverändert, nur
   `config.js` zeigt auf den Testserver und die CSP erlaubt `connect-src 'self'`.
   Allein gestartet (`node tests/browser/server.mjs 8124`) lässt sich unter
@@ -108,6 +189,5 @@ Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funk
 
 ## Ausblick
 
-Nächste Stufen: Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), IST-Erfassung
-und Zeitkonto, eine Seite für die Rolle „Mitarbeiter“, Tausch und Fairness auf der
-Startseite.
+Nächste Stufen: Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), eine Seite für die
+Rolle „Mitarbeiter“, Tausch und Fairness auf der Startseite.

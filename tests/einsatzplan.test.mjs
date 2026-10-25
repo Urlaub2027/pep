@@ -214,7 +214,7 @@ test('KA 10–14, BS 08–13, malen KA 14–16 → gespeichert ein Block 10–16
 });
 
 test('dieselbe Lage, 13–14 auf OG umfärben → erlaubt: KA 10–13 unbesetzt, OG 13–14, KA 14–16; 3,00 h', async () => {
-  const a = await ma('Test, Olga', { kompetenzen: ['KA', 'OG'] });
+  const a = await ma('Test, Odile', { kompetenzen: ['KA', 'OG'] });
   await malen(leitung, a, '2026-11-12', '10:00', '14:00', 'KA');
   await abwesend(a, 'BS', '2026-11-12', 5, '08:00', '13:00');
   await malen(leitung, a, '2026-11-12', '14:00', '16:00', 'KA');

@@ -97,6 +97,100 @@ h3 { font-size: 1rem; }
 .reiter-knopf.rechts { margin-left: auto; color: var(--text-2); }
 .reiter-knopf[hidden] { display: none; }
 
+/* ---------------------------------------------------------------- Hilfe: „?“-Knopf, Tipp und Leiste (hilfe-leiste.js) */
+
+.hilfe-knopf {
+  align-self: center;
+  width: 36px;
+  height: 36px;
+  margin-left: var(--a2);
+  padding: 0;
+  font: inherit;
+  font-size: 1.1rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--schwarz);
+  background: var(--netto-gelb);
+  border: 2px solid var(--schwarz);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: background-color var(--dauer);
+  -webkit-tap-highlight-color: transparent; /* die Leiste ist die Rückmeldung; sonst bleibt am Tablet ein Kasten stehen */
+}
+.hilfe-knopf:hover { background: #f5dc00; }
+@media (pointer: coarse) { .hilfe-knopf { width: 44px; height: 44px; } }
+/* Tipp beim ersten Besuch: unter dem Knopf, fängt keine Klicks ab und verschwindet von selbst */
+.hilfe-tipp {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: var(--a4);
+  margin: 0;
+  padding: var(--a2) var(--a3);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--schwarz);
+  border-radius: 6px;
+  box-shadow: var(--schatten-2);
+  pointer-events: none;
+  animation: hilfe-tipp-ein 200ms ease-out;
+}
+.hilfe-tipp::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 14px;
+  border: 6px solid transparent;
+  border-top: 0;
+  border-bottom-color: var(--schwarz);
+}
+@keyframes hilfe-tipp-ein { from { opacity: 0; transform: translateY(-4px); } }
+
+/* Leiste von rechts; am Tablet (bis 1200 px, wie die Kacheln) bildschirmfüllend */
+.hilfe-leiste {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: 440px;
+  max-width: 100%;
+  height: 100%;
+  max-height: 100%;
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  background: var(--flaeche);
+  border: 0;
+  border-left: 6px solid var(--netto-gelb);
+  box-shadow: var(--schatten-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  animation: hilfe-leiste-ein 180ms ease-out;
+}
+.hilfe-leiste[open] { display: flex; flex-direction: column; }
+.hilfe-leiste::backdrop { background: rgba(0, 0, 0, 0.3); }
+@keyframes hilfe-leiste-ein { from { transform: translateX(40px); opacity: 0; } }
+.hilfe-inhalt { flex: 1 0 auto; padding: var(--a4) var(--a5) var(--a2); font-size: 0.95rem; line-height: 1.35; }
+.hilfe-inhalt h2 { margin: 0 0 var(--a3); font-size: 1.35rem; }
+.hilfe-inhalt h2:focus { outline: none; }
+.hilfe-inhalt h3 { margin: 14px 0 var(--a1); font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-2); }
+.hilfe-inhalt p { margin: 0; }
+.hilfe-inhalt ol, .hilfe-inhalt ul { margin: 0; padding-left: 1.4em; }
+.hilfe-inhalt li { margin: 0 0 6px; }
+.hilfe-schritte li::marker { font-weight: 800; }
+.hilfe-knoepfe {
+  position: sticky;
+  bottom: 0;
+  padding: var(--a2) var(--a5) var(--a3);
+  background: var(--flaeche);
+  border-top: 1px solid var(--linie);
+}
+@media (max-width: 1200px) {
+  .hilfe-leiste { width: 100%; border-left: 0; border-top: 6px solid var(--netto-gelb); }
+  .hilfe-inhalt, .hilfe-knoepfe { width: 100%; max-width: 720px; margin: 0 auto; }
+  .hilfe-inhalt { padding-top: var(--a5); font-size: 1.05rem; line-height: 1.4; }
+  .hilfe-inhalt li { margin-bottom: var(--a2); }
+}
+@media print { .hilfe-knopf, .hilfe-tipp { display: none; } }
+
 main { max-width: 1600px; margin: 0 auto; padding: var(--a4); }
 section[hidden] { display: none; }
 
@@ -266,6 +360,9 @@ input.schalter:checked::before { transform: translateX(16px); }
 
 .hinweis { color: var(--text-2); }
 .hinweis-gelb { padding: var(--a2) var(--a3); background: var(--hinweis); border-left: 4px solid var(--netto-gelb); border-radius: 4px; }
+/* Einstellungen → Sicherung (sicherung.js): Anzahlen in der Vorschau und im Ergebnis */
+.sicherung-anzahl { margin: var(--a1) 0 var(--a3); padding-left: var(--a4); columns: 2 260px; }
+.sicherung-anzahl li { padding: 2px 0; break-inside: avoid; }
 .warnung { padding: var(--a2) var(--a3); color: var(--text); background: #fdecee; border-left: 4px solid var(--netto-rot); border-radius: 4px; }
 .unbesetzt {
   background: repeating-linear-gradient(-45deg, rgba(227, 6, 19, .22) 0 4px, rgba(227, 6, 19, .05) 4px 8px);
@@ -477,6 +574,10 @@ th { background: var(--hell); font-weight: 600; }
 .pd-eck-liste { margin: 0; padding-left: 1.1em; }
 .pd-eck-liste li { margin-bottom: 2px; overflow-wrap: anywhere; }
 .pd-eck-liste small { display: block; color: var(--text-2); }
+.pd-eck-zk { min-height: 32px; padding: 2px 4px; font: inherit; font-weight: 700; color: inherit; text-align: left;
+  background: none; border: 0; border-bottom: 2px solid var(--netto-gelb); cursor: pointer; }
+.pd-eck-zk:hover { background: var(--hover-gelb); }
+.pd-eck-zk.warnung { background: var(--hinweis); }
 .pd-samstage, .pd-lagen { display: flex; flex-wrap: wrap; gap: var(--a1); margin: 0 0 var(--a2); padding: 0; list-style: none; }
 .pd-sa { padding: 2px 8px; font-size: 0.9rem; border: 1px solid var(--linie-stark); border-radius: 4px; background: var(--flaeche); }
 .pd-sa.gearbeitet { background: var(--hell); }
@@ -525,7 +626,10 @@ th { background: var(--hell); font-weight: 600; }
 .zeile:last-child { border-bottom: 0; }
 .zeile .feld { width: 170px; margin-bottom: 0; }
 .zeile .feld.breit { width: 100%; }
+.codes .zeile .feld.haken { width: auto; }
+.codes .zeile .code-doppelt { width: 100%; margin: 0; }
 .zeile .zeilentitel { width: 100%; }
+.zeile .zeilentitel .hinweis { font-weight: normal; }
 .zeile .zeiten { display: flex; gap: var(--a3); }
 .zeile .zeiten[hidden] { display: none; }
 .zeile .zeiten .feld { width: 120px; }
@@ -652,6 +756,46 @@ th { background: var(--hell); font-weight: 600; }
   cursor: pointer;
 }
 .ep-ersatz:hover { color: #fff; background: var(--netto-rot); }
+/* IST-Modus (ist-ansicht.js): Plan als dünner Umriss, Vorschlag blass mit gestrichelter Kante. Vor „markiert“, damit
+   die Strich-Markierung gewinnt. */
+.ep-tabelle td.ep-z.plan, .ep-tabelle td.ep-z.vorschlag { position: relative; }
+.ep-tabelle td.ep-z.plan::before, .ep-tabelle td.ep-z.vorschlag::after {
+  content: ""; position: absolute; top: 4px; bottom: 4px; left: 0; right: 0; z-index: 1; pointer-events: none;
+}
+.ep-tabelle td.ep-z.plan::before { border-top: 2px solid rgba(17, 17, 17, .62); border-bottom: 2px solid rgba(17, 17, 17, .62); }
+.ep-tabelle td.ep-z.plan-a::before { left: 2px; border-left: 2px solid rgba(17, 17, 17, .62); border-radius: 4px 0 0 4px; }
+.ep-tabelle td.ep-z.plan-e::before { right: 2px; border-right: 2px solid rgba(17, 17, 17, .62); border-radius: 0 4px 4px 0; }
+.ep-tabelle td.ep-z.plan-a.plan-e::before { border-radius: 4px; }
+.ep-tabelle td.ep-z.vorschlag { background-image: linear-gradient(rgba(255, 255, 255, .55), rgba(255, 255, 255, .55)); }
+.ep-tabelle td.ep-z.vorschlag::after { border-top: 2px dashed var(--grau); border-bottom: 2px dashed var(--grau); }
+.ep-tabelle td.ep-z.v-a::after { left: 2px; border-left: 2px dashed var(--grau); }
+.ep-tabelle td.ep-z.v-e::after { right: 2px; border-right: 2px dashed var(--grau); }
+.ep-tabelle col.ist-status-spalte { width: 118px; }
+.ep-tabelle col.ist-abw-spalte { width: 52px; }
+.ep-tabelle td.ist-status { padding: 0 4px 0 var(--a2); text-align: left; white-space: nowrap; }
+.ep-tabelle th.ist-status { padding-left: var(--a2); text-align: left; }
+.ist-status-inhalt { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.ist-status.ist-bestaetigt { color: var(--ok); font-weight: 700; }
+.ist-status.ist-vorschlag, .ist-status.ist-offen { color: var(--text-2); }
+.ist-status.ist-leer { color: var(--text); font-style: italic; }
+.ist-ok-knopf {
+  flex: none; width: 30px; height: 30px; padding: 0;
+  font: inherit; font-size: 15px; font-weight: 700; color: var(--ok);
+  background: var(--flaeche); border: 1px solid var(--linie-stark); border-radius: 6px; cursor: pointer;
+}
+.ist-ok-knopf:hover { color: #fff; background: var(--ok); border-color: var(--ok); }
+.ep-tabelle td.ist-abw { padding: 0 var(--a1); font-weight: 600; }
+.ep-tabelle td.ist-abw.plus { color: var(--ok); }
+/* Status, ✓ und Abw. kleben rechts (wie der Name links), damit ✓ am Tablet ohne Querscrollen erreichbar bleibt */
+.ist-tabelle .ist-status, .ist-tabelle .ist-abw { position: sticky; z-index: 2; background: var(--flaeche); }
+.ist-tabelle .ist-status { right: 52px; box-shadow: inset 1px 0 0 var(--linie-stark); }
+.ist-tabelle .ist-abw { right: 0; }
+.ist-tabelle thead th.ist-status, .ist-tabelle thead th.ist-abw { z-index: 4; background: var(--hell); }
+.ep-modus .chip { min-width: 52px; justify-content: center; }
+.ep-tag.ist-zukunft { color: var(--text-2); border-style: dashed; }
+.ist-offen-tag span { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.dialog .ist-grund input { width: 100%; }
+
 /* Gezogener Strich; „wartet“: Antwort steht noch aus (hinter dem vorigen Strich der Zeile), sieht gleich aus */
 .ep-tabelle td.ep-z.markiert, .ep-tabelle td.ep-z.wartet { background-image: linear-gradient(rgba(255, 229, 0, .65), rgba(255, 229, 0, .65)); box-shadow: inset 0 2px 0 var(--schwarz), inset 0 -2px 0 var(--schwarz); }
 
@@ -738,11 +882,59 @@ table.vorausplanung td.plus { color: var(--ok); font-weight: 700; }
 table.vorausplanung td.vorgabe strong { display: block; font-size: 1.1rem; }
 table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); font-weight: 400; }
 
+/* ---------------------------------------------------------------- Zeitkonto (zeitkonto.js)
+   Plus grün, Minus rot (wie Vorausplanung); Saldo über dem Warnwert zusätzlich ⚠ auf gelbem Hinweisgrund. */
+.zk-knoepfe { display: flex; flex-wrap: wrap; gap: var(--a2); }
+.zk-zeitraum { display: flex; flex-wrap: wrap; gap: 0 var(--a3); }
+.zk-zeitraum .feld { flex: 1 1 140px; }
+.zk-status-zeile { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a2) var(--a3); margin-left: auto; }
+.zk-status { margin: 0; color: var(--text-2); }
+.zk-gebucht { margin-left: auto; color: var(--text); font-weight: 600; }
+.zk-gebucht span { color: var(--ok); font-weight: 800; }
+.zk-offen {
+  padding: 2px 8px; font: inherit; font-size: 0.85rem; font-weight: 600; color: var(--text); white-space: nowrap;
+  background: var(--hinweis); border: 0; border-left: 3px solid var(--netto-gelb); border-radius: 3px; cursor: pointer;
+}
+.zk-offen:hover { background: var(--hover-gelb); text-decoration: underline; }
+/* Passt ohne Querscrollen auf 1024 px (Tablet): lange Spaltenköpfe brechen um, der Scroll-Container ist nur Reserve */
+table.zk-tabelle { min-width: 760px; font-variant-numeric: tabular-nums; }
+table.zk-tabelle thead th { vertical-align: bottom; }
+table.zk-tabelle th.zahl { text-align: right; }
+table.zk-tabelle tbody th { font-weight: 400; background: none; white-space: nowrap; }
+table.zk-tabelle tbody tr:hover > * { background: var(--hover-gelb); }
+table.zk-tabelle tfoot th, table.zk-tabelle tfoot td { font-weight: 700; background: var(--hell); border-bottom: 0; }
+table.zk-tabelle td { white-space: nowrap; }
+table.zk-tabelle tr.inaktiv > * { color: var(--text-2); }
+.zk-tabelle .zahl.plus, .zk-journal .zahl.plus { color: var(--ok); font-weight: 700; }
+table.zk-tabelle td.zk-warnung { background: var(--hinweis); }
+/* Laufende Woche: Diff und Saldo aktuell neutral grau, im Spaltenkopf „vorläufig“ */
+.zk-tabelle .zahl.vorlaeufig { color: var(--text-2); font-weight: 400; font-style: italic; }
+.zk-vorlaeufig-marke { display: block; font-size: 0.75rem; font-weight: 400; font-style: italic; color: var(--text-2); }
+/* Diff, die der Abschluss nicht bucht (pep_zeitkonto_woche.gebucht = false): grau mit „nicht gebucht“ darunter */
+.zk-nicht-gebucht-marke { display: block; font-size: 0.75rem; font-style: italic; color: var(--text-2); }
+.dialog .zk-erster { margin-top: 0; }
+.zk-name {
+  padding: 0; font: inherit; color: var(--text); text-align: left; background: none; border: 0; cursor: pointer;
+  text-decoration: underline dotted var(--linie-stark); text-underline-offset: 3px;
+}
+.zk-name:hover { text-decoration-color: var(--schwarz); }
+.zk-fuss { margin: var(--a2) 0 0; font-size: 0.85rem; }
+.dialog.zk-journal-dialog { max-width: 900px; }
+.zk-saldo { margin: 0 0 var(--a3); }
+.zk-saldo strong { font-size: 1.1rem; }
+table.zk-journal-tabelle { font-size: 0.9rem; }
+table.zk-journal-tabelle th.zahl { text-align: right; }
+table.zk-journal-tabelle td { white-space: nowrap; }
+table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; overflow-wrap: anywhere; }
+.zk-journal-knoepfe { display: contents; } /* Knöpfe fließen in die Knopfleiste des Dialogs */
+
 /* ---------------------------------------------------------------- Startseite (start.js)
    Vier Kacheln: oben ein farbiger Rand (Rot nur bei Verstoß oder Lücke, Grün ohne Befund, sonst Gelb). */
 .start-kopf { margin: 0 0 var(--a3); color: var(--text-2); }
 .start-kopf strong { color: var(--text); }
-.kacheln { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--a4); align-items: stretch; }
+.start-sicherung { margin: calc(-1 * var(--a2)) 0 var(--a3); }
+.start-sicherung.hinweis-gelb { display: inline-block; }
+.kacheln { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--a4); align-items: stretch; }
 @media (max-width: 1200px) { .kacheln { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .kacheln { grid-template-columns: minmax(0, 1fr); } }
 .kachel { display: flex; flex-direction: column; margin: 0; border-top: 6px solid var(--netto-gelb); }
@@ -837,4 +1029,28 @@ table.vorausplanung td.vorgabe .quelle { display: block; color: var(--text-2); f
   /* Resturlaub */
   .dr-resturlaub tbody tr { height: 6mm; }
   .dr-resturlaub thead th { font-size: 7pt; }
+
+  /* Wocheneinsatz-IST (Stufe 2): wie der Wochenplan; „offen“ grau und kursiv (zählt nicht) */
+  .dr-wochenist td.dr-offen { color: #555; font-style: italic; }
+  .dr-wochenist td.dr-nicht-gebucht { color: #555; font-style: italic; }
+  .dr-wochenist td.dr-nicht-gebucht small { display: block; font-size: 6pt; }
+
+  /* Stundenblatt (Stufe 2): A4 hoch über die benannte Seite „hoch“, eine Seite je Mitarbeiter (.dr-seite) */
+  @page hoch { size: A4 portrait; margin: 10mm 12mm; }
+  .dr-hoch { page: hoch; }
+  .dr-stundenblatt tbody tr { height: 5.4mm; }
+  .dr-stundenblatt tfoot { display: table-row-group; } /* Summe nur am Ende, nicht auf jeder Seite (über 31 Tage) */
+  .dr-stundenblatt tbody tr.dr-we td { background: #f2f2f2; }
+  .dr-stundenblatt tbody tr.dr-offen td:last-child { font-style: italic; }
+  .dr-stundenblatt-wochen tbody tr { height: 5.4mm; }
+  .dr-hoch .dr-kopf-rechts { flex-direction: column; align-items: flex-end; gap: 0; white-space: nowrap; }
+  .dr-person { display: block; margin-top: 1.5mm; font-size: 11pt; }
+  .dr-zwischentitel { margin: 4mm 0 1.5mm; font-size: 9pt; }
+  .dr-sb-ende { break-inside: avoid; } /* Legende und Unterschriften zusammen, nie die Unterschrift allein */
+  .dr-unterschriften { display: flex; gap: 12mm; margin-top: 14mm; break-inside: avoid; }
+  .dr-unterschrift { flex: 1; padding-top: 1mm; border-top: 0.5pt solid #000; font-size: 7.5pt; }
+  .dr-c-sb-tag { width: 20mm; }
+  .dr-c-sb-zeit { width: 18mm; }
+  .dr-c-sb-abw { width: 24mm; }
+  .dr-c-sb-kw { width: 20mm; }
 }

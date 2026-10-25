@@ -1,4 +1,4 @@
-// Browser-Test Stufe 1: echte Oberfläche (docs/) in Chrome headless gegen die echten SQL-Funktionen (PGlite im
+// Browser-Test Stufe 1 und 2: echte Oberfläche (docs/) in Chrome headless gegen die echten SQL-Funktionen (PGlite im
 // Testserver tests/browser/server.mjs). Jedes Szenario prüft DOM und Datenbankstand, macht ein Foto
 // (tests/browser/fotos/, gitignored) und sammelt Konsolenfehler. Ein Fehlschlag hält den Lauf nicht an.
 // Start: node tests/browser/szenarien.mjs [filter]   (filter: Teil des Szenario-Namens, optional)
@@ -8,7 +8,8 @@ import { crc32 } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import { starteServer, PASSWORT } from './server.mjs';
 import { starteChrome } from './cdp.mjs';
-import { HEUTE, TAGE } from './daten.mjs';
+import { HEUTE, TAGE, IST_AB, HEUTE_IST } from './daten.mjs';
+import { HILFE } from '../../docs/hilfe-texte.js';
 
 const FOTOS = fileURLToPath(new URL('./fotos/', import.meta.url)); // mit abschließendem Trenner
 rmSync(FOTOS, { recursive: true, force: true });
@@ -262,7 +263,8 @@ await szenario('Startseite: Kacheln gegen Datenbank, Sprünge', async () => {
     titel: k.querySelector('h2').textContent, zahl: k.querySelector('.kachel-zahl').firstChild.textContent,
     liste: [...k.querySelectorAll('.kachel-liste li')].map((l) => l.textContent),
   })));
-  gleich(kacheln.map((k) => k.titel), ['Abwesend diese Woche', 'Stunden-Lücke', 'Regelverstöße', 'Offene Urlaubswünsche'], 'Kacheln');
+  gleich(kacheln.map((k) => k.titel), ['Abwesend diese Woche', 'Stunden-Lücke', 'Regelverstöße', 'Offene Urlaubswünsche',
+    'IST offen', 'Zeitkonto auffällig'], 'Kacheln');
   // 1) Abwesende KW 45 (02.–08.11.)
   const abw = await sql(`select count(distinct a.mitarbeiter_id)::int as n from pep.abwesenheiten a
     join pep.mitarbeiter m on m.id = a.mitarbeiter_id where m.aktiv and a.datum between '2026-11-02' and '2026-11-08'`);
@@ -1479,7 +1481,1008 @@ await szenario('Stellvertretung: Rechte in allen Reitern', async () => {
   await reiter('vorausplanung');
   pruefe(await c.werte(() => [...document.querySelectorAll('#ansicht-vorausplanung input')].every((e) => !e.disabled)), 'Vorausplanung beschreibbar');
   await reiter('start');
-  pruefe((await anzahl('#ansicht-start .kachel')) === 4, 'Startseite mit vier Kacheln');
+  pruefe((await anzahl('#ansicht-start .kachel')) === 6, 'Startseite mit sechs Kacheln');
+});
+
+// ================================================================ Stufe 2: IST-Erfassung und Zeitkonto
+// Ab hier ist heute = Mo 16.11.2026 (KW 47), in der Datenbank (pep.heute) und im Browser (feste Uhr, ab dem nächsten
+// Laden). Start der IST-Erfassung ist IST_AB = Mo 02.11. (KW 45, daten.mjs): KW 45 und KW 46 sind vorbei und lassen
+// sich bestätigen und abschließen, KW 44 liegt vor dem Start. Die Szenarien bauen aufeinander auf (Bestätigen →
+// Abschluss → Korrektur → Ausdrucke); Vorbereitungen per RPC sind wiederholbar, damit auch ein gefilterter Lauf geht.
+await sql("select set_config('pep.heute', $1, false)", [HEUTE_IST]);
+await c.uhr(HEUTE_IST);
+const K45 = ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07'];
+
+async function alsBenutzer(name) {
+  if (await sichtbar('#abmelden')) {
+    await c.klick('#abmelden');
+    await c.warteAuf(() => !document.getElementById('ansicht-login').hidden, { text: 'Login nach Abmelden' });
+  }
+  await anmelden(name); // lädt die Seite neu: die Uhr des Browsers steht danach auf HEUTE_IST
+  gleich(await text('#wer'), `Angemeldet als ${name}`, 'Angemeldet');
+}
+const istBloecke = async (mid, datum) => (await sql(
+  `select b.kuerzel || ' ' || to_char(i.von, 'HH24:MI') || '-' || to_char(i.bis, 'HH24:MI') as x
+     from pep.ist_bloecke i join pep.bereiche b on b.id = i.bereich_id
+    where i.mitarbeiter_id = $1 and i.datum = $2::date order by i.von`, [mid, datum])).map((r) => r.x);
+const offeneZeilen = async (von, bis = von) => sql(
+  `select z.mitarbeiter_id as id, z.datum::text as datum from pep.ist_zeilen($1, $2::date, $3::date, null) z
+    where z.bestaetigt_am is null order by z.datum, z.mitarbeiter_id`, [B.fil, von, bis]);
+const journalDB = async (mid) => sql(`select art, stunden::float as stunden, datum::text as datum, grund
+  from pep.zeitkonto_buchungen where mitarbeiter_id = $1 order by id`, [mid]);
+const abschluesse = async () => (await sql('select montag::text as m from pep.wochen_abschluesse order by montag')).map((r) => r.m);
+const istStatus = (mid) => text(`#ansicht-einsatzplan tr[data-mitarbeiter="${mid}"] .ist-status span`);
+const rpcSeit = (n, funktion) => s.aufrufe.slice(n).filter((a) => a.funktion === funktion);
+// Alle offenen Zeilen dieser Tage bestätigen (wie „Tag bestätigen“, Vorbereitung ohne Oberfläche).
+async function bestaetigeTage(tage) {
+  for (const d of tage) {
+    const r = await s.rpc('pep_ist_bestaetigen', { p_datum: d, p_mitarbeiter_ids: null }, B.leitung);
+    if (r.status !== 200) throw new Error(`pep_ist_bestaetigen ${d}: ${r.json?.message}`);
+  }
+}
+// Einsatzplan im Modus IST an diesem Tag.
+async function istTag(datum) {
+  await epTag(datum);
+  if (await c.werte(() => document.querySelector('#ansicht-einsatzplan [data-modus="ist"]')?.getAttribute('aria-pressed') !== 'true')) {
+    await c.klick('#ansicht-einsatzplan [data-modus="ist"]');
+    await ruhe();
+  }
+  await c.warteAuf((d) => document.querySelector('#ansicht-einsatzplan [data-modus="ist"]')?.getAttribute('aria-pressed') === 'true'
+    && document.querySelector('#ansicht-einsatzplan .ep-datum')?.value === d, { text: `IST ${datum}` }, datum);
+}
+// Die Meldung unten (Toast, z. B. „Rückgängig: …“) kann einen Knopf verdecken; vor einem Klick dorthin ausblenden.
+const toastWeg = () => c.werte(() => { document.getElementById('toast').hidden = true; });
+// abgeschlossen_am ist die echte Uhrzeit des Servers (now()), nicht pep.heute(): Datum wie der Browser es zeigt.
+const abschlussDatum = async (montag) => c.werte((iso) => new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+  (await sql('select abgeschlossen_am as a from pep.wochen_abschluesse where montag = $1::date', [montag]))[0].a.toISOString());
+const rueckgaengigKlick = () => c.klick({ text: 'Rückgängig', in: '#ansicht-einsatzplan .ep-knoepfe', sel: 'button' });
+const zkWoche = () => text('#ansicht-zeitkonto .monatsname');
+const zkKnopf = () => c.werte(() => {
+  const k = [...document.querySelectorAll('#ansicht-zeitkonto button')].find((b) => b.textContent === 'Woche buchen');
+  return k ? (k.disabled ? 'aus' : 'an') : 'fehlt';
+});
+async function zkBlaettern(richtung) {
+  await c.klick(`#ansicht-zeitkonto [aria-label="${richtung < 0 ? 'Eine Woche zurück' : 'Eine Woche weiter'}"]`);
+  await ruhe();
+}
+const oben = 'dialog[open]:last-of-type'; // der oberste von zwei Dialogen (Buchung über dem Journal)
+const obenKnopf = async (beschriftung) => { await c.klick({ text: beschriftung, in: oben, sel: 'button', genau: true }); await ruhe(); };
+const journalZeilen = () => c.werte(() => [...document.querySelectorAll('dialog[open] .zk-journal-tabelle tbody tr')]
+  .map((r) => [...r.cells].slice(1, 6).map((x) => x.textContent)));
+const journalKnoepfe = () => c.werte(() => [...document.querySelectorAll('dialog[open] .dialog-knoepfe button')].map((b) => b.textContent));
+const zkDatum = (serie) => new Date(Date.UTC(1899, 11, 30) + Number(serie) * 86400000).toISOString().slice(0, 10);
+const pdfSeiten = (pdf) => (Buffer.from(pdf.data, 'base64').toString('latin1').match(/\/Type\s*\/Page(?!s)/g) ?? []).length;
+async function blobFangen() {
+  await c.werte(() => {
+    window.__blobs = [];
+    const echt = URL.createObjectURL.bind(URL);
+    URL.createObjectURL = (b) => { window.__blobs.push(b); return echt(b); };
+  });
+}
+async function blobHolen() {
+  await c.warteAuf(() => window.__blobs.length > 0, { text: 'Excel-Blob' });
+  const b64 = await c.werte(async () => {
+    const b = window.__blobs[0];
+    const bytes = new Uint8Array(await b.arrayBuffer());
+    let s1 = ''; for (const x of bytes) s1 += String.fromCharCode(x);
+    return { typ: b.type, daten: btoa(s1) };
+  });
+  return { typ: b64.typ, puffer: Buffer.from(b64.daten, 'base64') };
+}
+
+const CEM = ID[2];
+await szenario('IST: Vorschlag, Strich, Rückgängig, Tag bestätigen mit Rückfrage, Grund', async () => {
+  await alsBenutzer('chef');
+  await istTag(MI);
+  pruefe(await sichtbar('#ansicht-einsatzplan .ist-tabelle'), 'IST-Tabelle sichtbar');
+  const plan = await bloecke(CEM, MI);
+  gleich(plan, ['KA 14:30-17:30', 'PA 17:30-18:00', 'KA 18:00-20:00'], 'Cem: Plan am Mittwoch');
+  gleich(await istStatus(CEM), 'offen', 'Cem: Status offen');
+  pruefe(await c.werte((x) => document.querySelector(x)?.classList.contains('vorschlag'), epZelle(CEM, '15:00')), 'Vorschlag aus dem Plan blass sichtbar');
+  gleich(await istBloecke(CEM, MI), [], 'DB: noch kein IST');
+  // Erster Strich auf der offenen Zeile startet vom Vorschlag, ohne Grund
+  await pinsel('KA');
+  let n = s.aufrufe.length;
+  await epStrich(CEM, '20:00', '20:30');
+  gleich(await istBloecke(CEM, MI), ['KA 14:30-17:30', 'PA 17:30-18:00', 'KA 18:00-21:00'], 'DB: Vorschlag + Strich');
+  gleich(rpcSeit(n, 'pep_ist_malen').map((a) => [a.status, a.body.p_grund]), [[200, null]], 'pep_ist_malen ohne Grund');
+  gleich(await istStatus(CEM), 'offen', 'nach dem Strich weiter offen');
+  // Rückgängig setzt den Vorschlag als IST zurück (nicht „leer“)
+  await rueckgaengigKlick();
+  await ruhe();
+  gleich(await istBloecke(CEM, MI), plan, 'Rückgängig: wieder der Vorschlag');
+  gleich((await sql('select count(*)::int as n from pep.ist_leer where mitarbeiter_id = $1', [CEM]))[0].n, 0, 'kein „ausdrücklich leer“');
+  // „Tag bestätigen“ fragt nach; Abbrechen lässt alles offen
+  const offen = (await offeneZeilen(MI)).length;
+  pruefe(offen > 5, 'Mittwoch hat offene Zeilen', offen);
+  await c.klick('#ansicht-einsatzplan [data-aktion="tag-bestaetigen"]');
+  gleich(await warteDialog('Tag bestätigen'), 'Tag bestätigen', 'Rückfrage');
+  const frage = await text('dialog[open] p');
+  pruefe(frage.includes(`${offen} offene Zeilen bestätigen? Zeilen ohne IST übernehmen den Plan-Vorschlag.`), 'Rückfrage nennt die offenen Zeilen', frage);
+  pruefe(!(await c.werte(() => document.querySelector('dialog[open] .hinweis-gelb'))), 'kein „Heute wird noch gearbeitet“ (Mittwoch ist vorbei)');
+  n = s.aufrufe.length;
+  await dKnopf('Abbrechen');
+  gleich(rpcSeit(n, 'pep_ist_bestaetigen').length, 0, 'Abbrechen: kein pep_ist_bestaetigen');
+  gleich((await offeneZeilen(MI)).length, offen, 'Abbrechen: alles bleibt offen');
+  await c.klick('#ansicht-einsatzplan [data-aktion="tag-bestaetigen"]');
+  await warteDialog('Tag bestätigen');
+  await dKnopf('Bestätigen');
+  await ruhe();
+  gleich((await offeneZeilen(MI)).length, 0, 'DB: nichts mehr offen');
+  gleich((await meldungen()).toast, `11.11.2026: ${offen} Zeilen bestätigt`, 'Toast');
+  gleich(await istBloecke(CEM, MI), plan, 'Cem: Vorschlag als IST geschrieben');
+  gleich(await c.werte(() => [...document.querySelectorAll('#ansicht-einsatzplan .ist-status span')].filter((x) => x.textContent.startsWith('offen')).length),
+    0, 'Oberfläche: keine Zeile mehr offen');
+  pruefe(await c.werte(() => document.querySelector('#ansicht-einsatzplan [data-aktion="tag-bestaetigen"]').disabled), '„Tag bestätigen“ danach gesperrt');
+  gleich(await istStatus(CEM), 'bestätigt ✓', 'Cem bestätigt');
+  // Strich auf der bestätigten Zeile verlangt einen Grund; Abbrechen sendet nichts, leer wird abgelehnt
+  n = s.aufrufe.length;
+  await epStrich(CEM, '20:00', '20:30');
+  await warteDialog('Grund der Änderung');
+  pruefe((await text('dialog[open] .ist-grund-hinweis'))?.startsWith('Bestätigte Tage werden mit Grund geändert.'), 'allgemeiner Hinweis (KW 46 offen)',
+    await text('dialog[open] .ist-grund-hinweis'));
+  await dKnopf('Abbrechen');
+  gleich(rpcSeit(n, 'pep_ist_malen').length, 0, 'Abbrechen: kein pep_ist_malen');
+  gleich(await istBloecke(CEM, MI), plan, 'Abbrechen: DB unverändert');
+  await epStrich(CEM, '20:00', '20:30');
+  await warteDialog('Grund der Änderung');
+  await dKnopf('Weiter');
+  pruefe((await dFehler()).startsWith('Bitte einen Grund angeben.'), 'leerer Grund abgelehnt', await dFehler());
+  await c.tippe('dialog[open] input', 'Kasse länger besetzt', { enter: true });
+  await ruhe();
+  gleich(await istBloecke(CEM, MI), ['KA 14:30-17:30', 'PA 17:30-18:00', 'KA 18:00-21:00'], 'DB: Strich mit Grund gespeichert');
+  gleich(rpcSeit(n, 'pep_ist_malen').map((a) => [a.status, a.body.p_grund]), [[200, 'Kasse länger besetzt']], 'pep_ist_malen mit Grund');
+  gleich(await istStatus(CEM), 'bestätigt ✓', 'bleibt bestätigt');
+  // Rückgängig schickt denselben Grund
+  n = s.aufrufe.length;
+  await rueckgaengigKlick();
+  await ruhe();
+  gleich(rpcSeit(n, 'pep_ist_zeile_setzen').map((a) => [a.status, a.body.p_grund]), [[200, 'Kasse länger besetzt']], 'Rückgängig mit Grund');
+  gleich(await istBloecke(CEM, MI), plan, 'Rückgängig: wieder wie bestätigt');
+});
+
+await szenario('IST: Strich per Touch und Zeile bestätigen (Tablet), Zeitkonto ohne Querscrollen', async () => {
+  const dana = ID[3];
+  await c.tablet(true);
+  await pause(300);
+  try {
+    await istTag(DI);
+    gleich(await bloecke(dana, DI), ['KA 16:00-20:00'], 'Dana: Plan am Dienstag');
+    await pinsel('KA');
+    await epStrich(dana, '20:00', '20:30', { touch: true });
+    gleich(await istBloecke(dana, DI), ['KA 16:00-21:00'], 'DB nach Touch-Strich');
+    await c.klick(`#ansicht-einsatzplan tr[data-mitarbeiter="${dana}"] .ist-ok-knopf`);
+    await ruhe();
+    gleich(await istStatus(dana), 'bestätigt ✓', 'Dana per ✓ bestätigt');
+    gleich((await sql('select count(*)::int as n from pep.ist_tage where mitarbeiter_id = $1 and datum = $2::date', [dana, DI]))[0].n, 1, 'DB: ist_tage Dana');
+    await c.foto(`${FOTOS}ist-tablet.png`);
+    await c.tippeTouch('[data-ziel="zeitkonto"]');
+    await ruhe();
+    pruefe(await sichtbar('#ansicht-zeitkonto .zk-tabelle'), 'Zeitkonto per Touch');
+    const quer = await c.werte(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    pruefe(quer <= 0, 'Zeitkonto: Seite scrollt nicht quer', `${quer}px Überstand`);
+    await c.foto(`${FOTOS}zeitkonto-tablet.png`);
+  } finally {
+    await c.tablet(false);
+    await pause(300);
+  }
+});
+
+await szenario('IST: Rückgängig aus der Plan-Ansicht fragt nach dem Grund (GRUND_FEHLT)', async () => {
+  const hanna = ID[7];
+  await istTag(DI);
+  const plan = await bloecke(hanna, DI);
+  gleich(plan, ['TS 12:00-16:00', 'PA 16:00-16:30', 'TK 16:30-20:00'], 'Hanna: Plan am Dienstag');
+  await pinsel('TK');
+  await epStrich(hanna, '20:00', '20:30');
+  gleich(await istBloecke(hanna, DI), ['TS 12:00-16:00', 'PA 16:00-16:30', 'TK 16:30-21:00'], 'DB: Strich auf offener Zeile');
+  await c.klick(`#ansicht-einsatzplan tr[data-mitarbeiter="${hanna}"] .ist-ok-knopf`);
+  await ruhe();
+  gleich(await istStatus(hanna), 'bestätigt ✓', 'Zeile danach bestätigt');
+  await c.klick('#ansicht-einsatzplan [data-modus="plan"]');
+  await ruhe();
+  pruefe(await sichtbar('#ansicht-einsatzplan td[data-kommentar]'), 'Plan-Ansicht geladen');
+  // Erstes Rückgängig: Server verlangt den Grund (400 GRUND_FEHLT), dann der Dialog; Abbrechen lässt den Eintrag stehen
+  let n = s.aufrufe.length;
+  await rueckgaengigKlick();
+  await warteDialog('Grund der Änderung');
+  gleich(rpcSeit(n, 'pep_ist_zeile_setzen').map((a) => [a.status, a.fehler]), [[400, 'GRUND_FEHLT']], 'erst GRUND_FEHLT vom Server');
+  await dKnopf('Abbrechen');
+  pruefe(!(await c.werte(() => [...document.querySelectorAll('#ansicht-einsatzplan .ep-knoepfe button')].find((b) => b.textContent.includes('Rückgängig')).disabled)),
+    'Abbrechen: Rückgängig bleibt möglich');
+  gleich(await istBloecke(hanna, DI), ['TS 12:00-16:00', 'PA 16:00-16:30', 'TK 16:30-21:00'], 'Abbrechen: DB unverändert');
+  // Zweites Rückgängig: Grund eingeben, Wiederholung mit Grund
+  n = s.aufrufe.length;
+  await rueckgaengigKlick();
+  await warteDialog('Grund der Änderung');
+  await c.tippe('dialog[open] input', 'Nachtrag Rückgängig', { enter: true });
+  await ruhe();
+  gleich(rpcSeit(n, 'pep_ist_zeile_setzen').map((a) => [a.status, a.body.p_grund]), [[400, null], [200, 'Nachtrag Rückgängig']], 'Wiederholung mit Grund');
+  gleich(await istBloecke(hanna, DI), plan, 'DB: Hanna zurück');
+  gleich(await c.werte(() => document.querySelector('#ansicht-einsatzplan [data-modus="ist"]').getAttribute('aria-pressed')), 'true', 'Ansicht wechselt in den IST');
+  gleich(await istStatus(hanna), 'bestätigt ✓', 'bleibt bestätigt');
+}, { erlaubeHttp: ['GRUND_FEHLT'] });
+
+await szenario('Startseite: Kachel „IST offen“ springt auf den ersten offenen Tag', async () => {
+  await bestaetigeTage([K45[0]]); // Montag 02.11. bestätigt: der erste offene Tag ist dann nicht der Montag
+  await reiter('start');
+  const db = (await sql(`select count(distinct z.datum)::int as tage, count(*)::int as zeilen, min(z.datum)::text as erster
+    from pep.ist_zeilen($1, $2::date - 42, $2::date - 1, null) z where z.bestaetigt_am is null`, [B.fil, HEUTE_IST]))[0];
+  gleich(db.erster, K45[1], 'DB: erster offener Tag Di 03.11.');
+  const k = await c.werte(() => {
+    const e = [...document.querySelectorAll('#ansicht-start .kachel')].find((x) => x.querySelector('h2').textContent === 'IST offen');
+    return { zahl: e.querySelector('.kachel-zahl').firstChild.textContent, text: e.textContent, sprung: e.querySelector('.kachel-sprung').textContent };
+  });
+  gleich(Number(k.zahl), db.tage, 'Kachel: Zahl der offenen Tage = DB');
+  pruefe(k.text.includes(`${db.zeilen} offene Zeilen, die früheste am Di 03.11.`), 'Kachel nennt Zeilen und frühesten Tag', k.text);
+  gleich(k.sprung, 'IST Di 03.11. →', 'Sprung-Beschriftung');
+  await toastWeg();
+  await c.klick('#ansicht-start .kachel:nth-child(5) .kachel-sprung');
+  await ruhe();
+  pruefe(await sichtbar('#ansicht-einsatzplan .ist-tabelle'), 'Einsatzplan im IST');
+  gleich(await c.werte(() => document.querySelector('#ansicht-einsatzplan [data-modus="ist"]').getAttribute('aria-pressed')), 'true', 'Modus IST');
+  gleich(await c.werte(() => document.querySelector('#ansicht-einsatzplan .ep-datum').value), db.erster, 'Tag = erster offener Tag');
+  gleich(await text('#ansicht-einsatzplan .ep-kw'), 'KW 45', 'KW 45');
+});
+
+await szenario('Zeitkonto: offene Tage sperren „Woche buchen“, Woche vor dem Start, Sprung zum offenen Tag', async () => {
+  const dana = ID[3];
+  await reiter('zeitkonto');
+  gleich(await zkWoche(), 'KW 46/2026', 'Start in der Vorwoche KW 46');
+  const offen46 = await offeneZeilen(TAGE[0], '2026-11-15');
+  pruefe(offen46.length > 0, 'KW 46 hat offene Zeilen', offen46.length);
+  gleich(await zkKnopf(), 'aus', '„Woche buchen“ gesperrt');
+  gleich(await text('#ansicht-zeitkonto .zk-status-zeile .zk-offen'), `${offen46.length} Tage im IST offen`, 'Chip nennt die offenen Tage (Mitarbeiter-Tage)');
+  pruefe((await text('#ansicht-zeitkonto .zk-status-zeile'))?.includes('Erst alle Tage im IST bestätigen, dann die Woche buchen.'), 'Hinweis bestätigen');
+  // Spalte „Offen“ springt auf den ersten offenen Tag der Person (Dana: Mo KM, Di und Mi bestätigt → Do)
+  const erster = offen46.find((z) => z.id === dana)?.datum;
+  gleich(erster, DO, 'DB: Danas erster offener Tag Do 12.11.');
+  await c.klick(`#ansicht-zeitkonto tr[data-mitarbeiter="${dana}"] .zk-offen`);
+  await ruhe();
+  pruefe(await sichtbar('#ansicht-einsatzplan .ist-tabelle'), 'Sprung in den IST');
+  gleich(await c.werte(() => document.querySelector('#ansicht-einsatzplan .ep-datum').value), erster, 'Sprung auf Danas ersten offenen Tag');
+  // Vor dem Start der IST-Erfassung: im IST nur der Plan
+  await istTag('2026-10-30');
+  pruefe((await text('#ansicht-einsatzplan .ep-geschlossen h2'))?.includes('vor dem Start der IST-Erfassung'), 'IST am 30.10.: vor dem Start',
+    await text('#ansicht-einsatzplan .ep-geschlossen h2'));
+  gleich((await texte('#ansicht-einsatzplan .ep-tag small')).slice(0, 6), ['nur Plan', 'nur Plan', 'nur Plan', 'nur Plan', 'nur Plan', 'nur Plan'], 'KW 44: Tage „nur Plan“');
+  // Zeitkonto KW 45 (offen) und KW 44 (vor dem Start)
+  await reiter('zeitkonto');
+  await zkBlaettern(-1);
+  gleich(await zkWoche(), 'KW 45/2026', 'KW 45');
+  gleich(await zkKnopf(), 'aus', 'KW 45: gesperrt (offene Tage)');
+  await zkBlaettern(-1);
+  gleich(await zkWoche(), 'KW 44/2026', 'KW 44');
+  gleich(await zkKnopf(), 'aus', 'KW 44: „Woche buchen“ gesperrt');
+  pruefe((await text('#ansicht-zeitkonto .zk-status-zeile'))?.includes('Vor dem Start der IST-Erfassung (02.11.2026) – diese Woche wird nicht gebucht.'),
+    'KW 44: Hinweis vor dem Start', await text('#ansicht-zeitkonto .zk-status-zeile'));
+  gleich(await texte('#ansicht-zeitkonto .zk-vorlaeufig-marke'), ['nicht gebucht', 'ohne Diff'], 'KW 44: Diff nicht gebucht, Saldo ohne Diff');
+  await c.klick({ text: 'Vorwoche', in: '#ansicht-zeitkonto', sel: 'button', genau: true });
+  await ruhe();
+  gleich(await zkWoche(), 'KW 46/2026', '„Vorwoche“ → KW 46');
+});
+
+const BEN = ID[1];
+await szenario('Zeitkonto: Startsaldo, erster Abschluss nur in der Startwoche, Hinweis, Einstellungen fest', async () => {
+  await bestaetigeTage([...K45, ...TAGE]);
+  gleich((await offeneZeilen(K45[0], '2026-11-15')).length, 0, 'Vorbereitung: KW 45 und 46 bestätigt');
+  await reiter('zeitkonto');
+  await c.klick({ text: 'Vorwoche', in: '#ansicht-zeitkonto', sel: 'button', genau: true });
+  await ruhe();
+  gleich(await zkWoche(), 'KW 46/2026', 'KW 46');
+  gleich(await zkKnopf(), 'an', 'KW 46: „Woche buchen“ frei');
+  // KW 46 zuerst: Server lehnt ab, die Startwoche ist KW 45
+  await c.klick({ text: 'Woche buchen', in: '#ansicht-zeitkonto', sel: 'button', genau: true });
+  gleich(await warteDialog('abschließen'), 'KW 46/2026 abschließen', 'Rückfrage KW 46');
+  pruefe((await text('dialog[open] .zk-erster'))?.startsWith('Erster Wochenabschluss: Startsalden'), 'Hinweis Startsalden (noch nichts abgeschlossen)');
+  await dKnopf('Woche buchen');
+  pruefe((await dFehler()).startsWith('Wochen lassen sich nur der Reihe nach abschließen: zuerst die Woche, in der die IST-Erfassung startet'),
+    'VORWOCHE_OFFEN im Dialog', await dFehler());
+  gleich(await abschluesse(), [], 'DB: kein Abschluss');
+  await dialogZu();
+  // Startsaldo vor dem ersten Abschluss (Journal Ben, KW 45 angezeigt → Sonntag davor)
+  await zkBlaettern(-1);
+  gleich(await zkWoche(), 'KW 45/2026', 'KW 45');
+  await c.klick(`#ansicht-zeitkonto tr[data-mitarbeiter="${BEN}"] .zk-name`);
+  gleich(await warteDialog('Zeitkonto: Muster, Ben'), 'Zeitkonto: Muster, Ben', 'Journal Ben');
+  await ruhe();
+  pruefe((await text('dialog[open] .zk-journal'))?.includes('Noch keine Buchungen.'), 'Journal leer');
+  gleich(await journalKnoepfe(), ['Startsaldo', 'Korrektur buchen', 'Schließen'], 'Leitung: Startsaldo und Korrektur');
+  await c.klick({ text: 'Startsaldo', in: 'dialog[open] .dialog-knoepfe', sel: 'button', genau: true });
+  await c.warteAuf((x) => document.querySelector(`${x} h2`)?.textContent === 'Startsaldo: Muster, Ben', { text: 'Startsaldo-Dialog' }, oben);
+  gleich(await c.werte((x) => document.querySelector(`${x} input[type="date"]`).value, oben), '2026-11-01', 'Datum: Sonntag vor KW 45');
+  await c.tippe(`${oben} input.zk-stunden`, '100');
+  await c.tippe(`${oben} input[maxlength="200"]`, 'Übernahme aus der bisherigen Zeiterfassung');
+  await obenKnopf('Buchen');
+  gleich((await meldungen()).toast, 'Gebucht.', 'Toast');
+  gleich(await journalDB(BEN), [{ art: 'start', stunden: 100, datum: '2026-11-01', grund: 'Übernahme aus der bisherigen Zeiterfassung' }], 'DB: Startsaldo');
+  gleich(await journalZeilen(), [['KW 44/2026', 'Startsaldo', '+100,00', '+100,00', 'Übernahme aus der bisherigen Zeiterfassung']], 'Journal: Startsaldo');
+  gleich(await journalKnoepfe(), ['Korrektur buchen', 'Schließen'], 'danach kein Startsaldo-Knopf');
+  await dialogZu();
+  gleich(await text(`#ansicht-zeitkonto tr[data-mitarbeiter="${BEN}"] td:nth-of-type(7)`), '+100,00', 'Tabelle: Saldo Vorwoche Ben');
+  const anna = await s.rpc('pep_zeitkonto_buchen', { p_mitarbeiter_id: ID[0], p_art: 'start', p_stunden: -20, p_grund: 'Übernahme', p_datum: '2026-11-01' }, B.leitung);
+  gleich(anna.status, 200, 'Vorbereitung: Startsaldo Anna −20 (RPC)');
+  // Erster Abschluss: KW 45 (Startwoche)
+  await zkBlaettern(1);
+  await zkBlaettern(-1);
+  gleich(await zkKnopf(), 'an', 'KW 45: „Woche buchen“ frei');
+  await c.klick({ text: 'Woche buchen', in: '#ansicht-zeitkonto', sel: 'button', genau: true });
+  gleich(await warteDialog('abschließen'), 'KW 45/2026 abschließen', 'Rückfrage KW 45');
+  pruefe(await sichtbar('dialog[open] .zk-erster'), 'Hinweis Startsalden beim ersten Abschluss');
+  await c.foto(`${FOTOS}zeitkonto-erster-abschluss.png`);
+  await dKnopf('Woche buchen');
+  const n45 = (await sql("select count(*)::int as n from pep.zeitkonto_buchungen where art = 'woche' and datum = '2026-11-02'"))[0].n;
+  pruefe(n45 >= 14, 'DB: Zeile „woche“ je Mitarbeiter mit Vertrag', n45);
+  gleich((await meldungen()).toast, `KW 45/2026 abgeschlossen: ${n45} Buchungen.`, 'Toast Abschluss');
+  gleich(await abschluesse(), ['2026-11-02'], 'DB: KW 45 abgeschlossen');
+  const kopf = await text('#ansicht-zeitkonto .zk-gebucht');
+  pruefe(kopf?.startsWith(`✓ Abgeschlossen am ${await abschlussDatum(K45[0])} um`) && kopf.endsWith('von chef'), 'Kopf: abgeschlossen von chef', kopf);
+  // Einstellungen: Start der IST-Erfassung jetzt fest
+  await reiter('einstellungen');
+  const feld = await feldUnter('#ansicht-einstellungen', 'IST-Erfassung ab');
+  gleich(await c.werte((x) => [document.querySelector(x).value, document.querySelector(x).disabled], feld), [IST_AB, true], 'Feld „IST-Erfassung ab“ gesperrt');
+  pruefe((await c.werte(() => document.getElementById('ansicht-einstellungen').textContent))
+    .includes('Nach dem ersten Wochenabschluss lässt sich der Start der IST-Erfassung nicht mehr ändern.'), 'Hinweis IST_AB_FEST');
+  // Zweiter Abschluss: KW 46, Vorwoche abgeschlossen → kein Startsaldo-Hinweis
+  await reiter('zeitkonto');
+  await zkBlaettern(1);
+  gleich(await zkWoche(), 'KW 46/2026', 'KW 46');
+  await c.klick({ text: 'Woche buchen', in: '#ansicht-zeitkonto', sel: 'button', genau: true });
+  gleich(await warteDialog('abschließen'), 'KW 46/2026 abschließen', 'Rückfrage KW 46');
+  await ruhe();
+  gleich(await anzahl('dialog[open] .zk-erster'), 0, 'kein Startsaldo-Hinweis nach dem ersten Abschluss');
+  await dKnopf('Woche buchen');
+  gleich(await abschluesse(), ['2026-11-02', '2026-11-09'], 'DB: KW 46 abgeschlossen');
+  pruefe((await meldungen()).toast.startsWith('KW 46/2026 abgeschlossen:'), 'Toast KW 46', (await meldungen()).toast);
+}, { erlaubeHttp: ['VORWOCHE_OFFEN'] });
+
+await szenario('Zeitkonto: automatische Korrektur nach IST-Änderung im Journal, Korrektur von Hand', async () => {
+  const vorher = await journalDB(CEM);
+  // IST in der abgeschlossenen KW 46 ändern: Grund-Dialog nennt die Nachbuchung
+  await istTag(MI);
+  gleich(await istStatus(CEM), 'bestätigt ✓', 'Cem bestätigt');
+  await pinsel('KA');
+  await epStrich(CEM, '20:00', '20:30');
+  await warteDialog('Grund der Änderung');
+  await c.warteAuf(() => document.querySelector('dialog[open] .ist-grund-hinweis')?.textContent
+    === 'Die Woche ist schon abgeschlossen – die Änderung wird im Zeitkonto nachgebucht.', { text: 'Hinweis Woche abgeschlossen' });
+  await c.tippe('dialog[open] input', 'Inventur länger', { enter: true });
+  await ruhe();
+  gleich(await istBloecke(CEM, MI), ['KA 14:30-17:30', 'PA 17:30-18:00', 'KA 18:00-21:00'], 'DB: IST geändert');
+  const neu = (await journalDB(CEM)).slice(vorher.length);
+  gleich(neu, [{ art: 'korrektur', stunden: 1, datum: TAGE[0], grund: 'KW 46/2026: Inventur länger' }], 'DB: genau eine automatische Korrektur +1');
+  // Journal im Reiter Zeitkonto
+  await reiter('zeitkonto');
+  gleich(await zkWoche(), 'KW 46/2026', 'KW 46');
+  await c.klick(`#ansicht-zeitkonto tr[data-mitarbeiter="${CEM}"] .zk-name`);
+  await warteDialog('Zeitkonto: Beispiel, Cem');
+  await ruhe();
+  const zeilen = await journalZeilen();
+  gleich(zeilen.length, vorher.length + 1, 'Journal: alle Buchungen');
+  gleich(zeilen.map((z) => z[1]), ['Wochenabschluss', 'Wochenabschluss', 'Korrektur (automatisch)'], 'Journal: Arten in Buchungsreihenfolge');
+  gleich(zeilen[2].slice(0, 3).concat(zeilen[2][4]), ['KW 46/2026', 'Korrektur (automatisch)', '+1,00', 'KW 46/2026: Inventur länger'], 'Journal: Korrektur mit Grund „KW 46/2026: …“');
+  // Korrektur von Hand
+  await c.klick({ text: 'Korrektur buchen', in: 'dialog[open] .dialog-knoepfe', sel: 'button', genau: true });
+  await c.warteAuf((x) => document.querySelector(`${x} h2`)?.textContent === 'Korrektur buchen: Beispiel, Cem', { text: 'Korrektur-Dialog' }, oben);
+  gleich(await c.werte((x) => document.querySelector(`${x} input[type="date"]`).value, oben), HEUTE_IST, 'Datum: heute');
+  await c.tippe(`${oben} input.zk-stunden`, '−2,5');
+  await c.tippe(`${oben} input[maxlength="200"]`, 'Überstunden ausgezahlt');
+  await obenKnopf('Buchen');
+  const db = await journalDB(CEM);
+  gleich(db.at(-1), { art: 'manuell', stunden: -2.5, datum: HEUTE_IST, grund: 'Überstunden ausgezahlt' }, 'DB: Korrektur von Hand');
+  const letzte = (await journalZeilen()).at(-1);
+  gleich([letzte[0], letzte[1], letzte[2], letzte[4]], ['KW 47/2026', 'Korrektur von Hand', '−2,50', 'Überstunden ausgezahlt'], 'Journal: Korrektur von Hand');
+  const summe = db.reduce((x, b) => x + b.stunden, 0);
+  pruefe(Math.abs(zahlDE(await text('dialog[open] .zk-saldo strong')) - summe) < 0.005, `Journal-Saldo = Summe der Buchungen (${summe})`, await text('dialog[open] .zk-saldo strong'));
+  await c.foto(`${FOTOS}zeitkonto-journal.png`);
+  await dialogZu();
+});
+
+await szenario('Startseite: Kachel „Zeitkonto auffällig“ springt ins Zeitkonto, „IST offen“ ohne Befund', async () => {
+  await reiter('start');
+  const kachel = (titel) => c.werte((t) => {
+    const e = [...document.querySelectorAll('#ansicht-start .kachel')].find((x) => x.querySelector('h2').textContent === t);
+    return { gruen: e.classList.contains('gruen'), zahl: e.querySelector('.kachel-zahl').firstChild.textContent,
+      zeitraum: e.querySelector('.kachel-zeitraum').textContent, liste: [...e.querySelectorAll('.kachel-liste li')].map((l) => l.textContent),
+      sprung: e.querySelector('.kachel-sprung').textContent };
+  }, titel);
+  const ist = await kachel('IST offen');
+  gleich([ist.zahl, ist.gruen], ['0', true], '„IST offen“: 0 und grün');
+  const zk = await kachel('Zeitkonto auffällig');
+  const woche = (await s.rpc('pep_zeitkonto_woche', { p_jahr: 2026, p_kw: 46 }, B.leitung)).json;
+  const warn = woche.mitarbeiter.filter((m) => m.warnung);
+  gleich(zk.zeitraum, 'Stand KW 46/2026 (zuletzt abgeschlossen)', 'Stand der Kachel');
+  gleich(Number(zk.zahl), warn.length, 'Zahl = Mitarbeiter mit Warnung in KW 46');
+  // Die Kachel zeigt höchstens einige Namen und dann „+ n weitere“.
+  const gezeigt = zk.liste.filter((l) => !l.startsWith('+ ')).map((l) => l.replace(/^⚠ /, '').split(' · ')[0]);
+  const weitere = Number(/^\+ (\d+) weitere$/.exec(zk.liste.find((l) => l.startsWith('+ ')) ?? '')?.[1] ?? 0);
+  pruefe(gezeigt.every((name) => warn.some((m) => m.name === name)), 'Liste: nur Mitarbeiter mit Warnung', gezeigt);
+  gleich(gezeigt.length + weitere, warn.length, 'Liste + „weitere“ = alle Warnungen');
+  pruefe(zk.liste.some((l) => l.startsWith('⚠ Muster, Ben · +') && l.endsWith('(zu viel Plus)')), 'Ben: zu viel Plus', zk.liste);
+  pruefe(zk.liste.some((l) => l.startsWith('⚠ Test, Anna · −') && l.endsWith('(zu viel Minus)')), 'Anna: zu viel Minus', zk.liste);
+  gleich(zk.sprung, 'Zeitkonto KW 46 →', 'Sprung-Beschriftung');
+  await c.klick('#ansicht-start .kachel:nth-child(6) .kachel-sprung');
+  await ruhe();
+  pruefe(await sichtbar('#ansicht-zeitkonto .zk-tabelle'), 'Sprung → Zeitkonto');
+  gleich(await zkWoche(), 'KW 46/2026', 'Zeitkonto KW 46');
+  gleich(await anzahl('#ansicht-zeitkonto tbody .zk-warnung'), warn.length, 'Reiter zeigt dieselben Warnungen');
+});
+
+await szenario('Ausdrucke: Stundenblatt, Wocheneinsatz-IST, Journal als Excel', async () => {
+  await reiter('zeitkonto');
+  gleich(await zkWoche(), 'KW 46/2026', 'KW 46');
+  await druckStub();
+  // Stundenblatt aller Mitarbeiter für KW 46: eine Seite je Person, mit Unterschriften
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-drucken"]');
+  gleich(await warteDialog('Drucken'), 'Drucken – Zeitkonto KW 46/2026', 'Druckdialog');
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] input[type="date"]')].map((e) => e.value)), [TAGE[0], '2026-11-15'], 'Zeitraum vorbelegt');
+  await dKnopf('Stundenblatt');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .dr-stundenblatt'), { text: 'Stundenblatt' });
+  const blatt = (await s.rpc('pep_stundenblatt', { p_mitarbeiter_id: null, p_von: TAGE[0], p_bis: '2026-11-15' }, B.leitung)).json;
+  const seiten = await anzahl('#ansicht-druck .dr-seite.dr-hoch');
+  gleich(seiten, blatt.mitarbeiter.length, 'Stundenblatt: ein Blatt je Mitarbeiter (wie pep_stundenblatt)');
+  gleich(await anzahl('#ansicht-druck .dr-sb-ende .dr-unterschriften'), seiten, 'je Blatt Legende und Unterschriften in einem Block');
+  pruefe((await texte('#ansicht-druck .dr-person')).includes('Muster, Ben (Personalnr. 90002)'), 'Person mit Personalnummer');
+  const cemZeit = await c.werte((n) => {
+    const s1 = [...document.querySelectorAll('#ansicht-druck .dr-seite')].find((x) => x.querySelector('.dr-person')?.textContent.startsWith(n));
+    return [...s1.querySelectorAll('.dr-stundenblatt tbody tr')].find((tr) => tr.cells[0].textContent === 'Mi 11.11.')?.textContent;
+  }, 'Beispiel, Cem');
+  pruefe(cemZeit?.includes('14:30') && cemZeit.includes('21:00'), 'Cem Mi 11.11.: 14:30 bis 21:00 (geändertes IST)', cemZeit);
+  gleich(await c.werte(() => window.__gedruckt), 1, 'print() aufgerufen');
+  const pdf = await c.sende('Page.printToPDF', { printBackground: true, preferCSSPageSize: true });
+  writeFileSync(`${FOTOS}stundenblatt.pdf`, Buffer.from(pdf.data, 'base64'));
+  gleich(pdfSeiten(pdf), seiten, 'PDF: eine Seite je Mitarbeiter (A4 hoch)');
+  notiz(`PDF Stundenblatt: ${pdfSeiten(pdf)} Seiten (tests/browser/fotos/stundenblatt.pdf)`);
+  await druckAufraeumen();
+  // Wocheneinsatz-IST KW 46 aus dem Reiter Zeitkonto
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-drucken"]');
+  await warteDialog('Drucken');
+  await dKnopf('Wocheneinsatz-IST KW 46');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .dr-wochenist'), { text: 'Wocheneinsatz-IST' });
+  const istWoche = (await s.rpc('pep_ist_woche', { p_jahr: 2026, p_kw: 46 }, B.leitung)).json;
+  gleich(await anzahl('#ansicht-druck .dr-wochenist tbody tr'), istWoche.mitarbeiter.length, 'Wocheneinsatz-IST: Zeile je Mitarbeiter');
+  gleich(await text('#ansicht-druck .dr-titel'), 'Wocheneinsatz-IST', 'Titel');
+  const kopf = await text('#ansicht-druck .dr-kopf');
+  pruefe(kopf.includes(`KW 46/2026: 09.11.2026 – 15.11.2026 · abgeschlossen am ${await abschlussDatum(TAGE[0])} von chef`), 'Kopf: Woche und Abschluss', kopf);
+  const pdf2 = await c.sende('Page.printToPDF', { landscape: true, printBackground: true, preferCSSPageSize: true });
+  writeFileSync(`${FOTOS}wocheneinsatz-ist.pdf`, Buffer.from(pdf2.data, 'base64'));
+  gleich(pdfSeiten(pdf2), 1, 'PDF Wocheneinsatz-IST: eine Seite');
+  await druckAufraeumen();
+  // Derselbe Ausdruck aus dem IST-Modus des Einsatzplans
+  await istTag(MI);
+  await c.klick('#ansicht-einsatzplan [data-aktion="wochenist-drucken"]');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .dr-wochenist'), { text: 'Wocheneinsatz-IST aus dem IST' });
+  gleich(await anzahl('#ansicht-druck .dr-wochenist tbody tr'), istWoche.mitarbeiter.length, 'aus dem IST: Zeile je Mitarbeiter');
+  await druckAufraeumen();
+  gleich(await c.werte(() => window.__gedruckt), 3, 'print() dreimal');
+  // Journal als Excel: gültige Datei, Datum als echte Datumszelle (Zahlenformat 164 dd.mm.yyyy)
+  await reiter('zeitkonto');
+  await blobFangen();
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-journal-excel"]');
+  await warteDialog('Journal als Excel');
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] input[type="date"]')].map((e) => e.value)), ['2026-01-01', HEUTE_IST], 'Zeitraum vorbelegt');
+  await dKnopf('Herunterladen');
+  const { typ, puffer } = await blobHolen();
+  gleich(typ, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Blob-Typ');
+  writeFileSync(`${FOTOS}Zeitkonto-Journal-2026-01-01-${HEUTE_IST}.xlsx`, puffer);
+  try {
+    const dateien = pruefeXlsx(puffer);
+    const stile = dateien['xl/styles.xml'] ?? '';
+    pruefe(stile.includes('<numFmt numFmtId="164" formatCode="dd.mm.yyyy"/>'), 'styles.xml: numFmt 164 dd.mm.yyyy');
+    pruefe(/<cellXfs count="4">(?:<xf[^>]*\/>|<xf[^>]*>.*?<\/xf>){3}<xf numFmtId="164"[^>]*applyNumberFormat="1"/.test(stile), 'Stil 3 nutzt numFmt 164');
+    const blatt1 = dateien['xl/worksheets/sheet1.xml'] ?? '';
+    const datum = [...blatt1.matchAll(/<c r="A(\d+)" s="3"><v>(\d+)<\/v><\/c>/g)].map((m) => zkDatum(m[2])).sort();
+    const db = (await sql(`select datum::text as d from pep.zeitkonto_buchungen where datum between '2026-01-01' and $1::date order by datum`, [HEUTE_IST])).map((r) => r.d);
+    gleich(datum, db, 'Spalte Datum: Datumszellen (Stil 3) = Buchungsdaten der DB');
+    gleich((blatt1.match(/<row /g) ?? []).length, db.length + 1, 'Zeilen = Kopf + Buchungen');
+    pruefe(blatt1.includes('KW 46/2026: Inventur länger'), 'Grund der automatischen Korrektur im Blatt');
+    notiz(`Journal-Excel: ${db.length} Buchungen, ${Object.keys(dateien).length} Teile`);
+  } catch (e) {
+    pruefe(false, `xlsx gültig: ${e.message}`);
+  }
+});
+
+await szenario('Stellvertretung: Zeitkonto ansehen, Journal lesen, Drucken und Excel, keine Buchungsknöpfe', async () => {
+  await alsBenutzer('vize');
+  pruefe(!(await sichtbar('#nav-einstellungen')), 'Kein Reiter Einstellungen');
+  await reiter('zeitkonto');
+  gleich(await zkWoche(), 'KW 46/2026', 'Start in KW 46');
+  pruefe((await text('#ansicht-zeitkonto .zk-gebucht'))?.endsWith('von chef'), 'KW 46 abgeschlossen von chef');
+  gleich(await zkKnopf(), 'fehlt', 'KW 46: kein „Woche buchen“');
+  await zkBlaettern(1);
+  gleich(await zkWoche(), 'KW 47/2026', 'KW 47 (laufend)');
+  gleich(await zkKnopf(), 'fehlt', 'KW 47: kein „Woche buchen“');
+  pruefe((await text('#ansicht-zeitkonto .zk-status-zeile'))?.includes('Noch nicht abgeschlossen (bucht die Filialleitung).'), 'Hinweis: bucht die Filialleitung');
+  await zkBlaettern(-1);
+  // Journal lesen, ohne Buchungsknöpfe
+  await c.klick(`#ansicht-zeitkonto tr[data-mitarbeiter="${CEM}"] .zk-name`);
+  await warteDialog('Zeitkonto: Beispiel, Cem');
+  await ruhe();
+  gleich((await journalZeilen()).length, (await journalDB(CEM)).length, 'Journal: alle Buchungen lesbar');
+  gleich(await journalKnoepfe(), ['Schließen'], 'nur „Schließen“');
+  await c.foto(`${FOTOS}zeitkonto-journal-stellvertretung.png`);
+  await dialogZu();
+  // Drucken: Stundenblatt für Cem
+  await druckStub();
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-drucken"]');
+  await warteDialog('Drucken');
+  await c.setzeWert('dialog[open] select', String(CEM));
+  await dKnopf('Stundenblatt');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .dr-stundenblatt'), { text: 'Stundenblatt' });
+  gleich(await texte('#ansicht-druck .dr-person'), ['Beispiel, Cem (Personalnr. 90003)'], 'Stundenblatt Cem');
+  gleich(await c.werte(() => window.__gedruckt), 1, 'print() aufgerufen');
+  await druckAufraeumen();
+  // Journal als Excel
+  await blobFangen();
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-journal-excel"]');
+  await warteDialog('Journal als Excel');
+  await dKnopf('Herunterladen');
+  const { puffer } = await blobHolen();
+  try {
+    const dateien = pruefeXlsx(puffer);
+    pruefe((dateien['xl/worksheets/sheet1.xml'] ?? '').includes('Beispiel, Cem'), 'Excel der Stellvertretung enthält das Journal');
+  } catch (e) {
+    pruefe(false, `xlsx gültig: ${e.message}`);
+  }
+  // IST: die Stellvertretung erfasst und bestätigt auch
+  await istTag(HEUTE_IST);
+  pruefe(await sichtbar('#ansicht-einsatzplan [data-aktion="tag-bestaetigen"]'), 'IST: „Tag bestätigen“ auch für die Stellvertretung');
+});
+
+// ================================================================ Stufe 2: Sicherung
+// Herunterladen als chef (Blob abfangen: gültiges JSON, Prüfsumme wie der Server sie rechnet), dann als Leitung einer
+// zweiten, leeren Filiale derselben Datenbank einspielen (Datei per DataTransfer in das Dateifeld); danach zeigt die
+// zweite Filiale die Mitarbeiterliste der ersten. Umfrage, Zuordnungen und die Benutzer chef/vize gehören der ersten
+// Filiale und werden ausgelassen.
+await szenario('Sicherung: herunterladen, in zweite leere Filiale einspielen, Mitarbeiterliste erscheint', async () => {
+  if (!(await sql("select 1 from urlaub.organisatoren where benutzername = 'zweit'")).length) {
+    await sql("insert into urlaub.organisatoren (user_id, anzeigename, benutzername) values (gen_random_uuid(), 'zweit', 'zweit')");
+    await sql("select pep.start_leitung('zweit')");
+    const uid = (await sql("select user_id from urlaub.organisatoren where benutzername = 'zweit'"))[0].user_id;
+    const r = await s.rpc('pep_filiale_anlegen', { p_name: 'Netto Zweitfiliale', p_nummer: '9999', p_bundesland: 'BY' }, uid);
+    if (r.status !== 200) throw new Error(`pep_filiale_anlegen: ${r.json?.message}`);
+  }
+  const zweitFil = (await sql(`select b.filiale_id as f from pep.benutzer b join urlaub.organisatoren o on o.user_id = b.user_id
+    where o.benutzername = 'zweit'`))[0].f;
+  await sql('delete from pep.sicherungen where filiale_id = $1', [B.fil]); // wiederholbar: „noch keine Sicherung“
+
+  // Startseite der Leitung: noch keine Sicherung → gelb, Sprung zur Sicherung
+  await alsBenutzer('chef');
+  await reiter('start');
+  const zeile = () => c.werte(() => {
+    const p = document.querySelector('#ansicht-start .start-sicherung');
+    return p ? { text: p.textContent, gelb: p.classList.contains('hinweis-gelb') } : null;
+  });
+  gleich(await zeile(), { text: 'Noch keine Sicherung – bitte jede Woche eine Sicherung herunterladen. Sicherung →', gelb: true },
+    'Startseite ohne Sicherung');
+  await c.foto(`${FOTOS}sicherung-startseite-gelb.png`);
+  await c.klick({ text: 'Sicherung →', in: '#ansicht-start', sel: 'button' });
+  await ruhe();
+  pruefe(await sichtbar('#ansicht-einstellungen [data-aktion="sicherung-laden"]'), 'Einstellungen → Sicherung sichtbar');
+  pruefe((await text('#ansicht-einstellungen')).includes('Die Datei enthält Personaldaten. Auf dem PC oder USB-Stick aufbewahren, nicht per E-Mail verschicken.'),
+    'Hinweis Personaldaten');
+
+  // Herunterladen
+  await blobFangen();
+  await c.werte(() => {
+    window.__downloads = [];
+    const klick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { window.__downloads.push(this.download); return klick.call(this); };
+  });
+  await c.klick('#ansicht-einstellungen [data-aktion="sicherung-laden"]');
+  const { typ, puffer } = await blobHolen();
+  gleich(typ, 'application/json', 'Blob-Typ');
+  gleich(await c.werte(() => window.__downloads), [`PEP-Sicherung-2558-${HEUTE_IST}.json`], 'Dateiname');
+  const inhalt = puffer.toString('utf8');
+  const datei = JSON.parse(inhalt);
+  writeFileSync(`${FOTOS}PEP-Sicherung-2558-${HEUTE_IST}.json`, puffer);
+  gleich([datei.format, datei.version], ['pep-sicherung', 1], 'Format');
+  gleich(datei.pruefsumme, (await sql("select md5(($1::jsonb -> 'tabellen')::text) as p", [inhalt]))[0].p, 'Prüfsumme der Datei');
+  const maQuelle = (await sql('select count(*)::int as n from pep.mitarbeiter where filiale_id = $1', [B.fil]))[0].n;
+  gleich(datei.anzahl.mitarbeiter, maQuelle, 'Mitarbeiter in der Datei');
+  notiz(`Sicherung: ${puffer.length} Bytes, ${Object.values(datei.anzahl).reduce((x, n) => x + n, 0)} Zeilen`);
+  gleich((await meldungen()).toast, 'Sicherung heruntergeladen.', 'Toast');
+  // erstellt_am ist die echte Uhrzeit des Servers (now()), heute im Test aber fest HEUTE_IST (in Produktion dasselbe
+  // Datum): Zeitpunkt der Sicherung auf HEUTE_IST bzw. 9 Tage davor legen.
+  const sicherungAm = (tage) => sql("update pep.sicherungen set erstellt_am = ($1::date - $2::int) + time '10:00' where filiale_id = $3",
+    [HEUTE_IST, tage, B.fil]);
+  await sicherungAm(0);
+  await reiter('start');
+  gleich(await zeile(), { text: 'Letzte Sicherung heute · Sicherung →', gelb: false }, 'Startseite nach der Sicherung');
+  await c.foto(`${FOTOS}sicherung-startseite-heute.png`);
+  await sicherungAm(9);
+  await reiter('start');
+  gleich(await zeile(), { text: 'Letzte Sicherung vor 9 Tagen – bitte jede Woche eine Sicherung herunterladen. Sicherung →', gelb: true },
+    'Startseite 9 Tage nach der Sicherung');
+  await c.foto(`${FOTOS}sicherung-startseite-9-tage.png`);
+
+  // Einspielen in die zweite Filiale
+  await alsBenutzer('zweit');
+  gleich(await text('#kopf-filiale'), 'Netto Zweitfiliale', 'Kopf vor dem Einspielen');
+  await reiter('einstellungen');
+  await c.werte((t) => {
+    const e = document.querySelector('#ansicht-einstellungen [data-aktion="sicherung-datei"]');
+    const dt = new DataTransfer();
+    dt.items.add(new File([t], 'PEP-Sicherung-2558.json', { type: 'application/json' }));
+    e.files = dt.files;
+    e.dispatchEvent(new Event('change', { bubbles: true }));
+  }, inhalt);
+  await c.warteAuf(() => document.querySelector('#ansicht-einstellungen [data-ziel-leer]'), { text: 'Vorschau' });
+  await ruhe();
+  gleich(await c.werte(() => document.querySelector('#ansicht-einstellungen [data-ziel-leer]').dataset.zielLeer), 'ja', 'Ziel leer');
+  const vorschau = await text('#ansicht-einstellungen .sicherung-vorschau');
+  pruefe(vorschau.includes('Sicherung der Filiale Netto Aschaffenburg (Nr. 2558, BY)'), 'Vorschau: Filiale', vorschau);
+  pruefe(vorschau.includes(`${maQuelle} Mitarbeiter`), 'Vorschau: Anzahl Mitarbeiter', vorschau);
+  await c.werte(() => document.querySelector('#ansicht-einstellungen .sicherung-vorschau').closest('.box').scrollIntoView());
+  await c.foto(`${FOTOS}sicherung-einstellungen-vorschau.png`);
+  // Falsche Nummer, dann die richtige
+  const bestaetigung = await feldUnter('#ansicht-einstellungen .sicherung-vorschau', 'Filialnummer zur Bestätigung');
+  await c.tippe(bestaetigung, '9999');
+  await c.klick('#ansicht-einstellungen .sicherung-vorschau button[type="submit"]');
+  await ruhe();
+  pruefe((await meldungen()).fehler.startsWith('Die Bestätigung stimmt nicht.'), 'Meldung bei falscher Nummer', (await meldungen()).fehler);
+  gleich((await sql('select count(*)::int as n from pep.mitarbeiter where filiale_id = $1', [zweitFil]))[0].n, 0, 'nichts eingespielt');
+  await c.tippe(bestaetigung, '2558');
+  await c.klick('#ansicht-einstellungen .sicherung-vorschau button[type="submit"]');
+  await ruhe();
+  await c.warteAuf(() => document.querySelector('#ansicht-einstellungen [data-ergebnis]'), { text: 'Ergebnis' });
+  gleich((await meldungen()).toast, 'Sicherung eingespielt.', 'Toast eingespielt');
+  gleich(await text('#kopf-filiale'), 'Netto Aschaffenburg', 'Kopf nach dem Einspielen');
+  const ergebnis = await text('#ansicht-einstellungen [data-ergebnis]');
+  pruefe(ergebnis.includes(`${maQuelle} Mitarbeiter`) && ergebnis.includes('Ausgelassen:'), 'Ergebnis: eingespielt und ausgelassen', ergebnis);
+  await c.werte(() => document.querySelector('#ansicht-einstellungen [data-ergebnis]').closest('.box').scrollIntoView());
+  await c.foto(`${FOTOS}sicherung-einstellungen-ergebnis.png`);
+  // Datenbank: gleiche Mitarbeiter und Salden, keine Vormerkung
+  const salden = (f) => sql(`select m.name, coalesce(sum(k.stunden), 0)::float8 as s, count(k.id)::int as n
+    from pep.mitarbeiter m left join pep.zeitkonto_buchungen k on k.mitarbeiter_id = m.id
+   where m.filiale_id = $1 group by m.name order by m.name`, [f]);
+  gleich(await salden(zweitFil), await salden(B.fil), 'Mitarbeiter und Salden gleich');
+  gleich((await sql('select count(*)::int as n from pep.zeitkonto_vormerkungen'))[0].n, 0, 'keine Vormerkung');
+
+  // Mitarbeiterliste der zweiten Filiale
+  await reiter('mitarbeiter');
+  const namen = (await sql('select name from pep.mitarbeiter where filiale_id = $1 and aktiv order by position, name', [zweitFil])).map((r) => r.name);
+  const liste = await texte('#ma-liste .ma-name');
+  gleich(liste.length, namen.length, 'Mitarbeiterliste: Anzahl');
+  pruefe(namen.every((n, i) => (liste[i] ?? '').startsWith(n)), 'Mitarbeiterliste: Namen in Reihenfolge', liste);
+  pruefe(liste.some((n) => n.startsWith('Beispiel, Cem')), 'Cem in der Liste');
+  // Die Stellvertretung sieht die Zeile zur Sicherung nicht (sie kann nicht sichern)
+  await alsBenutzer('vize');
+  await reiter('start');
+  pruefe(!(await sichtbar('#ansicht-start .start-sicherung')), 'Stellvertretung: keine Zeile zur Sicherung');
+}, { erlaubeHttp: ['BESTAETIGUNG_FALSCH'] });
+
+// ================================================================ Stufe 2: Urlaubstool aller Leitungen
+// Eine zweite Leitung der Filiale („Leiterin Süd“) hat eine eigene Umfrage; ihre Teilnehmer schreiben sich „Vorname
+// Nachname“ bzw. nur den Vornamen. Vor ihrer ersten Anmeldung sieht chef die Umfrage nicht (Benutzer: „noch nicht
+// angemeldet“). Danach schaltet chef erst die eigene Umfrage aus (Hinweis statt Teilnehmerliste; ihre Zuordnungen
+// bleiben), dann beide ein, übernimmt die Vorschläge; die Kopfzeile zählt mit. Am Ende, damit kein anderes Szenario die
+// zweite Leitung sieht.
+await szenario('Urlaubstool: Umfrage einer zweiten Leitung einschalten, Vorschläge übernehmen, Kopfzeile zählt', async () => {
+  if (!(await sql("select 1 from urlaub.organisatoren where benutzername = 'leiterin'")).length) {
+    await sql("insert into urlaub.organisatoren (user_id, anzeigename, benutzername) values (gen_random_uuid(), 'Leiterin Süd', 'leiterin')");
+    const uid = (await sql("select user_id from urlaub.organisatoren where benutzername = 'leiterin'"))[0].user_id;
+    await sql("insert into pep.benutzer (user_id, filiale_id, rolle) values ($1, $2, 'leitung')", [uid, B.fil]);
+    const u = (await sql("insert into urlaub.umfragen (organisator_id, titel, frist) values ($1, 'Urlaub 2026 Frühschicht', now() + interval '1 day') returning id",
+      [uid]))[0].id;
+    await sql("select urlaub.standard_urlaubsfrage($1, 2026, 'BY')", [u]);
+    for (const name of ['Cem Beispiel', 'Dana', 'Ohnetreffer, Zoe']) await sql('insert into urlaub.mitarbeiter (umfrage_id, name) values ($1, $2)', [u, name]);
+  }
+  const fremd = (await sql("select u.id from urlaub.umfragen u join urlaub.organisatoren o on o.user_id = u.organisator_id where o.benutzername = 'leiterin'"))[0].id;
+  const maId = async (name) => (await sql('select id from pep.mitarbeiter where filiale_id = $1 and name = $2', [B.fil, name]))[0].id;
+  const box = '#ansicht-einstellungen .box';
+  const urlaubBox = async () => c.werte((sel) => {
+    const b = [...document.querySelectorAll(sel)].find((x) => x.querySelector('h2')?.textContent === 'Urlaubstool');
+    if (b) b.dataset.t = 'urlaubbox';
+    return Boolean(b);
+  }, box);
+  // Haken „aktiv“ der Umfragezeile, deren Titel mit `titel` beginnt
+  const haken = async (titel) => {
+    const ok = await c.werte((t) => {
+      const z = [...document.querySelectorAll('[data-t="urlaubbox"] .zeile')].find((x) => x.querySelector('.zeilentitel')?.textContent.startsWith(t));
+      const k = z?.querySelector('input[type="checkbox"]');
+      if (k) k.dataset.t = 'umfragehaken';
+      return Boolean(k);
+    }, titel);
+    if (!ok) throw new Error(`Umfrage „${titel}“ nicht gefunden`);
+    await c.klick('[data-t="umfragehaken"]');
+    await ruhe();
+    await urlaubBox();
+  };
+  const geschaltet = async () => (await sql('select umfrage_id from pep.urlaub_umfragen where filiale_id = $1 order by umfrage_id', [B.fil]))
+    .map((r) => r.umfrage_id);
+  const zaehler = () => text('[data-t="urlaubbox"] .urlaub-zaehler');
+  const zeilenTitel = () => texte('[data-t="urlaubbox"] form .zeilentitel');
+
+  // Vor ihrer ersten Anmeldung: Umfrage unsichtbar, Hinweis unter Benutzer
+  await alsBenutzer('chef');
+  await reiter('einstellungen');
+  pruefe(await urlaubBox(), 'Abschnitt Urlaubstool');
+  pruefe(!(await texte('[data-t="urlaubbox"] .zeile:not(form)')).some((z) => z.startsWith('Urlaub 2026 Frühschicht')),
+    'Umfrage vor der Anmeldung der Leiterin unsichtbar');
+  const benutzerTitel = () => c.werte(() => [...([...document.querySelectorAll('#ansicht-einstellungen .box')]
+    .find((b) => b.querySelector('h2')?.textContent === 'Benutzer')?.querySelectorAll('form .zeilentitel') ?? [])].map((e) => e.textContent));
+  pruefe((await benutzerTitel()).includes('leiterin · Leiterin Süd · noch nicht angemeldet'), 'Benutzer: „noch nicht angemeldet“', await benutzerTitel());
+  // Die Leiterin meldet sich einmal an (Anzeigename statt Benutzername in der Kopfzeile, darum nicht alsBenutzer)
+  await c.klick('#abmelden');
+  await c.warteAuf(() => !document.getElementById('ansicht-login').hidden, { text: 'Login nach Abmelden' });
+  await anmelden('leiterin');
+  gleich(await text('#wer'), 'Angemeldet als Leiterin Süd', 'Angemeldet als Leiterin');
+  pruefe((await sql("select b.bestaetigt_am from pep.benutzer b join urlaub.organisatoren o on o.user_id = b.user_id where o.benutzername = 'leiterin'"))[0]
+    .bestaetigt_am !== null, 'DB: Leiterin bestätigt');
+  await alsBenutzer('chef');
+  await reiter('einstellungen');
+  pruefe((await benutzerTitel()).includes('leiterin · Leiterin Süd'), 'Benutzer: nach der Anmeldung ohne Hinweis', await benutzerTitel());
+  pruefe(await urlaubBox(), 'Abschnitt Urlaubstool');
+  const umfrageZeilen = await texte('[data-t="urlaubbox"] .zeile:not(form)');
+  pruefe(umfrageZeilen.some((z) => z.startsWith('Urlaub 2026 Frühschicht (2026)') && z.includes('von Leiterin Süd')), 'Zeile „von Leiterin Süd“', umfrageZeilen);
+  pruefe(umfrageZeilen.some((z) => z.startsWith('Urlaub 2026 (2026)') && z.includes('eigene Umfrage')), 'Zeile „eigene Umfrage“', umfrageZeilen);
+  pruefe((await text('[data-t="urlaubbox"]')).includes('Jeder Teilnehmer der Umfrage wird einem PEP-Mitarbeiter zugeordnet; erst dann erscheinen seine Wünsche unter Abwesenheiten zum Freigeben.'),
+    'Erklärung über der Liste');
+
+  // Eigene Umfrage aus: keine eingeschaltet → Hinweis statt Liste; die Zuordnungen von Gustav und Lea bleiben
+  await haken('Urlaub 2026 (2026)');
+  gleich(await geschaltet(), [], 'DB: keine Umfrage eingeschaltet');
+  gleich((await sql(`select count(*)::int as n from pep.urlaub_zuordnung z join urlaub.mitarbeiter t on t.id = z.urlaub_mitarbeiter_id
+    where t.umfrage_id = $1`, [B.umfrage]))[0].n, 2, 'DB: Zuordnungen der ausgeschalteten Umfrage bleiben');
+  pruefe((await text('[data-t="urlaubbox"]')).includes('Zuerst oben eine Umfrage einschalten – dann erscheinen hier ihre Teilnehmer.'), 'Hinweis ohne eingeschaltete Umfrage');
+  gleich(await zaehler(), null, 'keine Kopfzeile ohne eingeschaltete Umfrage');
+
+  // Beide einschalten (die der Leiterin schaltet chef ein)
+  await haken('Urlaub 2026 (2026)');
+  await haken('Urlaub 2026 Frühschicht (2026)');
+  gleich(await geschaltet(), [B.umfrage, fremd].sort((a, b) => a - b), 'DB: beide Umfragen eingeschaltet');
+  gleich(await zaehler(), '2 von 5 zugeordnet', 'Kopfzeile vorher (Gustav und Lea wieder da)');
+  gleich(await zeilenTitel(), ['Cem Beispiel', 'Dana', 'Ohnetreffer, Zoe', 'Attrappe, Lea', 'Platzhalter, Gustav'], 'nicht zugeordnete zuerst');
+  await c.werte(() => document.querySelector('[data-t="urlaubbox"]').scrollIntoView());
+  await c.foto(`${FOTOS}urlaubstool-vorschlaege.png`);
+
+  // Vorschläge übernehmen: Cem (andere Reihenfolge) und Dana (nur Vorname); Zoe ohne Treffer bleibt offen
+  await c.klick({ text: 'Vorschläge übernehmen (2)', in: '[data-t="urlaubbox"]', sel: 'button', genau: true });
+  await ruhe();
+  await urlaubBox();
+  const zuordnung = await sql(`select t.name, z.mitarbeiter_id as m from urlaub.mitarbeiter t
+      left join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id where t.umfrage_id = $1 order by t.name`, [fremd]);
+  gleich(zuordnung, [{ name: 'Cem Beispiel', m: await maId('Beispiel, Cem') }, { name: 'Dana', m: await maId('Probe, Dana') },
+    { name: 'Ohnetreffer, Zoe', m: null }], 'DB: Zuordnung nach „Vorschläge übernehmen“');
+  gleich(await sql(`select t.name, z.mitarbeiter_id as m from urlaub.mitarbeiter t
+      left join pep.urlaub_zuordnung z on z.urlaub_mitarbeiter_id = t.id where t.umfrage_id = $1 order by t.name`, [B.umfrage]),
+  [{ name: 'Attrappe, Lea', m: await maId('Attrappe, Lea') }, { name: 'Platzhalter, Gustav', m: await maId('Platzhalter, Gustav') }],
+  'DB: Gustav und Lea weiter zugeordnet');
+  gleich(await zaehler(), '4 von 5 zugeordnet', 'Kopfzeile nachher');
+  gleich((await zeilenTitel())[0], 'Ohnetreffer, Zoe', 'der nicht zugeordnete steht oben');
+  pruefe(!(await texte('[data-t="urlaubbox"] button')).some((t) => t.startsWith('Vorschläge übernehmen')), 'kein Knopf „Vorschläge übernehmen“ mehr');
+  gleich((await meldungen()).toast, 'Gespeichert.', 'Toast');
+});
+
+// Hilfe (Task 10): „?“ auf jedem Reiter öffnet die Leiste mit den Texten der Ansicht; Escape und Klick daneben schließen,
+// der Fokus kehrt zum Knopf zurück; im Modus IST eigene Texte; am Tablet bildschirmfüllend; Tipp nur beim ersten Besuch.
+await szenario('Hilfe: „?“ auf jedem Reiter, Escape, Klick daneben, IST, Tablet, Tipp nur beim ersten Besuch', async () => {
+  const hilfeOffen = () => c.werte(() => {
+    const d = document.querySelector('dialog.hilfe-leiste[open]');
+    if (!d) return null;
+    return { ansicht: d.dataset.ansicht, titel: d.querySelector('h2')?.textContent,
+      abschnitte: [...d.querySelectorAll('h3')].map((h) => h.textContent), schritte: d.querySelectorAll('ol li').length,
+      wissen: d.querySelectorAll('ul li').length, knoepfe: [...d.querySelectorAll('button')].map((k) => k.textContent) };
+  });
+  const oeffne = async () => {
+    await c.klick('#hilfe-knopf');
+    return c.warteAuf(() => document.querySelector('dialog.hilfe-leiste[open] h2')?.textContent ?? null, { text: 'Hilfe-Leiste offen' });
+  };
+  const zu = () => c.warteAuf(() => !document.querySelector('dialog.hilfe-leiste'), { text: 'Hilfe-Leiste zu' });
+  const fokusAufKnopf = () => c.werte(() => document.activeElement?.id === 'hilfe-knopf');
+
+  // Tipp: Merker löschen und die Seite neu laden (anmelden), dann erscheint er je Ansicht genau einmal
+  await alsBenutzer('chef');
+  await c.werte(() => { for (const k of Object.keys(localStorage)) if (k.startsWith('pep-hilfe-tipp-')) localStorage.removeItem(k); });
+  await anmelden('chef');
+  gleich(await text('.hilfe-tipp'), 'Tipp: Das ? erklärt diese Seite', 'Tipp beim ersten Besuch der Startseite');
+  gleich(await c.werte(() => getComputedStyle(document.querySelector('.hilfe-tipp')).pointerEvents), 'none', 'Tipp fängt keine Klicks ab');
+  gleich(await c.werte(() => localStorage.getItem('pep-hilfe-tipp-start')), '1', 'Tipp gemerkt (localStorage)');
+  await c.foto(`${FOTOS}hilfe-tipp.png`);
+  await reiter('abwesenheiten');
+  pruefe(await sichtbar('.hilfe-tipp'), 'Tipp beim ersten Besuch der Abwesenheiten');
+  await reiter('start');
+  gleich(await anzahl('.hilfe-tipp'), 0, 'kein Tipp beim zweiten Besuch der Startseite');
+  await reiter('abwesenheiten');
+  gleich(await anzahl('.hilfe-tipp'), 0, 'kein Tipp beim zweiten Besuch der Abwesenheiten');
+
+  // Jeder Reiter am PC: Überschrift und Abschnitte passen, Escape schließt, Fokus zurück auf „?“
+  gleich(await c.werte(() => document.getElementById('hilfe-knopf').getAttribute('aria-label')), 'Hilfe zu dieser Seite', 'aria-label');
+  for (const r of ['start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'zeitkonto', 'mitarbeiter', 'einstellungen']) {
+    await reiter(r);
+    await oeffne();
+    const h = await hilfeOffen();
+    gleich(h, { ansicht: r, titel: HILFE[r].titel, abschnitte: ['Wozu dient diese Seite', "So geht's", 'Gut zu wissen'],
+      schritte: HILFE[r].schritte.length, wissen: HILFE[r].gut_zu_wissen.length, knoepfe: ['Schließen'] }, `Hilfe ${r}`);
+    const breite = await c.werte(() => Math.round(document.querySelector('dialog.hilfe-leiste[open]').getBoundingClientRect().width));
+    pruefe(breite > 300 && breite < 500, `${r}: Leiste am PC schmal (rechts)`, breite);
+    await c.foto(`${FOTOS}hilfe-pc-${r}.png`);
+    await c.taste('Escape');
+    await zu();
+    pruefe(await fokusAufKnopf(), `${r}: nach Escape Fokus auf „?“`);
+  }
+
+  // Tab bleibt in der Leiste und erreicht „Schließen“; Klick daneben schließt
+  await oeffne();
+  await c.taste('Tab');
+  gleich(await c.werte(() => [document.activeElement?.textContent, Boolean(document.activeElement?.closest('dialog.hilfe-leiste'))]),
+    ['Schließen', true], 'Tab erreicht „Schließen“ in der Leiste');
+  await c.maus('mouseMoved', 200, 450, { button: 'none' });
+  await c.maus('mousePressed', 200, 450, { buttons: 1 });
+  await c.maus('mouseReleased', 200, 450, { buttons: 0 });
+  await zu();
+  pruefe(await fokusAufKnopf(), 'nach Klick daneben Fokus auf „?“');
+
+  // Einsatzplan im Modus IST: eigene Texte
+  await reiter('einsatzplan');
+  await c.klick('#ansicht-einsatzplan [data-modus="ist"]');
+  await ruhe();
+  pruefe(await sichtbar('#ansicht-einsatzplan .ist-tabelle'), 'IST-Modus aktiv');
+  gleich(await oeffne(), HILFE.einsatzplan_ist.titel, 'Hilfe im Modus IST');
+  gleich((await hilfeOffen()).ansicht, 'einsatzplan_ist', 'Ansicht einsatzplan_ist');
+  await c.foto(`${FOTOS}hilfe-pc-einsatzplan-ist.png`);
+  await c.taste('Escape');
+  await zu();
+  await c.klick('#ansicht-einsatzplan [data-modus="plan"]');
+  await ruhe();
+  gleich(await oeffne(), HILFE.einsatzplan.titel, 'zurück im Plan: Plan-Hilfe');
+  await c.taste('Escape');
+  await zu();
+
+  // Modus-Wechsel: die Hilfe folgt sofort dem gewünschten Modus (Woche lädt noch) und fällt mit der Ansicht zurück,
+  // wenn das Laden scheitert (dann bleibt der Plan stehen).
+  s.verzoegere(800);
+  try {
+    await c.klick('#ansicht-einsatzplan [data-modus="ist"]');
+    gleich(await oeffne(), HILFE.einsatzplan_ist.titel, 'IST angeklickt, Woche lädt noch: IST-Hilfe');
+    await c.taste('Escape');
+    await zu();
+  } finally {
+    s.verzoegere(0);
+  }
+  await ruhe();
+  await c.klick('#ansicht-einsatzplan [data-modus="plan"]');
+  await ruhe();
+  await c.werte(() => {
+    window.__fetchVorher = window.fetch;
+    window.fetch = (u, ...r) => (String(u).includes('pep_ist_woche') ? Promise.reject(new TypeError('Failed to fetch'))
+      : window.__fetchVorher(u, ...r));
+  });
+  try {
+    await c.klick('#ansicht-einsatzplan [data-modus="ist"]');
+    await ruhe();
+    gleich((await meldungen()).fehler, 'Keine Verbindung. Bitte prüfe dein Internet.', 'Laden des IST gescheitert: Meldung');
+    pruefe(!(await sichtbar('#ansicht-einsatzplan .ist-tabelle')), 'Laden gescheitert: der Plan bleibt stehen');
+    gleich(await oeffne(), HILFE.einsatzplan.titel, 'Laden gescheitert: Plan-Hilfe');
+    await c.taste('Escape');
+    await zu();
+  } finally {
+    await c.werte(() => { window.fetch = window.__fetchVorher; });
+  }
+
+  // Tablet: Leiste füllt den Bildschirm, „Schließen“ per Finger
+  await c.tablet(true);
+  await pause(300);
+  await reiter('zeitkonto');
+  await oeffne();
+  const masse = await c.werte(() => {
+    const r = document.querySelector('dialog.hilfe-leiste[open]').getBoundingClientRect();
+    return { links: Math.round(r.left), breite: Math.round(r.width), hoehe: Math.round(r.height), fenster: [innerWidth, innerHeight] };
+  });
+  gleich([masse.links, masse.breite, masse.hoehe], [0, masse.fenster[0], masse.fenster[1]], 'Tablet: Leiste bildschirmfüllend');
+  await c.foto(`${FOTOS}hilfe-tablet-zeitkonto.png`);
+  await c.klick({ text: 'Schließen', in: 'dialog.hilfe-leiste[open]', sel: 'button', genau: true });
+  await zu();
+  const quer = await c.werte(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  pruefe(quer <= 0, 'Tablet: Reiterleiste mit „?“ scrollt nicht quer', `${quer}px Überstand`);
+  await c.tablet(false);
+  await pause(300);
+});
+
+// Vorbereitung der folgenden Szenarien (auch im gefilterten Lauf): KW 45 und KW 46 abgeschlossen.
+async function kw45und46Abschliessen() {
+  if ((await abschluesse()).includes(TAGE[0])) return;
+  await bestaetigeTage([...K45, ...TAGE]);
+  for (const kw of [45, 46]) {
+    if (!(await abschluesse()).includes(kw === 45 ? K45[0] : TAGE[0])) {
+      const r = await s.rpc('pep_wochenabschluss', { p_jahr: 2026, p_kw: kw }, B.leitung);
+      if (r.status !== 200) throw new Error(`pep_wochenabschluss KW ${kw}: ${r.json?.message}`);
+    }
+  }
+}
+
+await szenario('Zeitkonto: nach dem Abschluss angelegt → Diff grau „nicht gebucht“, nicht im Saldo und nicht in der Summe', async () => {
+  await kw45und46Abschliessen();
+  const nils = (await s.rpc('pep_mitarbeiter_speichern', { p_id: null, p_daten: { name: 'Nachtrag, Nils' } }, B.leitung)).json;
+  await s.rpc('pep_vertrag_speichern', { p_mitarbeiter_id: nils, p_daten:
+    { vertragsart: 'vollzeit', wochenstunden: 37.5, gueltig_ab: '2026-01-01' } }, B.leitung);
+  const woche = (await s.rpc('pep_zeitkonto_woche', { p_jahr: 2026, p_kw: 46 }, B.leitung)).json;
+  const n = woche.mitarbeiter.find((m) => m.id === nils);
+  gleich([n.gebucht, Number(n.diff), Number(n.saldo_aktuell)], [false, -37.5, 0], 'DB: Nils nicht gebucht, Saldo ohne Diff');
+  gleich(await journalDB(nils), [], 'DB: Nils ohne Buchung');
+  await alsBenutzer('chef');
+  await reiter('zeitkonto');
+  await c.klick({ text: 'Vorwoche', in: '#ansicht-zeitkonto', sel: 'button', genau: true });
+  await ruhe();
+  gleich(await zkWoche(), 'KW 46/2026', 'KW 46 (abgeschlossen)');
+  const zeile = await c.werte((id) => {
+    const r = document.querySelector(`#ansicht-zeitkonto tr[data-mitarbeiter="${id}"]`);
+    const td = [...r.querySelectorAll('td')];
+    return { diff: td[5].textContent, marke: td[5].querySelector('.zk-nicht-gebucht-marke')?.textContent ?? null,
+      grau: td[5].classList.contains('vorlaeufig'), title: td[5].title, aktuell: td[7].textContent };
+  }, nils);
+  gleich([zeile.diff, zeile.marke, zeile.grau, zeile.aktuell], ['−37,50nicht gebucht', 'nicht gebucht', true, '0,00'],
+    'Nils: Diff grau mit „nicht gebucht“, Saldo aktuell ohne Diff');
+  pruefe(zeile.title.startsWith('nicht gebucht: inaktiv oder beim Abschluss nicht dabei'), 'Tooltip erklärt den Grund', zeile.title);
+  gleich(await anzahl('#ansicht-zeitkonto .zk-nicht-gebucht-marke'), 1, 'nur Nils ist nicht gebucht');
+  const summe = Math.round(woche.mitarbeiter.filter((m) => m.gebucht).reduce((x, m) => x + Number(m.diff), 0) * 100) / 100;
+  const fuss = await c.werte(() => [...document.querySelectorAll('#ansicht-zeitkonto tfoot td')][5].textContent);
+  gleich(zahlDE(fuss), summe, 'Summe Diff ohne die nicht gebuchte Diff');
+  pruefe((await text('#ansicht-zeitkonto .zk-legende-nicht-gebucht'))?.includes('inaktiv oder beim Abschluss nicht dabei'),
+    'Legende unter der Tabelle', await text('#ansicht-zeitkonto .zk-fuss'));
+  await c.foto(`${FOTOS}zeitkonto-nicht-gebucht.png`);
+  // Ausdrucke: Wocheneinsatz-IST und Stundenblatt nennen die Woche ebenso „nicht gebucht“
+  await druckStub();
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-drucken"]');
+  await warteDialog('Drucken');
+  await dKnopf('Wocheneinsatz-IST KW 46');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .dr-wochenist'), { text: 'Wocheneinsatz-IST' });
+  const druckZeile = (name) => c.werte((n) => {
+    const tr = [...document.querySelectorAll('#ansicht-druck .dr-wochenist tbody tr')].find((r) => r.cells[0].textContent.startsWith(n));
+    return tr ? [...tr.cells].slice(-3).map((td) => [td.textContent, td.classList.contains('dr-nicht-gebucht')]) : null;
+  }, name);
+  gleich(await druckZeile('Nachtrag, Nils'), [['−37,50nicht gebucht', true], ['0,00', false], ['0,00', false]],
+    'Wocheneinsatz-IST: Diff „nicht gebucht“, Saldo ohne Diff');
+  const ben = Number(woche.mitarbeiter.find((m) => m.id === BEN).diff);
+  gleich([zahlDE((await druckZeile('Muster, Ben'))[0][0]), (await druckZeile('Muster, Ben'))[0][1]], [ben, false],
+    'Wocheneinsatz-IST: gebuchte Diff wie bisher (Ben)');
+  await druckAufraeumen();
+  await c.klick('#ansicht-zeitkonto [data-aktion="zk-drucken"]');
+  await warteDialog('Drucken');
+  await dKnopf('Stundenblatt');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .dr-stundenblatt'), { text: 'Stundenblatt' });
+  const hinweis = await c.werte(() => {
+    const seite = [...document.querySelectorAll('#ansicht-druck .dr-seite')].find((x) => x.querySelector('.dr-person')?.textContent.startsWith('Nachtrag, Nils'));
+    return seite ? [...seite.querySelectorAll('.dr-stundenblatt-wochen tbody tr')].map((tr) => [tr.cells[0].textContent, [...tr.cells].at(-1).textContent]) : null;
+  });
+  gleich(hinweis, [['KW 46/2026', 'nicht gebucht']], 'Stundenblatt: Woche „nicht gebucht“');
+  await druckAufraeumen();
+});
+
+await szenario('Einstellungen: Korrektur-Hinweis beim Teiler, nicht sperrender Code ohne Gutschrift als Vorgabe, Warnung bei Gutschrift', async () => {
+  await kw45und46Abschliessen();
+  // Ein nicht sperrender Code mit Gutschrift (per RPC, wie ihn eine ältere Fassung angelegt hätte)
+  const id = (await s.rpc('pep_code_speichern', { p_id: null, p_daten: { code: 'NSG', name: 'Nicht sperrend mit Gutschrift',
+    farbe: '#123456', stundenregel: 'teiler', sperrt: false, gutschrift: true } }, B.leitung)).json;
+  await alsBenutzer('chef');
+  await reiter('einstellungen');
+  const box = (titel) => c.werte((t) => [...document.querySelectorAll('#ansicht-einstellungen .box')]
+    .find((b) => b.querySelector('h2')?.textContent === t)?.querySelector('.hinweis-gelb')?.textContent ?? null, titel);
+  gleich(await box('Regelparameter'), 'Abwesenheits- und Feiertags-Teiler: Ändert die Wirkung in schon abgeschlossenen Wochen – '
+    + 'das Zeitkonto bucht dann automatisch Korrekturen.', 'Regelparameter: Korrektur-Hinweis nach dem Abschluss');
+  const warnungen = await c.werte(() => [...document.querySelectorAll('#ansicht-einstellungen .code-doppelt')]
+    .map((p) => [p.closest('form').querySelector('input[type="text"]').value, p.textContent]));
+  gleich(warnungen, [['NSG', 'Achtung: Nicht sperrender Code mit Gutschrift – an Tagen mit IST zählt der Tag doppelt.']],
+    'Warnung nur beim nicht sperrenden Code mit Gutschrift');
+  // Neuer Code: „sperrt“ abhaken nimmt die Gutschrift mit, wieder anhaken setzt sie wieder
+  const klickNeu = (t) => c.werte((x) => {
+    const f = [...document.querySelectorAll('#ansicht-einstellungen .codes form.zeile')].at(-1);
+    [...f.querySelectorAll('label.haken')].find((l) => l.textContent.trim() === x).querySelector('input').click();
+  }, t);
+  const stand = () => c.werte(() => {
+    const f = [...document.querySelectorAll('#ansicht-einstellungen .codes form.zeile')].at(-1);
+    const h = (t) => [...f.querySelectorAll('label.haken')].find((l) => l.textContent.trim() === t).querySelector('input').checked;
+    return [h('sperrt'), h('Gutschrift im Zeitkonto')];
+  });
+  gleich(await stand(), [true, true], 'neuer Code: sperrt und Gutschrift vorbelegt');
+  await klickNeu('sperrt');
+  gleich(await stand(), [false, false], 'sperrt ab → Gutschrift ab');
+  await klickNeu('sperrt');
+  gleich(await stand(), [true, true], 'sperrt an → Gutschrift an');
+  gleich((await sql('select sperrt, gutschrift from pep.abwesenheitscodes where id = $1', [id]))[0], { sperrt: false, gutschrift: true },
+    'DB: bestehender Code unverändert');
+  await c.werte(() => document.querySelector('#ansicht-einstellungen .code-doppelt').scrollIntoView({ block: 'center' }));
 });
 
 // ================================================================ Ende

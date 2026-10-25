@@ -4,7 +4,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   neueDatenbank, als, pepBenutzer, filiale, heuteSetzen, planGrundlage,
-  umfrageAnlegen, urlaubsfrageId, umfrageMitarbeiter, abgeben,
+  umfrageAnlegen, urlaubsfrageId, umfrageMitarbeiter, abgeben, istAbSetzen,
 } from './helfer.mjs';
 
 let db, t, anna, ben, cem, mini, wiebke, azubi, ohne;
@@ -166,4 +166,207 @@ test('Rechte: Stellvertretung liest dasselbe; Rolle mitarbeiter → NUR_LEITUNG;
   assert.deepEqual(await startseite(t.stellv), await startseite(t.leitung));
   await assert.rejects(startseite(azubi), /NUR_LEITUNG/);
   await assert.rejects(startseite(ohne), /KEINE_FILIALE/);
+});
+
+test('abwesend zählt nur sperrende Codes ohne Feiertag: U, KM, BS, AF, T, eigener Code ja; FT und nicht sperrende nein', async () => {
+  // Eigene Woche KW 49 (30.11.–06.12.2026), damit der Bestand der anderen Tests unberührt bleibt.
+  await heuteSetzen(db, '2026-11-30');
+  const code = async (daten) => t.json(t.leitung, 'select public.pep_code_speichern(null, $1::jsonb) as r', [JSON.stringify(daten)]);
+  const fb = await code({ code: 'FB', name: 'Fortbildung', farbe: '#123456', stundenregel: 'teiler', sperrt: true });
+  const inf = await code({ code: 'IN', name: 'Info', farbe: '#654321', stundenregel: 'keine', sperrt: false });
+  const setzen = (m, codeId, datum, stunden = null) => t.json(t.leitung,
+    'select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, $4::numeric, null, null, null) as r',
+    [m, codeId, datum, stunden]);
+  const fred = await t.ma('Test, Fred');
+  const ida = await t.ma('Test, Ida');
+  const theo = await t.ma('Test, Theo');
+  const alf = await t.ma('Test, Alf');
+  await setzen(anna, t.code.U, '2026-11-30');
+  await setzen(ben, t.code.KM, '2026-12-01');
+  await setzen(cem, t.code.BS, '2026-12-02', 8);
+  await setzen(mini, t.code.NV, '2026-12-03');
+  await setzen(wiebke, t.code.FT, '2026-12-04');
+  await setzen(fred, fb, '2026-12-05');
+  await setzen(ida, inf, '2026-11-30');
+  await setzen(theo, t.code.T, '2026-12-01', 4);
+  await setzen(alf, t.code.AF, '2026-12-02', 8);
+
+  // Erwartung aus dem tatsächlichen sperrt-Wert der Codes, nicht aus einer Annahme über das Startset.
+  const codes = (await t.json(t.leitung, 'select public.pep_einstellungen() as r')).codes;
+  const sperrt = Object.fromEntries(codes.map((c) => [c.code, c.sperrt]));
+  assert.equal(sperrt.FB, true);
+  assert.equal(sperrt.IN, false);
+  const alle = [[anna, 'U'], [ben, 'KM'], [cem, 'BS'], [mini, 'NV'], [wiebke, 'FT'], [fred, 'FB'], [ida, 'IN'],
+    [theo, 'T'], [alf, 'AF']];
+  const erwartet = alle.filter(([, c]) => sperrt[c] && c !== 'FT');
+
+  const s = await startseite();
+  const liste = s.abwesend.liste.map((a) => [a.mitarbeiter_id, a.code]).sort((x, y) => x[0] - y[0]);
+  assert.deepEqual(liste, [...erwartet].sort((x, y) => x[0] - y[0]));
+  assert.equal(s.abwesend.anzahl, erwartet.length);
+  const gezaehlt = s.abwesend.liste.map((a) => a.code);
+  for (const c of ['U', 'KM', 'BS', 'AF', 'T', 'FB']) assert.ok(gezaehlt.includes(c), c);
+  for (const c of ['FT', 'IN']) assert.ok(!gezaehlt.includes(c), c);
+  await heuteSetzen(db, '2026-11-02');
+});
+
+// ---------------------------------------------------------------- Stufe 2: IST offen und Zeitkonto auffällig
+// Eigene Datenbank Z, heute = Mo 16.11.2026 (KW 47). Fenster „IST offen“ = heute − 42 bis gestern = 05.10.–15.11.2026.
+// Anna: Vertrag seit 01.01., alle Tage im Fenster bestätigt außer Mo 05.10. (erster Tag des Fensters) und Sa 14.11.;
+//       Sa 03.10. (vor dem Fenster) bleibt auch offen.
+// Nora: Eintritt Do 12.11. → offen Do, Fr, Sa (davor nicht beschäftigt).
+// Kurt: Vertrag erst ab Mo 09.11.; KM ganztägig Mo 09.11. (zählt nicht), Teilzeit-Abwesenheit Di 10.11. (zählt);
+//       Mi 11.11. als geschlossen eingestellt (zählt bei niemandem).
+// Ina:  inaktiv → zählt nie.
+let Z;
+
+before(async () => {
+  const zdb = await neueDatenbank();
+  const g = await planGrundlage(zdb, { heute: '2026-11-16' });
+  const speichern = (id, daten) => g.json(g.leitung, 'select public.pep_mitarbeiter_speichern($1, $2::jsonb) as r',
+    [id, JSON.stringify(daten)]);
+  const za = await g.ma('Zeit, Anna');
+  const zn = await g.ma('Zeit, Nora');
+  await speichern(zn, { eintritt: '2026-11-12' });
+  const zk = await g.ma('Zeit, Kurt', { ab: '2026-11-09' });
+  const zi = await g.ma('Zeit, Ina');
+  await speichern(zi, { aktiv: false });
+  await g.json(g.leitung, 'select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, null, null, null, null) as r',
+    [zk, g.code.KM, '2026-11-09']);
+  await g.json(g.leitung, 'select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, 2, $4::time, $5::time, null) as r',
+    [zk, g.code.BS, '2026-11-10', '08:00', '10:00']);
+  await als(zdb, 'authenticated', g.leitung, 'select public.pep_abweichung_speichern($1::date, $2::jsonb)',
+    ['2026-11-11', JSON.stringify({ art: 'sonstiges', geoeffnet: false, name: 'Umbau' })]);
+  // Annas Tage im Fenster bestätigen (direkt, ohne IST-Blöcke = leer bestätigt), außer 05.10. und 14.11.
+  await zdb.query(`insert into pep.ist_tage (filiale_id, mitarbeiter_id, datum)
+    select $1, $2, d::date from generate_series('2026-10-06'::date, '2026-11-13'::date, interval '1 day') d`, [g.fil, za]);
+  const startseite = (nutzer = g.leitung) => g.json(nutzer, 'select public.pep_startseite() as r');
+  const bestaetigen = (datum) => g.json(g.leitung, 'select public.pep_ist_bestaetigen($1::date, null) as r', [datum]);
+  const buchen = (maId, art, stunden, grund, datum) => g.json(g.leitung,
+    'select public.pep_zeitkonto_buchen($1, $2, $3::numeric, $4, $5::date) as r', [maId, art, stunden, grund, datum]);
+  Z = { db: zdb, ...g, za, zn, zk, zi, startseite, bestaetigen, buchen };
+});
+
+test('ist_offen: offene IST-Zeilen der letzten 6 Wochen bis gestern; nur geöffnet, beschäftigt, nicht ganztägig abwesend', async () => {
+  await heuteSetzen(Z.db, '2026-11-16');
+  try {
+    const s = await Z.startseite();
+    // Anna 05.10. und 14.11.; Nora 12.–14.11.; Kurt 10., 12., 13., 14.11. (09.11. KM ganztägig, 11.11. geschlossen)
+    assert.deepEqual(s.ist_offen, { tage: 5, zeilen: 9, erster: '2026-10-05' });
+    // Dieselbe Definition wie IST-Ansicht und Zeitkonto: pep.ist_zeilen, offen = nicht bestätigt
+    const roh = (await Z.db.query(`select count(*)::int as n, count(distinct datum)::int as t,
+        to_char(min(datum), 'YYYY-MM-DD') as erster
+      from pep.ist_zeilen($1, '2026-10-05', '2026-11-15', null) where bestaetigt_am is null`, [Z.fil])).rows[0];
+    assert.deepEqual(s.ist_offen, { tage: roh.t, zeilen: roh.n, erster: roh.erster });
+
+    // Einen Tag später: 05.10. fällt aus dem Fenster, Mo 16.11. (jetzt gestern) kommt für alle drei dazu
+    await heuteSetzen(Z.db, '2026-11-17');
+    const morgen = await Z.startseite();
+    assert.deepEqual(morgen.ist_offen, { tage: 5, zeilen: 11, erster: '2026-11-10' });
+
+    // Alles bis gestern bestätigt → 0, erster null; die Stellvertretung sieht dasselbe
+    for (const d of ['2026-10-05', '2026-11-10', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-16']) {
+      await Z.bestaetigen(d);
+    }
+    const leer = await Z.startseite();
+    assert.deepEqual(leer.ist_offen, { tage: 0, zeilen: 0, erster: null });
+    assert.deepEqual(await Z.startseite(Z.stellv), leer);
+  } finally {
+    await heuteSetzen(Z.db, '2026-11-16');
+  }
+});
+
+test('zeitkonto_auffaellig: Warnung im Saldo der zuletzt abgeschlossenen Woche (Buchungen bis Sonntag), Regel wie im Reiter', async () => {
+  await heuteSetzen(Z.db, '2026-11-16');
+  try {
+    // Startsalden vor dem ersten Abschluss: noch keine abgeschlossene Woche → leer
+    await Z.buchen(Z.za, 'start', 100, 'Übernahme', '2026-11-02');
+    await Z.buchen(Z.zk, 'start', -10, 'Übernahme', '2026-11-02');
+    assert.deepEqual((await Z.startseite()).zeitkonto_auffaellig, { jahr: null, kw: null, montag: null, liste: [] });
+
+    // Start der IST-Erfassung auf KW 46 (der erste Abschluss muss die Startwoche sein; noch kein Abschluss, also änderbar).
+    await istAbSetzen(Z.db, Z.fil, '2026-11-09');
+    // KW 46 abschließen (die offenen Tage wurden im vorigen Test bestätigt). diff: Anna −37,5 (ohne IST),
+    // Nora −18,75 (Eintritt Do), Kurt −29,25 (KM Mo 6,25 + BS Di 2 zählen). Saldo: Anna 62,5 > 37,5 → plus;
+    // Kurt −39,25 < −37,5 → minus; Nora −18,75 → keine Warnung; Ina inaktiv → keine Buchung, Saldo 0.
+    assert.deepEqual(await Z.json(Z.leitung, 'select public.pep_wochenabschluss(2026, 46) as r'), { gebucht: 3 });
+    // Eine Buchung nach dem Sonntag zählt nicht (Kurt läge sonst bei −34,25 und ohne Warnung)
+    await Z.buchen(Z.zk, 'manuell', 5, 'Ausgleich', '2026-11-16');
+    const s = await Z.startseite();
+    assert.deepEqual(s.zeitkonto_auffaellig, {
+      jahr: 2026, kw: 46, montag: '2026-11-09',
+      liste: [
+        { id: Z.za, name: 'Zeit, Anna', saldo: 62.5, warnung: 'plus' },
+        { id: Z.zk, name: 'Zeit, Kurt', saldo: -39.25, warnung: 'minus' },
+      ],
+    });
+    // Gleiche Zahlen und Warnungen wie der Reiter Zeitkonto für KW 46 (dort ohne die Buchung vom 16.11.)
+    const zk = await Z.json(Z.leitung, 'select public.pep_zeitkonto_woche(2026, 46) as r');
+    const reiter = zk.mitarbeiter.filter((m) => m.warnung).map((m) => ({ id: m.id, saldo: m.saldo_aktuell, warnung: m.warnung }));
+    assert.deepEqual(reiter, s.zeitkonto_auffaellig.liste.map(({ id, saldo, warnung }) => ({ id, saldo, warnung })));
+
+    // Faktor 2 → niemand auffällig; Stellvertretung sieht dasselbe
+    await als(Z.db, 'authenticated', Z.leitung, `select public.pep_einstellung_setzen('zeitkonto_warnfaktor', '2'::jsonb)`);
+    const ruhig = await Z.startseite();
+    assert.deepEqual(ruhig.zeitkonto_auffaellig, { jahr: 2026, kw: 46, montag: '2026-11-09', liste: [] });
+    assert.deepEqual(await Z.startseite(Z.stellv), ruhig);
+    await als(Z.db, 'authenticated', Z.leitung, `select public.pep_einstellung_setzen('zeitkonto_warnfaktor', '1'::jsonb)`);
+  } finally {
+    await heuteSetzen(Z.db, '2026-11-16');
+  }
+});
+
+test('ist_ab: Tage vor dem Start der IST-Erfassung sind nicht offen (Kachel, Zeitkonto), nicht erfassbar, Abschluss → VOR_IST_START', async () => {
+  // Eigene Datenbank mit dem Standard der Datenbank: ist_ab = Montag von heute = 16.11.2026.
+  const sdb = await neueDatenbank();
+  const g = await planGrundlage(sdb, { heute: '2026-11-16', istAb: null });
+  try {
+    const leo = await g.ma('Start, Leo'); // Vertrag seit 01.01.2026
+    await heuteSetzen(sdb, '2026-11-10');
+    await g.malen(g.leitung, leo, '2026-11-13', '08:00', '12:00', 'KA'); // Plan, aus dem sonst der Vorschlag käme
+    await heuteSetzen(sdb, '2026-11-16');
+    assert.equal((await g.json(g.leitung, 'select public.pep_einstellungen() as r')).werte.ist_ab, '2026-11-16');
+
+    const s = await g.json(g.leitung, 'select public.pep_startseite() as r');
+    assert.deepEqual(s.ist_offen, { tage: 0, zeilen: 0, erster: null });
+    const zk = await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 46) as r');
+    assert.equal(zk.offene_tage, 0);
+    assert.equal(zk.mitarbeiter.find((m) => m.id === leo).offene_tage, 0);
+    // IST-Ansicht KW 46: kein Tag erfassbar, alle vor dem Start, kein Status, kein Vorschlag
+    const w = await g.json(g.leitung, 'select public.pep_ist_woche(2026, 46) as r');
+    assert.equal(w.ist_ab, '2026-11-16');
+    assert.ok(w.tage.every((t) => t.ist_erlaubt === false && t.vor_ist_start === true));
+    assert.deepEqual(w.status, []);
+    assert.deepEqual(w.bloecke.filter((b) => b.mitarbeiter_id === leo), []);
+    // KW 47: Montag erfassbar, nicht vor dem Start
+    const w47 = await g.json(g.leitung, 'select public.pep_ist_woche(2026, 47) as r');
+    assert.deepEqual([w47.tage[0].ist_erlaubt, w47.tage[0].vor_ist_start], [true, false]);
+    await assert.rejects(g.json(g.leitung, `select public.pep_ist_malen($1, '2026-11-13', '08:00', '12:00', $2, null) as r`,
+      [leo, g.bereich.KA]), /IST_VOR_START/);
+    // Radieren (Bereich null) prüft den Start genauso
+    await assert.rejects(g.json(g.leitung, `select public.pep_ist_malen($1, '2026-11-13', '08:00', '12:00', null, null) as r`,
+      [leo]), /IST_VOR_START/);
+    // Reiter Zeitkonto: KW 46 liegt vor dem Start – diff sichtbar, aber nicht im Saldo aktuell (wird nie gebucht)
+    await g.json(g.leitung, `select public.pep_zeitkonto_buchen($1, 'start', 10, 'Übernahme', '2026-11-02') as r`, [leo]);
+    const vor = await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 46) as r');
+    assert.deepEqual([vor.vor_ist_start, vor.ist_ab, vor.abgeschlossen], [true, '2026-11-16', null]);
+    const leoVor = vor.mitarbeiter.find((m) => m.id === leo);
+    assert.deepEqual([leoVor.diff, leoVor.saldo_vorwoche, leoVor.saldo_aktuell, leoVor.warnung], [-37.5, 10, 10, null]);
+    // KW 47 (ab dem Start, laufend): diff zählt wie bisher vorläufig im Saldo aktuell
+    const ab = await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 47) as r');
+    assert.equal(ab.vor_ist_start, false);
+    const leoAb = ab.mitarbeiter.find((m) => m.id === leo);
+    assert.deepEqual([leoAb.saldo_vorwoche, leoAb.saldo_aktuell], [10, 10 + leoAb.diff]);
+    await assert.rejects(g.json(g.leitung, 'select public.pep_wochenabschluss(2026, 46) as r'), /VOR_IST_START/);
+    assert.deepEqual(await g.json(g.leitung, `select public.pep_ist_bestaetigen('2026-11-13', null) as r`), { bestaetigt: 0 });
+
+    // Start eine Woche früher: KW 46 ist jetzt offen (Mo–Sa), der Abschluss scheitert an den offenen Tagen
+    await als(sdb, 'authenticated', g.leitung, `select public.pep_einstellung_setzen('ist_ab', '"2026-11-09"'::jsonb)`);
+    assert.deepEqual((await g.json(g.leitung, 'select public.pep_startseite() as r')).ist_offen,
+      { tage: 6, zeilen: 6, erster: '2026-11-09' });
+    assert.equal((await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 46) as r')).offene_tage, 6);
+    await assert.rejects(g.json(g.leitung, 'select public.pep_wochenabschluss(2026, 46) as r'), /IST_OFFEN/);
+  } finally {
+    await heuteSetzen(sdb, '2026-11-16');
+  }
 });

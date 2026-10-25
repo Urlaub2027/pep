@@ -14,6 +14,7 @@ import {
 
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
 const HINWEIS_WUNSCH_GEAENDERT = 'Wunsch im Urlaubstool geändert oder zurückgezogen';
+const HINWEIS_WUNSCH_FEHLT = 'Genehmigt (aus einer Sicherung; der Wunsch dazu ist im Urlaubstool hier nicht zugeordnet)';
 const STANDARD_TEILER = 6;
 
 const MIN_SPALTE_PX = 34; // Tagesspalte; reicht die Breite nicht, scrollt nur der Raster-Container
@@ -222,6 +223,8 @@ function zelle(m, tag, farben) {
       td.append(element('span', { class: 'warn', title: HINWEIS_WUNSCH_GEAENDERT }, '!'));
       titel.push(HINWEIS_WUNSCH_GEAENDERT);
     }
+    // Freigabe aus einer Sicherung, deren Urlaubswunsch hier keiner Umfrage zugeordnet werden konnte: Tage bleiben genehmigt
+    if (eintrag.freigabe_id && eintrag.wunsch_fehlt) titel.push(HINWEIS_WUNSCH_FEHLT);
   } else if (wunsch) {
     td.append(element('span', { class: 'kz' }, 'U?'));
   }

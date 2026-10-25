@@ -1,0 +1,58 @@
+[
+ {
+  "id": 3,
+  "kw": 44,
+  "art": "start",
+  "jahr": 2026,
+  "name": "Demo, Emil",
+  "datum": "2026-11-01",
+  "grund": "Übernahme aus der bisherigen Liste",
+  "stunden": 12.5,
+  "saldo_nach": 12.5,
+  "angelegt_am": "2026-10-25T12:29:29.237+01:00",
+  "mitarbeiter_id": 5,
+  "angelegt_von_name": "chef"
+ },
+ {
+  "id": 8,
+  "kw": 45,
+  "art": "woche",
+  "jahr": 2026,
+  "name": "Demo, Emil",
+  "datum": "2026-11-02",
+  "grund": null,
+  "stunden": -3,
+  "saldo_nach": 9.5,
+  "angelegt_am": "2026-10-25T12:29:29.262+01:00",
+  "mitarbeiter_id": 5,
+  "angelegt_von_name": "chef"
+ },
+ {
+  "id": 18,
+  "kw": 45,
+  "art": "korrektur",
+  "jahr": 2026,
+  "name": "Demo, Emil",
+  "datum": "2026-11-02",
+  "grund": "KW 45/2026: Inventur länger",
+  "stunden": 1,
+  "saldo_nach": 10.5,
+  "angelegt_am": "2026-10-25T12:29:29.295+01:00",
+  "mitarbeiter_id": 5,
+  "angelegt_von_name": "chef"
+ },
+ {
+  "id": 19,
+  "kw": 46,
+  "art": "manuell",
+  "jahr": 2026,
+  "name": "Demo, Emil",
+  "datum": "2026-11-09",
+  "grund": "Überstunden ausgezahlt",
+  "stunden": -4,
+  "saldo_nach": 6.5,
+  "angelegt_am": "2026-10-25T12:29:29.302+01:00",
+  "mitarbeiter_id": 5,
+  "angelegt_von_name": "chef"
+ }
+]

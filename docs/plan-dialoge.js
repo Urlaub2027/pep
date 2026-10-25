@@ -7,7 +7,8 @@ import { element, feld, eingabe, meldung, datumDE, fehlerText, stundenDE } from 
 import { aufruf, zeigeAnsicht } from './app.js';
 import { dialog } from './dialog.js';
 import { waehleMitarbeiter, VERTRAGSARTEN } from './mitarbeiter.js';
-import { plusTage, montagDerKw, zeitspanne, isoWoche } from './zeit.js';
+import { plusTage, montagDerKw, zeitspanne, isoWoche, heuteDatum } from './zeit.js';
+import { vorzeichen } from './zeitkonto-daten.js';
 import {
   gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText, vorgabeText, ersatzBloecke,
   uebernahmeText,
@@ -340,13 +341,13 @@ export async function ersatzDialog(kontext, mitarbeiterId, datum) {
       bloecke.pauseText ? element('span', { class: 'pd-pause' }, bloecke.pauseText) : null),
     antwort.kandidaten.length
       ? element('div', { class: 'pd-kandidaten' }, antwort.kandidaten.map(zeile))
-      : element('p', { class: 'warnung' }, 'Niemand kann einspringen, ohne eine Sperre, die Ruhezeit oder die '
-        + 'Höchstarbeitszeit zu verletzen. Die Blöcke bleiben unbesetzt.'),
+      : element('p', { class: 'warnung' }, 'Niemand kann einspringen, ohne eine Sperre zu verletzen oder Ruhezeit '
+        + 'bzw. Höchstarbeitszeit neu oder stärker zu verletzen. Die Blöcke bleiben unbesetzt.'),
     element('p', { class: 'hinweis' },
       'Ein Klick auf einen Namen übernimmt alle unbesetzten Blöcke des Tages. Reihenfolge: die meisten offenen '
       + 'Wochenstunden zuerst, dann weniger Samstage und Spätschichten. Nicht aufgeführt ist, wer zu der Zeit schon '
-      + 'eingeplant oder abwesend ist, die Kompetenz nicht hat oder gegen eine Pflicht-Vorgabe, die Ruhezeit oder die '
-      + 'Höchstarbeitszeit verstoßen würde.'),
+      + 'eingeplant oder abwesend ist, die Kompetenz nicht hat, gegen eine Pflicht-Vorgabe verstoßen würde oder durch '
+      + 'die Übernahme einen neuen oder schärferen Verstoß gegen Ruhezeit oder Höchstarbeitszeit bekäme.'),
   ], []);
   d.classList.add('pd-breit');
   // showModal fokussiert den ersten Kandidaten; Enter würde ihn sofort einsetzen. Deshalb steht der Fokus auf „Abbrechen“.
@@ -365,6 +366,30 @@ const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'A
   'November', 'Dezember'];
 const LAGE = { frueh: 'früh', spaet: 'spät', lang: 'lang', mitte: 'mitte' };
 const h = (n) => `${stundenDE(n)} h`;
+
+// Zeitkonto-Zeile (pep_eckdaten.zeitkonto): „Zeitkonto: +2,50 h (aktuell · zuletzt gebucht KW 46)“, ⚠ bei Warnung. Klick schließt den
+// Dialog und öffnet den Reiter Zeitkonto mit dem Journal des Mitarbeiters – in der zuletzt abgeschlossenen Woche, ohne
+// Abschluss in der Vorwoche (wie der Reiter selbst). zeitkonto.js wird erst beim Klick geladen: ein statischer Import
+// schlösse den Kreis zeitkonto.js → einsatzplan.js → plan-dialoge.js.
+function zeitkontoZeile(z, mitarbeiterId, datum) {
+  const stand = z.stand_montag ? isoWoche(z.stand_montag) : null;
+  const ziel = stand ?? isoWoche(plusTage(heuteDatum(new URLSearchParams(location.search).get('heute')), -7));
+  // Der Saldo sind alle Buchungen (auch nach dem letzten Abschluss), darum „aktuell“; die KW nennt den letzten Abschluss.
+  const standText = !stand ? 'aktuell · noch keine Woche abgeschlossen'
+    : `aktuell · zuletzt gebucht KW ${stand.kw}${stand.jahr !== isoWoche(datum).jahr ? `/${stand.jahr}` : ''}`;
+  const warnung = z.warnung === 'plus' || z.warnung === 'minus';
+  const knopf = element('button', {
+    type: 'button', class: `pd-eck-zk${warnung ? ' warnung' : ''}`,
+    title: warnung ? `Saldo über der Warngrenze (${z.warnung === 'plus' ? 'zu viel Plus' : 'zu viel Minus'}) – zum Zeitkonto`
+      : 'Zum Zeitkonto',
+    onclick: async (e) => {
+      e.currentTarget.closest('dialog')?.close();
+      const { oeffneZeitkonto } = await import('./zeitkonto.js');
+      oeffneZeitkonto(ziel.jahr, ziel.kw, mitarbeiterId);
+    },
+  }, warnung ? '⚠ ' : '', `Zeitkonto: ${vorzeichen(z.saldo)} h (${standText})`);
+  return element('p', {}, knopf);
+}
 
 // Abschnitt des Eckdaten-Fensters: Überschrift und Inhalt; leere Listen zeigen „keine“.
 function eckTeil(titel, ...inhalt) {
@@ -396,7 +421,7 @@ export async function eckdatenDialog(kontext, mitarbeiterId, datum) {
       : 'Kein Vertrag an diesem Tag'),
     element('p', {}, e.kompetenzen.length ? e.kompetenzen.map((k) => element('span', { class: 'badge' }, k))
       : element('span', { class: 'hinweis' }, 'keine Kompetenzen')),
-    element('p', { class: 'hinweis' }, 'Zeitkonto: ab Zeitkonto-Stufe'));
+    e.zeitkonto ? zeitkontoZeile(e.zeitkonto, m.id, datum) : null);
 
   const soll = e.woche.soll;
   const woche = eckTeil(`Woche KW ${kw}`,

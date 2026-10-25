@@ -4,14 +4,16 @@
 // Kopf jeder Druckseite: Titel, Zeitraum, Filiale, „erstellt am“ – als erste Zeile des <thead>, das der Browser
 // auf jeder Seite wiederholt.
 import { $, element, datumDE, stundenDE, textfarbe } from './hilfe.js';
-import { ich } from './app.js';
+import { ich, aufruf } from './app.js';
 import { dialog } from './dialog.js';
 import { erzeugeXlsx } from './xlsx.js';
-import { plusTage } from './zeit.js';
+import { plusTage, heuteDatum } from './zeit.js';
 import { tagKurz } from './plan-raster.js';
 import {
   tagesplanZeilen, wochenplanZeilen, monatZeilen, resturlaubZeilen, wochenplanBlatt,
+  wochenIstZeilen, stundenblattSeiten, journalTabelle,
 } from './druck-daten.js';
+import { vorzeichen } from './zeitkonto-daten.js';
 
 const WOCHENTAG_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'];
@@ -215,6 +217,124 @@ function resturlaub(daten) {
       + 'Vertrag am 01.01. bzw. erster Vertrag im Jahr.'));
 }
 
+// ---------------------------------------------------------------- Wocheneinsatz-IST (Stufe 2)
+
+// ist = pep_ist_woche, zeitkonto = pep_zeitkonto_woche derselben Woche. Wie der Wochenplan, aber mit dem bestätigten
+// IST je Tag und den Zahlen des Zeitkontos (Soll, IST-Summe, Spät, Diff, Saldo Vorwoche/aktuell).
+function wochenIst({ ist, zeitkonto }) {
+  const zeilen = wochenIstZeilen(ist, zeitkonto);
+  // Geschlossene Tage ohne Eintrag (meist der Sonntag) entfallen, damit die Woche auf eine Seite passt.
+  const tage = ist.tage.map((t, i) => ({ ...t, i }))
+    .filter((t) => t.geoeffnet || zeilen.some((z) => z.tage[t.i] && z.tage[t.i] !== '–'));
+  const a = zeitkonto?.abgeschlossen;
+  const vor = Boolean(zeitkonto?.vor_ist_start) && !a;
+  const am = a ? new Date(a.am).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
+  const stand = a ? `abgeschlossen am ${am}${a.von_name ? ` von ${a.von_name}` : ''}`
+    : vor ? 'vor dem Start der IST-Erfassung, wird nicht gebucht' : 'nicht abgeschlossen, Diff und Saldo aktuell vorläufig';
+  const zeitraum = `KW ${ist.kw}/${ist.jahr}: ${datumDE(ist.montag)} – ${datumDE(plusTage(ist.montag, 6))} · ${stand}`;
+  const spaltenZahl = 7 + tage.length;
+  const zelle = (text) => element('td', { class: `dr-tag${text === 'offen' || text.endsWith('\noffen') ? ' dr-offen' : ''}` },
+    text.replace(' / ', '\n').replace(/, /g, '\n'));
+  const zahlZelle = (n, mitVz = false) => element('td', { class: `zahl${n < 0 ? ' minus' : ''}` },
+    n == null ? '' : mitVz ? vorzeichen(n) : zahl(n));
+  // Diff, die der Abschluss nicht bucht bzw. nicht gebucht hat (inaktiv, beim Abschluss nicht dabei): grau, markiert.
+  const diffZelle = (z) => (z.gebucht === false && !vor
+    ? element('td', { class: 'zahl dr-nicht-gebucht' }, vorzeichen(z.diff), element('small', {}, 'nicht gebucht'))
+    : zahlZelle(z.diff, true));
+  const reihen = zeilen.map((z) => element('tr', {},
+    element('th', { class: 'dr-name' }, z.name, z.personalnummer ? element('small', {}, z.personalnummer) : null),
+    zahlZelle(z.soll),
+    tage.map((t) => zelle(z.tage[t.i])),
+    zahlZelle(z.ist), zahlZelle(z.spaet), diffZelle(z), zahlZelle(z.saldo_vorwoche, true),
+    zahlZelle(z.saldo_aktuell, true)));
+  const summe = (feld) => zeilen.reduce((s, z) => s + (z[feld] ?? 0), 0);
+  return element('div', { class: 'dr-seite' },
+    element('table', { class: 'dr-tabelle dr-wochenplan dr-wochenist' },
+      element('colgroup', {}, element('col', { class: 'dr-c-name' }), element('col', { class: 'dr-c-zahl' }),
+        tage.map(() => element('col', {})), [1, 2, 3, 4, 5].map(() => element('col', { class: 'dr-c-zahl' }))),
+      element('thead', {}, kopfZeile('Wocheneinsatz-IST', zeitraum, spaltenZahl),
+        element('tr', {}, element('th', { class: 'dr-name' }, 'Name / Personalnr.'), element('th', { class: 'zahl' }, 'Soll'),
+          tage.map((t) => element('th', {}, `${WOCHENTAG_LANG[t.wochentag - 1]}`, element('small', {}, datumDE(t.datum).slice(0, 6)))),
+          element('th', { class: 'zahl' }, 'IST'), element('th', { class: 'zahl' }, 'Spät'),
+          element('th', { class: 'zahl' }, 'Diff'), element('th', { class: 'zahl' }, 'Saldo Vorwoche'),
+          element('th', { class: 'zahl' }, 'Saldo aktuell'))),
+      element('tbody', {}, reihen.length ? reihen
+        : element('tr', {}, element('td', { colspan: spaltenZahl }, 'In dieser Woche ist niemand eingeplant.')))),
+    element('p', { class: 'dr-fuss' }, `Summe Soll: ${zahl(summe('soll'))} h · Summe IST: ${zahl(summe('ist'))} h · `
+      + `Offene IST-Tage: ${zeitkonto?.offene_tage ?? 0}`),
+    element('p', { class: 'dr-fuss dr-legende' },
+      'Je Tag das bestätigte IST: Zeiten, darunter Arbeitsstunden ohne Pause und (P Pause); Abwesenheit als Code/Stunden, '
+      + 'ohne Gutschrift (z. B. ZA) ohne Stunden; '
+      + '„offen“ = noch nicht bestätigt (zählt nicht); „–“ = geschlossen oder nicht gearbeitet. '
+      + 'IST = bestätigte Arbeitszeit ohne Pausen; Spät = davon ab der Spätgrenze; '
+      + 'Diff = IST + Abwesend + Feiertag − Soll (Führung: Plus erst über der Grenze); Saldo = Zeitkonto. '
+      + 'Diff „nicht gebucht“: inaktiv oder beim Abschluss nicht dabei, zählt nicht im Saldo.'));
+}
+
+// ---------------------------------------------------------------- Stundenblatt (Stufe 2, A4 hoch)
+
+// Eine Seite je Mitarbeiter (.dr-seite bricht danach um, .dr-hoch druckt auf der benannten Seite „hoch“ = A4 hoch):
+// Tageszeilen aus dem bestätigten IST, darunter die Wochen mit Saldo. daten = Antwort von pep_stundenblatt.
+function stundenblatt(daten) {
+  const seiten = stundenblattSeiten(daten);
+  const zeitraum = `${datumDE(daten.von)} – ${datumDE(daten.bis)}`;
+  if (!seiten.length) {
+    return [element('div', { class: 'dr-seite dr-hoch' }, element('table', { class: 'dr-tabelle' },
+      element('thead', {}, kopfZeile('Stundenblatt', zeitraum, 1)),
+      element('tbody', {}, element('tr', {}, element('td', {}, 'In diesem Zeitraum hat niemand einen Vertrag.')))))];
+  }
+  return seiten.map((s) => {
+    const person = `${s.name}${s.personalnummer ? ` (Personalnr. ${s.personalnummer})` : ''}`;
+    const tage = element('table', { class: 'dr-tabelle dr-stundenblatt' },
+      element('colgroup', {}, element('col', { class: 'dr-c-sb-tag' }), [1, 2, 3].map(() => element('col', { class: 'dr-c-sb-zeit' })),
+        element('col', { class: 'dr-c-sb-abw' }), element('col', { class: 'dr-c-sb-zeit' }), element('col', {})),
+      element('thead', {},
+        element('tr', { class: 'dr-kopfzeile' }, element('th', { colspan: 7 },
+          element('div', { class: 'dr-kopf' },
+            element('div', {}, element('strong', { class: 'dr-titel' }, 'Stundenblatt'), ' ', element('span', {}, zeitraum),
+              element('strong', { class: 'dr-person' }, person)),
+            element('div', { class: 'dr-kopf-rechts' }, element('span', {}, filialeText()),
+              element('span', {}, `erstellt am ${erstelltAm()}`))))),
+        element('tr', {}, element('th', {}, 'Datum'), element('th', {}, 'Anwesend von'), element('th', {}, 'bis'),
+          element('th', {}, 'Pause'), element('th', {}, 'Abwesenheit'), element('th', { class: 'zahl' }, 'Arbeitszeit'),
+          element('th', {}, 'Hinweis'))),
+      element('tbody', {}, s.zeilen.map((z) => element('tr', { class: [z.hinweis === 'offen' ? 'dr-offen' : '',
+        /^(Sa|So) /.test(z.tag) ? 'dr-we' : ''].filter(Boolean).join(' ') || null },
+      element('td', {}, z.tag), element('td', {}, z.von), element('td', {}, z.bis), element('td', {}, z.pause),
+      element('td', {}, z.abwesend), element('td', { class: 'zahl' }, z.arbeitszeit), element('td', {}, z.hinweis)))),
+      element('tfoot', {}, element('tr', {}, element('th', { colspan: 4 }, 'Summe im Zeitraum'),
+        element('td', {}, s.summe.abwesend === '0,00' ? '' : `${s.summe.abwesend} h`),
+        element('td', { class: 'zahl' }, s.summe.arbeitszeit), element('td', {}))));
+    const wochen = element('table', { class: 'dr-tabelle dr-stundenblatt-wochen' },
+      element('colgroup', {}, element('col', { class: 'dr-c-sb-kw' }), element('col', { class: 'dr-c-sb-abw' }),
+        [1, 2, 3, 4, 5, 6].map(() => element('col', { class: 'dr-c-sb-zeit' })), element('col', {})),
+      element('thead', {}, element('tr', {}, element('th', {}, 'Woche'), element('th', {}, 'Zeitraum'),
+        ['Soll', 'IST', 'Abwesend', 'Feiertag', 'Diff', 'Saldo'].map((t) => element('th', { class: 'zahl' }, t)),
+        element('th', {}, 'Hinweis'))),
+      element('tbody', {}, s.wochen.length ? s.wochen.map((w) => element('tr', {},
+        element('td', {}, w.kw), element('td', {}, w.zeitraum),
+        [w.soll, w.ist, w.abwesend, w.feiertag].map((x) => element('td', { class: 'zahl' }, x)),
+        element('td', { class: `zahl${w.diff.startsWith('−') ? ' minus' : ''}` }, w.diff),
+        element('td', { class: `zahl${w.saldo.startsWith('−') ? ' minus' : ''}` }, w.saldo),
+        element('td', {}, w.hinweis)))
+        : element('tr', {}, element('td', { colspan: 9 }, 'Ohne Vertrag in diesen Wochen.'))));
+    // Legende und Unterschriften in einem Block, der nicht umbricht: sonst kann die Unterschrift allein auf eine
+    // neue Seite rutschen (bei mehreren Seiten stehen beide auf der letzten Seite der Person).
+    return element('div', { class: 'dr-seite dr-hoch' }, tage, element('h3', { class: 'dr-zwischentitel' }, 'Wochen'), wochen,
+      element('div', { class: 'dr-sb-ende' }, element('p', { class: 'dr-fuss dr-legende' },
+        'Jeder Mitarbeiter beginnt auf einer neuen Seite. '
+        + 'Nur bestätigtes IST: Anwesend = erster Beginn bis letztes Ende (Pausen eingeschlossen), Arbeitszeit ohne Pause. '
+        + 'Abwesenheit „ohne Gutschrift“ (z. B. ZA) zählt nicht in der Summe. '
+        + '„offen“ = noch nicht bestätigt, ohne Stunden. Wochen ganz, auch Tage außerhalb des Zeitraums. '
+        + 'Saldo = gebuchtes Zeitkonto nach dem Sonntag der Woche; die Diff einer nicht abgeschlossenen Woche ist darin '
+        + 'noch nicht enthalten, eine Diff mit „nicht gebucht“ (inaktiv oder beim Abschluss nicht dabei) nie.'),
+      // Unterschriften am Ende der Person: bei mehreren Seiten nur auf ihrer letzten.
+      element('div', { class: 'dr-unterschriften' },
+        element('div', { class: 'dr-unterschrift' }, 'Datum, Unterschrift Mitarbeiter/in'),
+        element('div', { class: 'dr-unterschrift' }, 'Datum, Unterschrift Filialleitung'))));
+  });
+}
+
 // ---------------------------------------------------------------- Ablauf
 
 const BAUER = {
@@ -223,10 +343,13 @@ const BAUER = {
   woche: ({ woche }) => [wochenplan(woche)],
   monat: (daten) => [abwesenheitsMonat(daten)],
   resturlaub: (daten) => [resturlaub(daten)],
+  wochenist: (daten) => [wochenIst(daten)],
+  stundenblatt: (daten) => stundenblatt(daten),
 };
 
 // Baut die Druckansicht und schaltet den Druckmodus ein, ohne den Druckdialog (Vorschau, Prüfung per PDF).
 // art: 'tag' { woche, datum } · 'tage' { woche } · 'woche' { woche } · 'monat' { daten, jahr, monat } · 'resturlaub' Antwort von pep_resturlaub
+// · 'wochenist' { ist: pep_ist_woche, zeitkonto: pep_zeitkonto_woche } · 'stundenblatt' Antwort von pep_stundenblatt
 export function baueDruck(art, daten) {
   const bauer = BAUER[art];
   if (!bauer) throw new Error('ART_UNGUELTIG');
@@ -247,17 +370,26 @@ export function drucke(art, daten) {
   window.print();
 }
 
-// Lädt den Wochenplan als Excel-Datei herunter (Blob und a.download wie Urlaubsvertretung/docs/admin-hilfe.js).
-export function exportiereWochenplan(woche) {
-  const blob = new Blob([erzeugeXlsx([wochenplanBlatt(woche)])],
+// Lädt Blätter als Excel-Datei herunter (Blob und a.download wie Urlaubsvertretung/docs/admin-hilfe.js).
+function herunterladen(blaetter, dateiname) {
+  const blob = new Blob([erzeugeXlsx(blaetter)],
     { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `Wochenplan-KW${woche.kw}-${woche.jahr}.xlsx`;
+  a.download = dateiname;
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+}
+
+export function exportiereWochenplan(woche) {
+  herunterladen([wochenplanBlatt(woche)], `Wochenplan-KW${woche.kw}-${woche.jahr}.xlsx`);
+}
+
+// Journal aller Mitarbeiter (Antwort von pep_zeitkonto_journal) als Zeitkonto-Journal-<von>-<bis>.xlsx, ein Blatt.
+export function exportiereJournal(buchungen, von, bis) {
+  herunterladen([journalTabelle(buchungen)], `Zeitkonto-Journal-${von}-${bis}.xlsx`);
 }
 
 // ---------------------------------------------------------------- Auswahl-Dialoge
@@ -291,4 +423,69 @@ export function druckAuswahlAbwesenheiten({ daten, jahr, monat, laden }) {
       danach: () => { if (rest) drucke('resturlaub', rest); },
     },
   ]);
+}
+
+// ---------------------------------------------------------------- Stufe 2: IST und Zeitkonto
+
+// Einsatzplan im Modus IST: Wocheneinsatz-IST der geladenen Woche (ist = pep_ist_woche); das Zeitkonto derselben Woche
+// wird dazugeladen. Fehler gehen an den Aufrufer (Meldung auf der Seite).
+export async function druckeWochenIst(ist) {
+  const zeitkonto = await aufruf('pep_zeitkonto_woche', { p_jahr: ist.jahr, p_kw: ist.kw });
+  if (zeitkonto) drucke('wochenist', { ist, zeitkonto });
+}
+
+// Reiter Zeitkonto, Knopf „Drucken“ (zeitkonto = angezeigte Woche aus pep_zeitkonto_woche): Stundenblatt für einen oder
+// alle Mitarbeiter (Zeitraum vorbelegt mit der angezeigten Woche) oder Wocheneinsatz-IST der angezeigten Woche.
+export function druckAuswahlZeitkonto(zeitkonto) {
+  const { jahr, kw, montag } = zeitkonto;
+  const wer = element('select', {},
+    element('option', { value: '' }, 'Alle (aktiv, mit Vertrag im Zeitraum)'),
+    (zeitkonto.mitarbeiter ?? []).map((m) => element('option', { value: String(m.id) }, m.name)));
+  const von = element('input', { type: 'date', value: montag });
+  const bis = element('input', { type: 'date', value: plusTage(montag, 6) });
+  let blatt = null;
+  let ist = null;
+  dialog(`Drucken – Zeitkonto KW ${kw}/${jahr}`, [
+    element('p', { class: 'hinweis' }, 'Stundenblatt: A4 hoch, jeder Mitarbeiter beginnt auf einer neuen Seite '
+      + '(höchstens 62 Tage). '
+      + 'Wocheneinsatz-IST: A4 quer, die angezeigte Woche.'),
+    element('label', { class: 'feld' }, 'Mitarbeiter (Stundenblatt)', wer),
+    element('div', { class: 'zk-zeitraum' },
+      element('label', { class: 'feld' }, 'Von', von), element('label', { class: 'feld' }, 'Bis', bis)),
+  ], [
+    {
+      text: 'Stundenblatt',
+      aktion: async () => {
+        if (!von.value || !bis.value) throw new Error('DATUM_UNGUELTIG');
+        blatt = await aufruf('pep_stundenblatt',
+          { p_mitarbeiter_id: wer.value ? Number(wer.value) : null, p_von: von.value, p_bis: bis.value });
+      },
+      danach: () => { if (blatt) drucke('stundenblatt', blatt); },
+    },
+    {
+      text: `Wocheneinsatz-IST KW ${kw}`, sekundaer: true,
+      aktion: async () => { ist = await aufruf('pep_ist_woche', { p_jahr: jahr, p_kw: kw }); },
+      danach: () => { if (ist) drucke('wochenist', { ist, zeitkonto }); },
+    },
+  ]);
+}
+
+// Reiter Zeitkonto, Knopf „Journal als Excel“: Buchungen aller Mitarbeiter mit Datum im Zeitraum (vorbelegt: 01.01. des
+// laufenden Jahres bis heute; heute = 'JJJJ-MM-TT', in der Vorschau ersetzbar).
+export function journalExcelDialog(heute = heuteDatum()) {
+  const von = element('input', { type: 'date', value: `${heute.slice(0, 4)}-01-01` });
+  const bis = element('input', { type: 'date', value: heute });
+  dialog('Journal als Excel', [
+    element('p', { class: 'hinweis' }, 'Alle Buchungen des Zeitkontos mit Datum im Zeitraum, je Mitarbeiter in '
+      + 'Buchungsreihenfolge. „Saldo“ ist der Stand nach der Buchung.'),
+    element('div', { class: 'zk-zeitraum' },
+      element('label', { class: 'feld' }, 'Von', von), element('label', { class: 'feld' }, 'Bis', bis)),
+  ], [{
+    text: 'Herunterladen',
+    aktion: async () => {
+      if (!von.value || !bis.value) throw new Error('DATUM_UNGUELTIG');
+      const buchungen = await aufruf('pep_zeitkonto_journal', { p_mitarbeiter_id: null, p_von: von.value, p_bis: bis.value });
+      exportiereJournal(buchungen ?? [], von.value, bis.value);
+    },
+  }]);
 }

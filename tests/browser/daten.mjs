@@ -9,6 +9,11 @@ export const HEUTE = '2026-11-02';
 export const NAMEN = ['Test, Anna', 'Muster, Ben', 'Beispiel, Cem', 'Probe, Dana', 'Demo, Emil', 'Fiktiv, Frieda',
   'Platzhalter, Gustav', 'Vorlage, Hanna', 'Entwurf, Ivo', 'Skizze, Jana', 'Modell, Kai', 'Attrappe, Lea'];
 export const TAGE = ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14'];
+// Stufe 2: Start der IST-Erfassung ausdrücklich gesetzt (nicht der Vorgabewert „Montag von heute“), damit die
+// IST-/Zeitkonto-Szenarien nicht davon abhängen, wie der Bestand angelegt wird. Startwoche = KW 45 (02.–08.11.).
+// Die Szenarien ab „IST …“ laufen mit heute = Mo 16.11.2026 (KW 47): KW 45 und KW 46 sind dann vorbei.
+export const IST_AB = '2026-11-02';
+export const HEUTE_IST = '2026-11-16';
 
 // Liefert { leitung, stellv, fil, ids, reserve, code, bereich, umfrage }.
 export async function befuellen(db) {
@@ -17,6 +22,7 @@ export async function befuellen(db) {
   const fil = await filiale(db, leitung);
   const stellv = await pepBenutzer(db, 'vize', 'stellvertretung', fil);
   const q = async (sql, p = []) => (await als(db, 'authenticated', leitung, sql, p))[0]?.r;
+  await q("select public.pep_einstellung_setzen('ist_ab', to_jsonb($1::text)) as r", [IST_AB]);
   const stunden = [37.5, 37.5, 30, 20, 37.5, 42, 25, 37.5, 30, 37.5, 20, 42];
   const ids = [];
   for (const [i, name] of NAMEN.entries()) {

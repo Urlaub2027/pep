@@ -91,7 +91,11 @@
   }
  ],
  "kommentar": "Obstlieferung prüfen",
- "zeitkonto": null,
+ "zeitkonto": {
+  "saldo": 6.5,
+  "warnung": null,
+  "stand_montag": "2026-11-02"
+ },
  "kompetenzen": [],
  "mitarbeiter": {
   "id": 5,

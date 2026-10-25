@@ -7,7 +7,7 @@ import {
 const db = await neueDatenbank();
 await heuteSetzen(db, '2026-11-02');
 const leitung = await pepBenutzer(db, 'chef');
-await filiale(db, leitung);
+const fil = await filiale(db, leitung);
 const q = async (sql, p = []) => (await als(db, 'authenticated', leitung, sql, p))[0]?.r;
 const namen = ['Test, Anna', 'Muster, Ben', 'Beispiel, Cem', 'Probe, Dana', 'Demo, Emil', 'Fiktiv, Frieda',
   'Platzhalter, Gustav', 'Vorlage, Hanna', 'Entwurf, Ivo', 'Skizze, Jana', 'Modell, Kai', 'Attrappe, Lea'];
@@ -116,19 +116,14 @@ const schreib = (name, wert) => writeFileSync(new URL(`${name}.json`, aus), JSON
 schreib('pep_ich', await q('select public.pep_ich() as r'));
 // Die Attrappe kennt keine Parameter: Kandidaten für den ersten roten Block der Woche (Krankmeldung Montag).
 schreib('pep_ersatz_kandidaten', await q('select public.pep_ersatz_kandidaten($1, $2::date) as r', [ids[3], TAGE[0]]));
-schreib('pep_einstellungen', e);
 schreib('pep_abwesenheiten', await q('select public.pep_abwesenheiten(2026, 11) as r'));
 schreib('pep_mitarbeiter_liste', await q('select public.pep_mitarbeiter_liste() as r'));
 // Die Attrappe kennt keine Parameter: pep_mitarbeiter ist immer der erste Mitarbeiter.
 schreib('pep_mitarbeiter', await q('select public.pep_mitarbeiter($1) as r', [ids[0]]));
 schreib('pep_bereiche', await q('select public.pep_bereiche() as r'));
 schreib('pep_feiertage', await q('select public.pep_feiertage(2026) as r'));
-schreib('pep_urlaub_umfragen', await q('select public.pep_urlaub_umfragen() as r'));
-schreib('pep_urlaub_zuordnung', await q('select public.pep_urlaub_zuordnung() as r'));
 schreib('pep_einsatzplan_woche', await q('select public.pep_einsatzplan_woche(2026, 46) as r'));
 schreib('pep_vorlagen', await q('select public.pep_vorlagen() as r'));
-// Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
-schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
 schreib('pep_vorausplanung', await q('select public.pep_vorausplanung(2026, 46) as r'));
 schreib('pep_resturlaub', await q('select public.pep_resturlaub(2026) as r'));
 // Startseite: zuletzt, mit zwei offenen Urlaubswünschen aus einer Urlaubstool-Umfrage und einer Woche mit Stunden-Lücke
@@ -143,5 +138,84 @@ for (const [i, kw] of [[6, 48], [11, 47]]) {
   await q('select public.pep_urlaub_zuordnung_setzen($1, $2) as r', [tn.id, ids[i]]);
   await abgeben(db, tn.code, { [frage]: [kw] });
 }
+
+// IST-Modus KW 46 (pep_ist_woche), ganz zuletzt, damit alle übrigen Dateien unverändert bleiben. „Heute“ ist dafür
+// Do 12.11.: Mo und Di bestätigt (Mo mit einer Änderung samt Grund), Mi gemischt, Do offen mit Vorschlag, Fr/Sa künftig.
+await heuteSetzen(db, '2026-11-12');
+const istMalen = (m, datum, von, bis, kuerzel, grund = null) => q(
+  'select public.pep_ist_malen($1, $2::date, $3::time, $4::time, $5, $6) as r', [m, datum, von, bis, kuerzel ? bereich[kuerzel] : null, grund]);
+const bestaetigen = (datum, mids = null) => q(
+  `select public.pep_ist_bestaetigen($1::date, ${mids ? `array[${mids.join(',')}]` : 'null'}::bigint[]) as r`, [datum]);
+await istMalen(ids[2], TAGE[1], '14:30', '15:00', null); // Di: 30 Minuten später gekommen
+await bestaetigen(TAGE[0]);
+await bestaetigen(TAGE[1]);
+await istMalen(ids[1], TAGE[0], '15:30', '16:30', 'KA', 'Kassenabschluss übernommen'); // bestätigter Tag: mit Grund
+await istMalen(ids[3], TAGE[2], '20:00', '21:00', 'KA'); // Mi: eine Stunde länger
+await istMalen(ids[4], TAGE[2], '05:30', '06:00', 'OG'); // Mi: vor der Rahmenzeit angefangen (Raster ab 05:30)
+await istMalen(ids[6], TAGE[2], '10:30', '11:00', null); // Mi: früher gegangen
+await q('select public.pep_ist_zeile_setzen($1, $2::date, $3::jsonb, null) as r', [ids[8], TAGE[2], '[]']); // Mi: nicht gekommen
+await bestaetigen(TAGE[2], [ids[11]]); // Mi: eine Zeile einzeln bestätigt
+schreib('pep_ist_woche', await q('select public.pep_ist_woche(2026, 46) as r'));
+
+// Zeitkonto, nach dem IST (damit pep_ist_woche unverändert bleibt); „heute“ bleibt Do 12.11. KW 45 (02.–07.11.) bekommt
+// IST nach dem Muster des Plans von KW 46 (Emil hat dort eigenen Plan und bekommt beim Bestätigen den Vorschlag),
+// alle Tage werden bestätigt und die Woche abgeschlossen. Davor drei Startsalden (Ben und Anna über dem Warnwert),
+// danach eine Änderung mit Grund in KW 45 (automatische Korrektur) und eine Korrektur von Hand in KW 46.
+// KW 46 bleibt offen (Mi teilweise, Do offen). Die Attrappe liefert pep_zeitkonto_woche je Woche
+// (pep_zeitkonto_woche_2026_45.json), das Journal immer das von „Demo, Emil“.
+const KW45 = ['2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07'];
+const istPlan = { ...plan, 0: { frei: 6, bloecke: [['06:00', '12:30', 'OG']] } };
+let istGesperrt = 0;
+for (const [i, p] of Object.entries(istPlan)) {
+  if (Number(i) === 4) continue; // Emil: Vorschlag aus seinem Plan
+  for (const [t, datum] of KW45.entries()) {
+    if (t === p.frei) continue;
+    for (const [von, bis, k] of p.bloecke) {
+      try { await istMalen(ids[i], datum, von, bis, k); } catch { istGesperrt += 1; } // abwesend (KM, Berufsschule)
+    }
+  }
+}
+const buchen = (m, art, stunden, grund, datum) => q('select public.pep_zeitkonto_buchen($1, $2, $3, $4, $5::date) as r',
+  [m, art, stunden, grund, datum]);
+await buchen(ids[1], 'start', 45, 'Übernahme aus der bisherigen Liste', '2026-11-01');
+await buchen(ids[0], 'start', -40, 'Übernahme aus der bisherigen Liste', '2026-11-01');
+await buchen(ids[4], 'start', 12.5, 'Übernahme aus der bisherigen Liste', '2026-11-01');
+for (const d of KW45) await bestaetigen(d);
+console.log(`Zeitkonto: ${istGesperrt} IST-Striche wegen Abwesenheit übersprungen; Abschluss KW 45:`,
+  JSON.stringify(await q('select public.pep_wochenabschluss(2026, 45) as r')));
+await istMalen(ids[4], KW45[1], '12:00', '13:00', 'OG', 'Inventur länger'); // bestätigt und abgeschlossen: Korrektur +1
+await buchen(ids[4], 'manuell', -4, 'Überstunden ausgezahlt', TAGE[0]);
+schreib('pep_zeitkonto_woche', await q('select public.pep_zeitkonto_woche(2026, 46) as r'));
+schreib('pep_zeitkonto_woche_2026_45', await q('select public.pep_zeitkonto_woche(2026, 45) as r'));
+// KW 44 liegt vor dem Start der IST-Erfassung (ist_ab = 02.11.): Diff nur zur Ansicht, kein „Woche buchen“.
+schreib('pep_zeitkonto_woche_2026_44', await q('select public.pep_zeitkonto_woche(2026, 44) as r'));
+schreib('pep_zeitkonto_journal', await q('select public.pep_zeitkonto_journal($1, null, null) as r', [ids[4]]));
+
+// Startseite, Eckdaten und Einstellungen ganz zuletzt, damit sie das Zeitkonto zeigen (Stufe 2; „heute“ bleibt Do 12.11.):
+// Kachel „Zeitkonto auffällig“ (KW 45 abgeschlossen, Ben und Anna über dem Warnwert), Kachel „IST offen“ (der
+// gemischte Mi 11.11.; Tage vor dem Start der IST-Erfassung ist_ab = Mo 02.11., dem Montag beim Anlegen, zählen nicht),
+// Zeitkonto-Zeile der Eckdaten und der Hinweis an den Codes (abschluss_vorhanden).
 schreib('pep_startseite', await q('select public.pep_startseite() as r'));
+// Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
+schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
+schreib('pep_einstellungen', await q('select public.pep_einstellungen() as r'));
+// Stundenblatt (nur lesend, ändert nichts): 31 Tage Mo 12.10.–Mi 11.11. – vor dem Start der IST-Erfassung (ist_ab
+// 02.11.), KW 45 bestätigt und abgeschlossen, KW 46 gemischt. Die ersten drei Personen von „alle“ (Anna mit Urlaub,
+// Ben, Cem mit KM), damit der PDF-Druck drei Seiten zeigen muss.
+const blatt = await q('select public.pep_stundenblatt(null, $1::date, $2::date) as r', ['2026-10-12', '2026-11-11']);
+schreib('pep_stundenblatt', { ...blatt, mitarbeiter: blatt.mitarbeiter.slice(0, 3) });
+// Urlaubstool ganz zuletzt (Stufe 2, Aufgabe 13; ändert keine andere Datei): Die Umfrage der Leitung (Gustav und Lea
+// zugeordnet) und die einer zweiten Leitung der Filiale, von chef eingeschaltet. Deren Teilnehmer schreiben sich
+// „Vorname Nachname“ oder nur den Vornamen: Vorschläge trotz anderer Reihenfolge, einer ohne Treffer, einer zugeordnet.
+const leiterin = await pepBenutzer(db, 'leiterin', 'leitung', fil);
+await als(db, 'authenticated', leiterin, 'select public.pep_ich()'); // erst nach ihrer Anmeldung sichtbar
+await db.query("update urlaub.organisatoren set anzeigename = 'Leiterin Süd' where user_id = $1", [leiterin]);
+const umfrage2 = await umfrageAnlegen(db, leiterin, { titel: 'Urlaub 2026 Frühschicht', jahr: 2026 });
+await q('select public.pep_urlaub_umfrage_schalten($1, true) as r', [umfrage2]);
+for (const name of ['Anna Test', 'Ben Muster', 'Jana', 'Kai Modell', 'Ohnetreffer, Zoe']) {
+  const tn = await umfrageMitarbeiter(db, umfrage2, name);
+  if (name === 'Kai Modell') await q('select public.pep_urlaub_zuordnung_setzen($1, $2) as r', [tn.id, ids[10]]);
+}
+schreib('pep_urlaub_umfragen', await q('select public.pep_urlaub_umfragen() as r'));
+schreib('pep_urlaub_zuordnung', await q('select public.pep_urlaub_zuordnung() as r'));
 console.log('Vorschau-Daten geschrieben');

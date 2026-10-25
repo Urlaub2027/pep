@@ -1,7 +1,8 @@
 // Berichte: public.pep_resturlaub (Ausdruck „Resturlaub“, Spec 13). Heute = Mo 02.11.2026.
 // Urlaub = Stunden des Codes U im Kalenderjahr; rest = anspruch + rest_vorjahr − genehmigt wie die Urlaubsübersicht
 // im Reiter Abwesenheiten (pep_abwesenheiten → urlaub).
-import { test, before } from 'node:test';
+// Dazu public.pep_stundenblatt (Stufe 2, Ausdruck „Stundenblatt“) in einer eigenen Datenbank (describe unten).
+import { test, before, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { neueDatenbank, planGrundlage, pepBenutzer, filiale, als } from './helfer.mjs';
 
@@ -106,4 +107,184 @@ test('Stellvertretung darf; Jahr außerhalb 2000–2100 → DATUM_UNGUELTIG', as
   assert.equal(r.mitarbeiter.length, 3);
   await wirft(resturlaub(1999), 'DATUM_UNGUELTIG');
   await wirft(resturlaub(null), 'DATUM_UNGUELTIG');
+});
+
+// ---------------------------------------------------------------- Stundenblatt (Stufe 2, eine Seite je Mitarbeiter)
+// Eigene Datenbank: heute = Mo 11.01.2027, IST-Erfassung ab Mo 04.01.2027 (KW 1/2027 mit Mi 06.01. Heilige Drei Könige,
+// Bayern, geschlossen). Der Zeitraum Fr 01.01.–So 10.01.2027 berührt KW 53/2026 und KW 1/2027.
+describe('pep_stundenblatt', () => {
+  let s, anna2, ben2, cem2, emil2, fremd2, chef3;
+  const blatt = (mid, von, bis, nutzer = s.leitung) =>
+    s.json(nutzer, 'select public.pep_stundenblatt($1, $2::date, $3::date) as r', [mid, von, bis]);
+  const tag = (m, datum) => m.tage.find((x) => x.datum === datum);
+  const leer = { vor_start: false, offen: false, feiertag: null, anwesend_von: null, anwesend_bis: null, pause: null,
+    abwesend: null, arbeitszeit: null, spannen: null };
+
+  before(async () => {
+    const db = await neueDatenbank();
+    s = { db, ...(await planGrundlage(db, { heute: '2027-01-11', istAb: '2027-01-04' })) };
+    const { json, bereich, code } = s;
+    const istSetzen = (mid, datum, bloecke) => json(s.leitung,
+      'select public.pep_ist_zeile_setzen($1, $2::date, $3::jsonb, null) as r',
+      [mid, datum, JSON.stringify(bloecke.map(([von, bis, k]) => ({ von, bis, bereich_id: bereich[k] })))]);
+    const bestaetigen = (mid, datum) =>
+      json(s.leitung, 'select public.pep_ist_bestaetigen($1::date, array[$2]::bigint[]) as r', [datum, mid]);
+    const abwesend = (mid, c, datum, stunden = null, von = null, bis = null) => json(s.leitung,
+      'select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, $4, $5::time, $6::time, null) as r',
+      [mid, code[c], datum, stunden, von, bis]);
+    const buchen = (mid, art, stunden, datum) => json(s.leitung,
+      'select public.pep_zeitkonto_buchen($1, $2, $3, $4, $5::date) as r', [mid, art, stunden, 'Test', datum]);
+
+    anna2 = await s.ma('Test, Anna', { stunden: 37.5, ab: '2026-01-01' });
+    await json(s.leitung, `select public.pep_mitarbeiter_speichern($1, '{"personalnummer":"1001"}') as r`, [anna2]);
+    // Mo 04.01.: 07:00–15:30 mit Pause 12:00–12:30, bestätigt
+    await istSetzen(anna2, '2027-01-04', [['07:00', '12:00', 'KA'], ['12:00', '12:30', 'PA'], ['12:30', '15:30', 'KA']]);
+    await bestaetigen(anna2, '2027-01-04');
+    await abwesend(anna2, 'U', '2027-01-05'); // Di: Urlaub 6,25
+    // Do 07.01.: IST erfasst, aber nicht bestätigt → offen, keine Stunden
+    await istSetzen(anna2, '2027-01-07', [['08:00', '16:00', 'KA']]);
+    // Fr 08.01.: bis Mitternacht, bestätigt
+    await istSetzen(anna2, '2027-01-08', [['22:00', '24:00', 'KA']]);
+    await bestaetigen(anna2, '2027-01-08');
+    // Sa 09.01.: offen ohne IST
+    await buchen(anna2, 'start', -3.5, '2026-12-27'); // vor KW 53
+    await buchen(anna2, 'manuell', 2, '2027-01-05'); // in KW 1
+    await buchen(anna2, 'manuell', 1, '2027-01-11'); // nach dem Zeitraum: zählt in keinem Wochensaldo
+
+    ben2 = await s.ma('Muster, Ben', { stunden: 20, art: 'teilzeit', ab: '2026-01-01' });
+    await bestaetigen(ben2, '2027-01-04'); // ohne Plan: leer bestätigt
+    await abwesend(ben2, 'KM', '2027-01-05', 2, '08:00', '10:00'); // Teil-KM
+    await istSetzen(ben2, '2027-01-05', [['10:00', '14:00', 'KA']]);
+    await bestaetigen(ben2, '2027-01-05');
+    // Mi 06.01. (Feiertag, geschlossen): U, die es nur per SQL gibt (pep_abwesenheit_setzen überspringt geschlossene
+    // Tage) – etwa eingetragen, solange der Feiertag als geöffnet eingestellt war. Feiertagsgutschrift hat Vorrang.
+    await db.query(`insert into pep.abwesenheiten (filiale_id, mitarbeiter_id, code_id, datum, stunden, quelle)
+      values ($1, $2, $3, '2027-01-06', 3.33, 'manuell')`, [s.fil, ben2, code.U]);
+    // Do 07.01.: geteilter Dienst
+    await istSetzen(ben2, '2027-01-07', [['06:00', '08:00', 'KA'], ['13:30', '17:30', 'KA']]);
+    await bestaetigen(ben2, '2027-01-07');
+    await abwesend(ben2, 'ZA', '2027-01-08'); // Fr: Zeitausgleich, ohne Gutschrift
+
+    cem2 = await s.ma('Beispiel, Cem', { ab: '2026-01-01' });
+    await json(s.leitung, `select public.pep_mitarbeiter_speichern($1, '{"aktiv":false}') as r`, [cem2]);
+    await s.ma('Probe, Dana', { ab: '2027-02-01' }); // Vertrag erst nach dem Zeitraum
+    emil2 = await s.ma('Demo, Emil', { ab: '2026-01-01' });
+    await json(s.leitung, `select public.pep_mitarbeiter_speichern($1, '{"austritt":"2026-12-20"}') as r`, [emil2]);
+
+    chef3 = await pepBenutzer(db, 'chef3');
+    await filiale(db, chef3, { name: 'Netto Testort', nummer: '9998' });
+    fremd2 = (await als(db, 'authenticated', chef3,
+      `select public.pep_mitarbeiter_speichern(null, '{"name":"Fremd, Fritz"}') as r`))[0].r;
+    await als(db, 'authenticated', chef3, 'select public.pep_vertrag_speichern($1, $2::jsonb)',
+      [fremd2, JSON.stringify({ vertragsart: 'vollzeit', wochenstunden: 37.5, gueltig_ab: '2026-01-01' })]);
+  });
+
+  test('Woche mit IST, U und Feiertag: Tageszeilen und Wochenzeilen mit Saldo', async () => {
+    const r = await blatt(anna2, '2027-01-01', '2027-01-10');
+    assert.equal(r.von, '2027-01-01');
+    assert.equal(r.bis, '2027-01-10');
+    assert.equal(r.mitarbeiter.length, 1);
+    const a = r.mitarbeiter[0];
+    assert.deepEqual([a.id, a.name, a.personalnummer], [anna2, 'Test, Anna', '1001']);
+    assert.deepEqual(a.tage.map((x) => x.datum), ['2027-01-01', '2027-01-02', '2027-01-03', '2027-01-04', '2027-01-05',
+      '2027-01-06', '2027-01-07', '2027-01-08', '2027-01-09', '2027-01-10']);
+    // Vor dem Start der IST-Erfassung: keine Werte, auch kein Feiertag (Neujahr)
+    assert.deepEqual(tag(a, '2027-01-01'), { datum: '2027-01-01', ...leer, vor_start: true });
+    assert.deepEqual(tag(a, '2027-01-02'), { datum: '2027-01-02', ...leer, vor_start: true });
+    // Bestätigt mit Pause
+    assert.deepEqual(tag(a, '2027-01-04'), { datum: '2027-01-04', ...leer,
+      anwesend_von: '07:00', anwesend_bis: '15:30', pause: 0.5, arbeitszeit: 8, spannen: [{ von: '07:00', bis: '15:30' }] });
+    // Urlaub ganztägig: nie offen, keine Zeiten
+    assert.deepEqual(tag(a, '2027-01-05'), { datum: '2027-01-05', ...leer, abwesend: { code: 'U', stunden: 6.25, zaehlt: true } });
+    // Feiertag, Filiale geschlossen
+    assert.deepEqual(tag(a, '2027-01-06'), { datum: '2027-01-06', ...leer, feiertag: 'Heilige Drei Könige' });
+    // IST erfasst, nicht bestätigt: offen, nichts vom IST
+    assert.deepEqual(tag(a, '2027-01-07'), { datum: '2027-01-07', ...leer, offen: true });
+    // Mitternacht als 24:00
+    assert.deepEqual(tag(a, '2027-01-08'), { datum: '2027-01-08', ...leer,
+      anwesend_von: '22:00', anwesend_bis: '24:00', pause: 0, arbeitszeit: 2, spannen: [{ von: '22:00', bis: '24:00' }] });
+    assert.deepEqual(tag(a, '2027-01-09'), { datum: '2027-01-09', ...leer, offen: true }, 'Samstag ohne IST offen');
+    assert.deepEqual(tag(a, '2027-01-10'), { datum: '2027-01-10', ...leer }, 'Sonntag geschlossen, nie offen');
+
+    assert.deepEqual(a.wochen, [
+      { montag: '2026-12-28', kw: 53, jahr: 2026, soll: 37.5, ist: 0, abwesend: 0, feiertag: 6.25, diff: -31.25,
+        saldo_nach: -3.5, abgeschlossen: false, vor_ist_start: true, gebucht: false },
+      { montag: '2027-01-04', kw: 1, jahr: 2027, soll: 37.5, ist: 10, abwesend: 6.25, feiertag: 6.25, diff: -15,
+        saldo_nach: -1.5, abgeschlossen: false, vor_ist_start: false, gebucht: true },
+    ]);
+    // Arbeitszeit der Tage = IST der Woche (dieselbe Rechnung pep.arbeitsstunden)
+    const summe = a.tage.filter((x) => x.datum >= '2027-01-04').reduce((n, x) => n + (x.arbeitszeit ?? 0), 0);
+    assert.equal(summe, a.wochen[1].ist);
+  });
+
+  test('leer bestätigt, Teil-KM, geteilter Dienst; ZA und U am Feiertag zählen nicht (wie im Zeitkonto)', async () => {
+    const [b] = (await blatt(ben2, '2027-01-04', '2027-01-08')).mitarbeiter;
+    assert.deepEqual(tag(b, '2027-01-04'), { datum: '2027-01-04', ...leer, pause: 0, arbeitszeit: 0, spannen: [] });
+    assert.deepEqual(tag(b, '2027-01-05'), { datum: '2027-01-05', ...leer, anwesend_von: '10:00', anwesend_bis: '14:00',
+      pause: 0, abwesend: { code: 'KM', stunden: 2, zaehlt: true }, arbeitszeit: 4, spannen: [{ von: '10:00', bis: '14:00' }] });
+    assert.deepEqual(tag(b, '2027-01-06'), { datum: '2027-01-06', ...leer, feiertag: 'Heilige Drei Könige',
+      abwesend: { code: 'U', stunden: 3.33, zaehlt: false } });
+    assert.deepEqual(tag(b, '2027-01-07'), { datum: '2027-01-07', ...leer, anwesend_von: '06:00', anwesend_bis: '17:30',
+      pause: 0, arbeitszeit: 6, spannen: [{ von: '06:00', bis: '08:00' }, { von: '13:30', bis: '17:30' }] });
+    assert.deepEqual(tag(b, '2027-01-08'), { datum: '2027-01-08', ...leer, abwesend: { code: 'ZA', stunden: 3.33, zaehlt: false } });
+    assert.equal(b.wochen.length, 1);
+    assert.equal(b.wochen[0].soll, 20);
+    // Summe der zählenden Abwesenheiten = abwesend der Wochenrechnung (pep.zeitkonto_woche), IST ebenso
+    const zaehlend = b.tage.reduce((n, x) => n + (x.abwesend?.zaehlt ? x.abwesend.stunden : 0), 0);
+    assert.equal(zaehlend, 2);
+    assert.equal(b.wochen[0].abwesend, zaehlend);
+    assert.equal(b.wochen[0].ist, 10);
+  });
+
+  test('NULL = alle aktiven mit Vertrag im Zeitraum; ausdrücklich gewählt auch inaktiv; Stellvertretung darf', async () => {
+    const r = await blatt(null, '2027-01-01', '2027-01-10');
+    assert.deepEqual(r.mitarbeiter.map((m) => m.id), [anna2, ben2],
+      'ohne Inaktive, ohne Vertrag erst nach dem Zeitraum, ohne Ausgetretene');
+    const c = await blatt(cem2, '2027-01-04', '2027-01-04');
+    assert.deepEqual(c.mitarbeiter.map((m) => m.id), [cem2]);
+    // inaktiv ohne Austritt: der Abschluss bucht Cem nicht (pep.wird_gebucht), die Woche heißt „nicht gebucht“
+    assert.deepEqual(c.mitarbeiter[0].wochen.map((w) => [w.montag, w.abgeschlossen, w.gebucht]), [['2027-01-04', false, false]]);
+    assert.deepEqual(await blatt(null, '2027-01-01', '2027-01-10', s.stellv), r);
+  });
+
+  test('Zeitraum: 62 Tage gehen, 63 → ZEITRAUM_ZU_LANG; bis vor von → ZEITRAUM_UNGUELTIG; ohne Datum → DATUM_UNGUELTIG', async () => {
+    const r = await blatt(anna2, '2026-11-10', '2027-01-10');
+    assert.equal(r.mitarbeiter[0].tage.length, 62);
+    assert.equal(r.mitarbeiter[0].wochen[0].montag, '2026-11-09', 'Wochen, die der Zeitraum berührt, ganz');
+    assert.equal(r.mitarbeiter[0].wochen.length, 9);
+    await wirft(blatt(anna2, '2026-11-09', '2027-01-10'), 'ZEITRAUM_ZU_LANG');
+    await wirft(blatt(null, '2027-01-10', '2027-01-09'), 'ZEITRAUM_UNGUELTIG');
+    await wirft(blatt(null, null, '2027-01-09'), 'DATUM_UNGUELTIG');
+    await wirft(blatt(null, '2027-01-09', null), 'DATUM_UNGUELTIG');
+  });
+
+  test('eine Regel für anrechenbare Abwesenheit: Summe zaehlt je Woche = abwesend der Wochenrechnung = pep.zeitkonto_tage', async () => {
+    // KW 1/2027 ganz: Anna U Di; Ben Teil-KM Di, U am geschlossenen Feiertag (zählt nicht), ZA Fr (zählt nicht)
+    const r = await blatt(null, '2027-01-04', '2027-01-10');
+    for (const m of r.mitarbeiter) {
+      for (const w of m.wochen) {
+        const tage = m.tage.filter((x) => x.datum >= w.montag && x.datum <= new Date(Date.parse(`${w.montag}T00:00:00Z`) + 6 * 864e5).toISOString().slice(0, 10));
+        const summe = tage.reduce((n, x) => n + (x.abwesend?.zaehlt ? x.abwesend.stunden : 0), 0);
+        assert.equal(Math.round(summe * 100) / 100, w.abwesend, `${m.name} ${w.montag}`);
+        const zk = (await s.db.query('select pep.zeitkonto_woche($1, $2::date) as z', [m.id, w.montag])).rows[0].z;
+        assert.equal(Number(zk.abwesend), w.abwesend, `${m.name}: zeitkonto_woche`);
+        const h = (await s.db.query(`select coalesce(sum(abwesenheit_stunden) filter (where abwesenheit_zaehlt), 0)::float8 as n,
+            count(*) filter (where abwesenheit_id is not null and not abwesenheit_zaehlt)::int as nicht
+          from pep.zeitkonto_tage($1::bigint, $2::date)`, [m.id, w.montag])).rows[0];
+        assert.equal(h.n, w.abwesend, `${m.name}: pep.zeitkonto_tage`);
+        assert.equal(h.nicht, tage.filter((x) => x.abwesend && !x.abwesend.zaehlt).length, `${m.name}: nicht zählend`);
+      }
+    }
+    // pep_ist_woche (IST-Modus) nutzt dieselbe Regel
+    const ist = await s.json(s.leitung, 'select public.pep_ist_woche(2027, 1) as r');
+    const benIst = ist.abwesenheiten.filter((a) => a.mitarbeiter_id === ben2).map((a) => [a.datum, a.code, a.zaehlt]);
+    assert.deepEqual(benIst, [['2027-01-05', 'KM', true], ['2027-01-06', 'U', false], ['2027-01-08', 'ZA', false]]);
+  });
+
+  test('fremde Filiale: fremder Mitarbeiter → MITARBEITER_NICHT_GEFUNDEN, NULL zeigt nur die eigenen', async () => {
+    await wirft(blatt(fremd2, '2027-01-04', '2027-01-10'), 'MITARBEITER_NICHT_GEFUNDEN');
+    await wirft(blatt(anna2, '2027-01-04', '2027-01-10', chef3), 'MITARBEITER_NICHT_GEFUNDEN');
+    const r = await blatt(null, '2027-01-04', '2027-01-10', chef3);
+    assert.deepEqual(r.mitarbeiter.map((m) => m.id), [fremd2]);
+  });
 });

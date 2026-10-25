@@ -165,7 +165,7 @@ test('Stammdaten, Abwesenheiten dieser und nächster Woche, Soll/geplant, Kommen
   // Soll = 30 − 5 (ZA) − 5 (KM); geplant = 4 + 1,5 (Montag ohne Pause), der Donnerstag ist unbesetzt
   assert.deepEqual(r.woche, { soll: 20, geplant: 5.5 });
   assert.equal(r.kommentar, 'Schlüssel holen');
-  assert.equal(r.zeitkonto, null);
+  assert.deepEqual(r.zeitkonto, { saldo: 0, stand_montag: null, warnung: null }); // ohne Buchung
   // Am Geburtstag 17 Jahre; Kommentar je Tag
   const geburtstag = await t.eck(g, '2026-11-20');
   assert.equal(geburtstag.mitarbeiter.alter, 17);
@@ -198,4 +198,57 @@ test('fremde Filiale → MITARBEITER_NICHT_GEFUNDEN; ohne Datum → DATUM_UNGUEL
   await wirft(t.eck(eigene, '2026-11-16', azubi), 'NUR_LEITUNG');
   const ohne = await pepBenutzer(t.db, 'chefOhne');
   await wirft(t.eck(eigene, '2026-11-16', ohne), 'KEINE_FILIALE');
+});
+
+test('Zeitkonto: Saldo aller Buchungen, Stand = zuletzt abgeschlossene Woche, Warnung nach derselben Regel wie der Reiter', async () => {
+  // Eigene Datenbank: der Abschluss bucht für alle aktiven Mitarbeiter. heute = Mo 16.11.2026, KW 46 = 09.–15.11.
+  const db = await neueDatenbank();
+  const g = await planGrundlage(db, { heute: '2026-11-16', istAb: '2026-11-09' }); // erste Woche KW 46
+  const eck = (maId, datum = '2026-11-16', nutzer = g.leitung) =>
+    g.json(nutzer, 'select public.pep_eckdaten($1, $2::date) as r', [maId, datum]);
+  const buchen = (maId, art, stunden, grund, datum) => g.json(g.leitung,
+    'select public.pep_zeitkonto_buchen($1, $2, $3::numeric, $4, $5::date) as r', [maId, art, stunden, grund, datum]);
+  const code = (id, daten) => g.json(g.leitung, 'select public.pep_code_speichern($1, $2::jsonb) as r', [id, JSON.stringify(daten)]);
+  const lena = await g.ma('Konto, Lena');
+  const paul = await g.ma('Konto, Paul', { stunden: 20, art: 'teilzeit' });
+
+  assert.deepEqual((await eck(lena)).zeitkonto, { saldo: 0, stand_montag: null, warnung: null });
+  // Startsaldo vor dem ersten Abschluss: zählt, Stand null; 40 > 1 × 37,5 → plus
+  await buchen(lena, 'start', 40, 'Übernahme', '2026-11-02');
+  assert.deepEqual((await eck(lena)).zeitkonto, { saldo: 40, stand_montag: null, warnung: 'plus' });
+
+  // Paul ZA am Mo 09.11. (ohne Gutschrift); KW 46 leer bestätigen und abschließen
+  await g.json(g.leitung, 'select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, null, null, null, null) as r',
+    [paul, g.code.ZA, '2026-11-09']);
+  for (let i = 0; i < 6; i++) {
+    await g.json(g.leitung, 'select public.pep_ist_bestaetigen($1::date, null) as r', [`2026-11-${String(9 + i).padStart(2, '0')}`]);
+  }
+  assert.deepEqual(await g.json(g.leitung, 'select public.pep_wochenabschluss(2026, 46) as r'), { gebucht: 2 });
+  // Lena 40 − 37,5 = 2,5; Paul −20 = genau −1 × 20 → an der Grenze keine Warnung
+  assert.deepEqual((await eck(lena)).zeitkonto, { saldo: 2.5, stand_montag: '2026-11-09', warnung: null });
+  assert.deepEqual((await eck(paul)).zeitkonto, { saldo: -20, stand_montag: '2026-11-09', warnung: null });
+  // Gleiche Zahl und Warnung wie der Reiter Zeitkonto für die abgeschlossene Woche
+  const zk = (await g.json(g.leitung, 'select public.pep_zeitkonto_woche(2026, 46) as r')).mitarbeiter;
+  for (const m of [lena, paul]) {
+    const z = zk.find((x) => x.id === m);
+    const e = (await eck(m)).zeitkonto;
+    assert.deepEqual([e.saldo, e.warnung], [z.saldo_aktuell, z.warnung]);
+  }
+
+  // Eine Buchung nach dem Abschluss zählt im Saldo (alle Buchungen), der Stand bleibt KW 46: −20,5 → minus
+  await buchen(paul, 'manuell', -0.5, 'Korrektur', '2026-11-17');
+  assert.deepEqual((await eck(paul)).zeitkonto, { saldo: -20.5, stand_montag: '2026-11-09', warnung: 'minus' });
+  // Unabhängig vom Datum des Dialogs; die Stellvertretung sieht dasselbe
+  assert.deepEqual((await eck(paul, '2026-12-01')).zeitkonto, (await eck(paul)).zeitkonto);
+  assert.deepEqual(await eck(paul, '2026-11-16', g.stellv), await eck(paul));
+
+  // Gutschrift des Codes ZA per pep_code_speichern einschalten → Korrektur KW 46 + 20 / 6 = 3,33 → −17,17, ohne Warnung
+  await code(g.code.ZA, { gutschrift: true });
+  assert.deepEqual((await eck(paul)).zeitkonto, { saldo: -17.17, stand_montag: '2026-11-09', warnung: null });
+  await code(g.code.ZA, { gutschrift: false });
+  assert.deepEqual((await eck(paul)).zeitkonto, { saldo: -20.5, stand_montag: '2026-11-09', warnung: 'minus' });
+
+  // Warnfaktor 0,05: 2,5 > 0,05 × 37,5 = 1,875 → plus
+  await als(db, 'authenticated', g.leitung, `select public.pep_einstellung_setzen('zeitkonto_warnfaktor', '0.05'::jsonb)`);
+  assert.equal((await eck(lena)).zeitkonto.warnung, 'plus');
 });

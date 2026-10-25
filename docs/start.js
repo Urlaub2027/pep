@@ -1,13 +1,19 @@
-// Reiter „Start“: vier Kacheln mit großer Zahl und Sprung (Spec 14). Gezählt wird in public.pep_startseite
+// Reiter „Start“: sechs Kacheln mit großer Zahl und Sprung (Spec 14). Gezählt wird in public.pep_startseite
 // (schema.sql): Abwesende der laufenden Woche, Stunden-Lücke der nächsten 6 Wochen, Regelverstöße der nächsten
-// 7 Tage (Wochenregeln und Ruhezeiten je einmal, Tage ganz ohne Block getrennt als „noch nicht geplant“) und
-// offene Urlaubswünsche. Hier wird nur angezeigt.
+// 7 Tage (Wochenregeln und Ruhezeiten je einmal, Tage ganz ohne Block getrennt als „noch nicht geplant“),
+// offene Urlaubswünsche und (Stufe 2) offene IST-Tage der letzten 6 Wochen bis gestern sowie Mitarbeiter mit
+// Zeitkonto-Warnung in der zuletzt abgeschlossenen Woche. Hier wird nur angezeigt. Darüber (nur Leitung) eine Zeile zur
+// letzten Sicherung.
 import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE } from './hilfe.js';
-import { aufruf, reiter } from './app.js';
+import { aufruf, reiter, ich } from './app.js';
 import { isoWoche, plusTage, kwVorZurueck } from './zeit.js';
-import { oeffneWoche } from './einsatzplan.js';
+import { oeffneWoche, oeffneIst } from './einsatzplan.js';
+import { oeffneZeitkonto } from './zeitkonto.js';
+import { vorzeichen } from './zeitkonto-daten.js';
 import { oeffneMonat } from './abwesenheiten.js';
 import { oeffneVorausplanung } from './vorausplanung.js';
+import { oeffneSicherung } from './einstellungen.js';
+import { sicherungHinweis } from './sicherung.js';
 
 const GRUEN = 'alles im grünen Bereich';
 const MAX_ZEILEN = 6; // längere Listen enden mit „+ n weitere“
@@ -35,13 +41,14 @@ function oeffneTag(iso) {
 
 // ---------------------------------------------------------------- Kacheln
 
-// befund = false: grüner Rand und „alles im grünen Bereich“ statt der Liste. art: 'rot' (Verstoß/Lücke) oder 'gelb'.
-function kachel({ titel, zeitraum, zahl, einheit, befund, art = 'gelb', inhalt = [], sprungText, sprung }) {
+// befund = false: grüner Rand und gruen (Standard „alles im grünen Bereich“) statt der Liste. art: 'rot'
+// (Verstoß/Lücke) oder 'gelb'.
+function kachel({ titel, zeitraum, zahl, einheit, befund, art = 'gelb', inhalt = [], sprungText, sprung, gruen = GRUEN }) {
   return element('section', { class: `karte kachel ${befund ? art : 'gruen'}`, 'aria-label': titel },
     element('h2', {}, titel),
     element('p', { class: 'kachel-zeitraum' }, zeitraum),
     element('p', { class: 'kachel-zahl' }, String(zahl), element('span', { class: 'kachel-einheit' }, einheit)),
-    befund ? inhalt : element('p', { class: 'kachel-gruen' }, GRUEN),
+    befund ? inhalt : element('p', { class: 'kachel-gruen' }, gruen),
     element('button', { type: 'button', class: 'knopf kachel-sprung', onclick: sprung }, `${sprungText} →`));
 }
 
@@ -137,11 +144,67 @@ function wunschKachel(d) {
   });
 }
 
+// Offene IST-Zeilen (nicht bestätigt) von heute − 42 bis gestern; Sprung in den IST-Modus zum ersten offenen Tag,
+// ohne offenen Tag zu gestern.
+function istKachel(d) {
+  const o = d.ist_offen;
+  const gestern = plusTage(d.heute, -1);
+  const ziel = o.erster ?? gestern;
+  const { jahr, kw } = isoWoche(ziel);
+  return kachel({
+    titel: 'IST offen',
+    zeitraum: `${tagText(plusTage(d.heute, -42))} bis gestern (6 Wochen)`,
+    zahl: o.tage,
+    einheit: o.tage === 1 ? 'Tag' : 'Tage',
+    befund: o.tage > 0,
+    inhalt: [
+      element('p', {}, `${anzahl(o.zeilen, 'offene Zeile', 'offene Zeilen')}, die früheste am `,
+        element('strong', {}, tagText(ziel))),
+      element('p', { class: 'hinweis kachel-fuss' }, 'Offene Tage verhindern den Wochenabschluss im Zeitkonto.'),
+    ],
+    sprungText: `IST ${tagText(ziel)}`,
+    sprung: () => oeffneIst(jahr, kw, ziel),
+  });
+}
+
+// Mitarbeiter mit Warnung am Saldo der zuletzt abgeschlossenen Woche (Buchungen bis zu deren Sonntag).
+function zeitkontoKachel(d) {
+  const z = d.zeitkonto_auffaellig;
+  const n = z.liste.length;
+  const ziel = z.montag ? { jahr: z.jahr, kw: z.kw } : isoWoche(plusTage(d.heute, -7));
+  return kachel({
+    titel: 'Zeitkonto auffällig',
+    zeitraum: z.montag ? `Stand KW ${z.kw}/${z.jahr} (zuletzt abgeschlossen)` : 'noch keine Woche abgeschlossen',
+    zahl: n,
+    einheit: n === 1 ? 'Person' : 'Personen',
+    befund: n > 0,
+    inhalt: [
+      kurzListe(z.liste.map((m) => element('li', {}, '⚠ ', element('strong', {}, m.name),
+        ` · ${vorzeichen(m.saldo)} h ${m.warnung === 'plus' ? '(zu viel Plus)' : '(zu viel Minus)'}`))),
+      element('p', { class: 'hinweis kachel-fuss' }, 'Warnung ab Zeitkonto-Warnfaktor × Wochenstunden (Einstellungen).'),
+    ],
+    sprungText: `Zeitkonto KW ${ziel.kw}`,
+    sprung: () => oeffneZeitkonto(ziel.jahr, ziel.kw),
+    gruen: z.montag ? GRUEN : 'Noch keine Woche abgeschlossen.',
+  });
+}
+
+// Letzte Sicherung (Stufe 2): nur für die Leitung, nur sie kann sichern. Gelb ab 8 Tagen oder ohne Sicherung.
+function sicherungZeile(d) {
+  if (ich?.rolle !== 'leitung') return [];
+  const h = sicherungHinweis(d.letzte_sicherung, d.heute);
+  return [element('p', { class: `start-sicherung ${h.gelb ? 'hinweis-gelb gelb' : 'hinweis'}` }, h.text,
+    h.gelb ? ' – bitte jede Woche eine Sicherung herunterladen. ' : ' · ',
+    element('button', { type: 'button', class: 'kachel-tag', onclick: oeffneSicherung }, 'Sicherung →'))];
+}
+
 function zeichne(d) {
   const { kw } = isoWoche(d.heute);
   $('ansicht-start').replaceChildren(
     element('p', { class: 'start-kopf' }, element('strong', {}, `Heute: ${wochentag(d.heute)}, ${datumDE(d.heute)}`), ` · KW ${kw}`),
-    element('div', { class: 'kacheln' }, abwesendKachel(d), lueckeKachel(d), verstossKachel(d), wunschKachel(d)));
+    ...sicherungZeile(d),
+    element('div', { class: 'kacheln' }, abwesendKachel(d), lueckeKachel(d), verstossKachel(d), wunschKachel(d),
+      istKachel(d), zeitkontoKachel(d)));
 }
 
 // ---------------------------------------------------------------- Laden

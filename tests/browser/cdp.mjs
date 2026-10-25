@@ -1,7 +1,7 @@
 // Minimaler Chrome-Treiber über das DevTools-Protokoll (CDP), ohne npm-Abhängigkeit (Node 22+: fetch, WebSocket).
 // Startet Chrome headless mit eigenem Wegwerf-Profil, verbindet sich mit dem ersten Tab und bietet:
 // navigiere, werte (evaluate), warteAuf, klick(selector|{text}), tippe, setzeWert, ziehe (Maus), wische (Touch),
-// foto, Tablet-Modus und ein Protokoll von Konsolenfehlern, Ausnahmen und fehlgeschlagenen Anfragen.
+// foto, Tablet-Modus, feste Uhr (uhr) und ein Protokoll von Konsolenfehlern, Ausnahmen und fehlgeschlagenen Anfragen.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -122,7 +122,7 @@ export async function starteChrome({ heute = null, breite = 1440, hoehe = 900 } 
   });
 
   await Promise.all([sende('Page.enable'), sende('Runtime.enable'), sende('Log.enable'), sende('Network.enable')]);
-  if (heute) await sende('Page.addScriptToEvaluateOnNewDocument', { source: uhrSkript(heute) });
+  let uhrId = heute ? (await sende('Page.addScriptToEvaluateOnNewDocument', { source: uhrSkript(heute) })).identifier : null;
   await sende('Emulation.setDeviceMetricsOverride', { width: breite, height: hoehe, deviceScaleFactor: 1, mobile: false });
 
   // ---------------------------------------------------------------- API
@@ -261,6 +261,12 @@ export async function starteChrome({ heute = null, breite = 1440, hoehe = 900 } 
     }
   }
 
+  // Stellt die feste Uhr auf einen anderen Tag (wirkt ab dem nächsten Laden der Seite).
+  async function uhr(heute) {
+    if (uhrId) await sende('Page.removeScriptToEvaluateOnNewDocument', { identifier: uhrId });
+    uhrId = (await sende('Page.addScriptToEvaluateOnNewDocument', { source: uhrSkript(heute) })).identifier;
+  }
+
   async function foto(datei, { ganz = false } = {}) {
     const r = await sende('Page.captureScreenshot', { format: 'png', captureBeyondViewport: ganz });
     writeFileSync(datei, Buffer.from(r.data, 'base64'));
@@ -282,6 +288,6 @@ export async function starteChrome({ heute = null, breite = 1440, hoehe = 900 } 
 
   return {
     sende, auf, werte, warteAuf, navigiere, punkt, klick, tippe, taste, setzeWert, ziehe, wische, tippeTouch,
-    tablet, foto, schliessen, notAus, protokoll, dialoge, maus, pid: prozess.pid,
+    tablet, uhr, foto, schliessen, notAus, protokoll, dialoge, maus, pid: prozess.pid,
   };
 }

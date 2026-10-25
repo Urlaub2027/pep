@@ -7,6 +7,10 @@ import { WOCHENTAGE } from './hilfe.js';
 const stunden = (b) => (minuten(b.bis) - minuten(b.von)) / 60;
 const alsMenge = (ids) => (ids instanceof Set ? ids : new Set(ids ?? []));
 
+// Stunden kurz und mit Komma: 7,5 · 8 · 6,25; negative mit echtem Minuszeichen (Einsatzplan, Plan und IST).
+export const rund = (n) => Math.round(n * 100) / 100 || 0; // Rechenreste wie −1e-15 und −0 werden 0
+export const kurz = (n) => `${rund(n) < 0 ? '−' : ''}${Math.abs(rund(n)).toFixed(2).replace(/\.?0+$/, '').replace('.', ',')}`;
+
 // Eine Position je Halbstunde der Spalten: Zellbeschreibung oder null. Erwartet die Abschnitte EINER Zeile (ein Mitarbeiter, ein Tag).
 export function zellen(bloecke, spalten) {
   return spalten.map((beginn) => {

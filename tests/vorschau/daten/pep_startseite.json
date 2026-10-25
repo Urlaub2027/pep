@@ -1,5 +1,5 @@
 {
- "heute": "2026-11-02",
+ "heute": "2026-11-12",
  "luecke": {
   "summe": -56.5,
   "wochen": [
@@ -14,60 +14,99 @@
  "abwesend": {
   "liste": [
    {
-    "bis": "2026-11-05",
-    "von": "2026-11-03",
-    "code": "KM",
-    "name": "Beispiel, Cem",
-    "mitarbeiter_id": 3
+    "bis": "2026-11-09",
+    "von": "2026-11-09",
+    "code": "BS",
+    "name": "Entwurf, Ivo",
+    "mitarbeiter_id": 9
    },
    {
-    "bis": "2026-11-03",
-    "von": "2026-11-03",
+    "bis": "2026-11-10",
+    "von": "2026-11-10",
     "code": "BS",
     "name": "Modell, Kai",
     "mitarbeiter_id": 11
+   },
+   {
+    "bis": "2026-11-09",
+    "von": "2026-11-09",
+    "code": "KM",
+    "name": "Probe, Dana",
+    "mitarbeiter_id": 4
+   },
+   {
+    "bis": "2026-11-14",
+    "von": "2026-11-09",
+    "code": "U",
+    "name": "Test, Anna",
+    "mitarbeiter_id": 1
+   },
+   {
+    "bis": "2026-11-12",
+    "von": "2026-11-12",
+    "code": "ZA",
+    "name": "Vorlage, Hanna",
+    "mitarbeiter_id": 8
    }
   ],
-  "anzahl": 2
+  "anzahl": 5
+ },
+ "ist_offen": {
+  "tage": 1,
+  "erster": "2026-11-11",
+  "zeilen": 12
  },
  "verstoesse": [
   {
-   "datum": "2026-11-02",
-   "hinweise": 0,
+   "datum": "2026-11-12",
+   "hinweise": 5,
    "ungeplant": false,
-   "warnungen": 3
+   "warnungen": 5
   },
   {
-   "datum": "2026-11-03",
-   "hinweise": 0,
+   "datum": "2026-11-13",
+   "hinweise": 4,
    "ungeplant": false,
-   "warnungen": 3
+   "warnungen": 0
   },
   {
-   "datum": "2026-11-04",
-   "hinweise": 0,
-   "ungeplant": false,
-   "warnungen": 3
-  },
-  {
-   "datum": "2026-11-05",
-   "hinweise": 0,
-   "ungeplant": false,
-   "warnungen": 4
-  },
-  {
-   "datum": "2026-11-06",
+   "datum": "2026-11-16",
    "hinweise": 0,
    "ungeplant": true,
    "warnungen": 0
   },
   {
-   "datum": "2026-11-07",
+   "datum": "2026-11-17",
    "hinweise": 0,
-   "ungeplant": false,
-   "warnungen": 4
+   "ungeplant": true,
+   "warnungen": 0
+  },
+  {
+   "datum": "2026-11-18",
+   "hinweise": 0,
+   "ungeplant": true,
+   "warnungen": 0
   }
  ],
  "erster_wunsch": "2026-11-16",
- "offene_wuensche": 2
+ "offene_wuensche": 2,
+ "zeitkonto_auffaellig": {
+  "kw": 45,
+  "jahr": 2026,
+  "liste": [
+   {
+    "id": 1,
+    "name": "Test, Anna",
+    "saldo": -38.5,
+    "warnung": "minus"
+   },
+   {
+    "id": 2,
+    "name": "Muster, Ben",
+    "saldo": 47.5,
+    "warnung": "plus"
+   }
+  ],
+  "montag": "2026-11-02"
+ }
 }
