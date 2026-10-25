@@ -7,6 +7,7 @@ import {
   tagesplanZeilen, wochenplanZeilen, monatZeilen, resturlaubZeilen, wochenplanBlatt,
   wochenIstZeilen, stundenblattSeiten, journalTabelle,
 } from '../docs/druck-daten.js';
+import { erzeugeXlsx, excelDatum } from '../docs/xlsx.js';
 
 const TAGE = ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'];
 const KA = 1;
@@ -264,18 +265,24 @@ test('Wocheneinsatz-IST: Abwesenheit „U/6,25“; Teil-KM vor dem IST bzw. vor 
 
 // pep_stundenblatt: eine Person, Fr 01.01.–Fr 08.01.2027 (IST ab 04.01.), Tage gekürzt.
 const tagZeile = (datum, werte = {}) => ({ datum, vor_start: false, offen: false, feiertag: null, anwesend_von: null,
-  anwesend_bis: null, pause: null, abwesend: null, arbeitszeit: null, ...werte });
+  anwesend_bis: null, pause: null, abwesend: null, arbeitszeit: null, spannen: null, ...werte });
 const stundenblatt = () => ({
-  von: '2027-01-01', bis: '2027-01-08',
+  von: '2027-01-01', bis: '2027-01-10',
   mitarbeiter: [{
     id: 1, name: 'Test, Anna', personalnummer: '1001',
     tage: [
       tagZeile('2027-01-01', { vor_start: true }),
-      tagZeile('2027-01-04', { anwesend_von: '07:00', anwesend_bis: '15:30', pause: 0.5, arbeitszeit: 8 }),
-      tagZeile('2027-01-05', { abwesend: { code: 'U', stunden: 6.25 } }),
-      tagZeile('2027-01-06', { feiertag: 'Heilige Drei Könige' }),
+      tagZeile('2027-01-04', { anwesend_von: '07:00', anwesend_bis: '15:30', pause: 0.5, arbeitszeit: 8,
+        spannen: [{ von: '07:00', bis: '15:30' }] }),
+      tagZeile('2027-01-05', { abwesend: { code: 'U', stunden: 6.25, zaehlt: true } }),
+      // U am geschlossenen Feiertag: die Feiertagsgutschrift hat Vorrang, U zählt nicht
+      tagZeile('2027-01-06', { feiertag: 'Heilige Drei Könige', abwesend: { code: 'U', stunden: 6.25, zaehlt: false } }),
       tagZeile('2027-01-07', { offen: true }),
-      tagZeile('2027-01-08', { anwesend_von: '22:00', anwesend_bis: '24:00', pause: 0, abwesend: { code: 'KM', stunden: 2 }, arbeitszeit: 2 }),
+      tagZeile('2027-01-08', { anwesend_von: '22:00', anwesend_bis: '24:00', pause: 0,
+        abwesend: { code: 'KM', stunden: 2, zaehlt: true }, arbeitszeit: 2, spannen: [{ von: '22:00', bis: '24:00' }] }),
+      tagZeile('2027-01-09', { abwesend: { code: 'ZA', stunden: 6.25, zaehlt: false } }), // ohne Gutschrift
+      tagZeile('2027-01-10', { anwesend_von: '06:00', anwesend_bis: '17:30', pause: 0, arbeitszeit: 6,
+        spannen: [{ von: '06:00', bis: '08:00' }, { von: '13:30', bis: '17:30' }] }),
     ],
     wochen: [
       { montag: '2026-12-28', kw: 53, jahr: 2026, soll: 37.5, ist: 0, abwesend: 0, feiertag: 6.25, diff: -31.25,
@@ -288,7 +295,7 @@ const stundenblatt = () => ({
   }],
 });
 
-test('Stundenblatt: Tageszeilen mit Zeiten, Pause „0:30“, Abwesenheit, Arbeitszeit und Hinweis', () => {
+test('Stundenblatt: Tageszeilen mit Zeiten, Pause „0:30“, Abwesenheit, Arbeitszeit, Hinweis; ZA zählt nicht in der Summe', () => {
   const [seite] = stundenblattSeiten(stundenblatt());
   assert.equal(seite.name, 'Test, Anna');
   assert.equal(seite.personalnummer, '1001');
@@ -296,13 +303,16 @@ test('Stundenblatt: Tageszeilen mit Zeiten, Pause „0:30“, Abwesenheit, Arbei
     ['Fr 01.01.', '', '', '', '', '', 'vor IST-Start'],
     ['Mo 04.01.', '07:00', '15:30', '0:30', '', '8,00', ''],
     ['Di 05.01.', '', '', '', 'U/6,25', '', ''],
-    ['Mi 06.01.', '', '', '', '', '', 'Heilige Drei Könige'],
+    ['Mi 06.01.', '', '', '', 'U (ohne Gutschrift)', '', 'Heilige Drei Könige'],
     ['Do 07.01.', '', '', '', '', '', 'offen'],
     ['Fr 08.01.', '22:00', '24:00', '', 'KM/2,00', '2,00', ''],
+    ['Sa 09.01.', '', '', '', 'ZA (ohne Gutschrift)', '', ''],
+    ['So 10.01.', '06:00', '17:30', '', '', '6,00', 'geteilter Dienst 06:00–08:00, 13:30–17:30'],
   ]);
-  assert.deepEqual(seite.zeilen.map((z) => z.datum),
-    ['2027-01-01', '2027-01-04', '2027-01-05', '2027-01-06', '2027-01-07', '2027-01-08']);
-  assert.deepEqual(seite.summe, { arbeitszeit: '10,00', abwesend: '8,25' });
+  assert.deepEqual(seite.zeilen.map((z) => z.datum), ['2027-01-01', '2027-01-04', '2027-01-05', '2027-01-06',
+    '2027-01-07', '2027-01-08', '2027-01-09', '2027-01-10']);
+  // Abwesenheit wie im Zeitkonto: nur U 05.01. und KM 08.01. (ZA und U am Feiertag ohne Gutschrift)
+  assert.deepEqual(seite.summe, { arbeitszeit: '16,00', abwesend: '8,25' });
 });
 
 test('Stundenblatt: Wochenzeilen mit Soll, IST, Abwesend, Feiertag, Diff und Saldo; nicht Gebuchtes markiert', () => {
@@ -338,15 +348,39 @@ test('Journal-Excel: ein Blatt, Spalten Datum, KW, Mitarbeiter, Art, Stunden, Sa
   assert.equal(blatt.name, 'Journal');
   assert.deepEqual(blatt.spalten.map((s) => s.titel), ['Datum', 'KW', 'Mitarbeiter', 'Art', 'Stunden', 'Saldo', 'Grund', 'Von']);
   assert.deepEqual(blatt.zeilen, [
-    ['01.11.2026', 44, 'Muster, Ben', 'Startsaldo', 45, 45, 'Übernahme', 'chef'],
-    ['01.11.2026', 44, 'Test, Anna', 'Startsaldo', -40, -40, 'Übernahme', 'chef'],
-    ['02.11.2026', 45, 'Test, Anna', 'Wochenabschluss', 2.5, -37.5, '', 'chef'],
-    ['09.11.2026', 46, 'Test, Anna', 'Wochenabschluss', -2, -39.5, '', ''],
-    ['02.11.2026', 45, 'Test, Anna', 'Korrektur (automatisch)', 1, -38.5, 'KW 45/2026: IST geändert', 'vize'],
+    [{ datum: '2026-11-01' }, 44, 'Muster, Ben', 'Startsaldo', 45, 45, 'Übernahme', 'chef'],
+    [{ datum: '2026-11-01' }, 44, 'Test, Anna', 'Startsaldo', -40, -40, 'Übernahme', 'chef'],
+    [{ datum: '2026-11-02' }, 45, 'Test, Anna', 'Wochenabschluss', 2.5, -37.5, '', 'chef'],
+    [{ datum: '2026-11-09' }, 46, 'Test, Anna', 'Wochenabschluss', -2, -39.5, '', ''],
+    [{ datum: '2026-11-02' }, 45, 'Test, Anna', 'Korrektur (automatisch)', 1, -38.5, 'KW 45/2026: IST geändert', 'vize'],
   ]);
   // Zahlen bleiben Zahlen (xlsx.js schreibt nur echte Zahlen als Zahlzellen)
   for (const z of blatt.zeilen) for (const i of [1, 4, 5]) assert.equal(typeof z[i], 'number');
   // Zahlen aus der Datenbank kommen als JSON-Zahl, numeric kann aber auch als Text ankommen
   const text = journalTabelle([{ ...journal()[0], stunden: '45.00', saldo_nach: '45.00' }]);
   assert.deepEqual(text.zeilen[0].slice(4, 6), [45, 45]);
+});
+
+// docs/xlsx.js: Datumszelle { datum: 'JJJJ-MM-TT' } = Excel-Seriennummer (Tage seit 30.12.1899) mit Zahlenformat
+// dd.mm.yyyy (eigenes numFmtId 164, Stil 3). Die Datei ist unkomprimiert, die XML-Teile sind also direkt lesbar.
+test('Excel-Datum: Seriennummer seit 30.12.1899, Zelle mit Datumsstil, Format dd.mm.yyyy in styles.xml', () => {
+  assert.equal(excelDatum('2026-11-16'), 46342);
+  assert.equal(excelDatum('2026-11-01'), 46327);
+  assert.equal(excelDatum('1900-03-01'), 61); // nach Excels Schaltjahr-Fehler 1900 stimmt die Zählung ab März 1900
+  assert.equal(excelDatum('quatsch'), null);
+  const text = new TextDecoder().decode(erzeugeXlsx([journalTabelle(journal())]));
+  const blatt = text.slice(text.indexOf('<worksheet'), text.indexOf('</worksheet>'));
+  assert.match(blatt, /<c r="A2" s="3"><v>46327<\/v><\/c>/, 'Datum als Zahl mit Stil 3');
+  assert.match(blatt, /<c r="B2" s="2"><v>44<\/v><\/c>/, 'KW bleibt Zahl mit Datenstil');
+  const styles = text.slice(text.indexOf('<styleSheet'), text.indexOf('</styleSheet>'));
+  assert.match(styles, /<numFmts count="1"><numFmt numFmtId="164" formatCode="dd\.mm\.yyyy"\/><\/numFmts>/);
+  assert.match(styles, /<cellXfs count="4">/);
+  const xfs = [...styles.slice(styles.indexOf('<cellXfs')).matchAll(/<xf [^>]*>/g)].map((m) => m[0]);
+  assert.match(xfs[3], /numFmtId="164"/);
+  assert.match(xfs[3], /applyNumberFormat="1"/);
+  // Ohne gültiges Datum leere Zelle; der Wochenplan nutzt keinen Datumsstil
+  const leer = new TextDecoder().decode(erzeugeXlsx([{ name: 'X', spalten: [{ titel: 'D' }], zeilen: [[{ datum: null }]] }]));
+  assert.match(leer, /<row r="2"><\/row>/);
+  const plan = new TextDecoder().decode(erzeugeXlsx([wochenplanBlatt(woche())]));
+  assert.ok(!plan.slice(plan.indexOf('<worksheet')).includes('s="3"'));
 });

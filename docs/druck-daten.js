@@ -215,8 +215,10 @@ function stundenMinuten(n) {
 
 const kurzDatum = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.`;
 
-// Stundenblatt aus pep_stundenblatt: je Mitarbeiter eine Seite mit Tageszeilen (alles als Text), Summen der Tageszeilen
-// und Wochenzeilen. Hinweis je Tag: „vor IST-Start“, „offen“ (nicht bestätigt) oder der Name des Feiertags.
+// Stundenblatt aus pep_stundenblatt: je Mitarbeiter Tageszeilen (alles als Text), Summen der Tageszeilen und
+// Wochenzeilen. Hinweis je Tag: „vor IST-Start“ bzw. „offen“ (nicht bestätigt), Name des Feiertags und „geteilter
+// Dienst 06:00–08:00, 13:30–17:30“ (mehrere zusammenhängende Zeiten), mit „ · “ verbunden. Eine Abwesenheit ohne
+// zaehlt (ZA, U am Feiertag mit Gutschrift) steht als „ZA (ohne Gutschrift)“ da und fehlt in der Summe.
 // Wochen: Saldo = gebuchter Saldo bis zum Sonntag; nicht abgeschlossene Wochen sind markiert, ihre Diff fehlt im Saldo.
 export function stundenblattSeiten(daten) {
   return (daten?.mitarbeiter ?? []).map((m) => {
@@ -226,9 +228,11 @@ export function stundenblattSeiten(daten) {
       von: t.anwesend_von ?? '',
       bis: t.anwesend_bis ?? '',
       pause: t.pause == null ? '' : stundenMinuten(t.pause),
-      abwesend: t.abwesend ? abwesenheitText(t.abwesend) : '',
+      abwesend: !t.abwesend ? '' : t.abwesend.zaehlt ? abwesenheitText(t.abwesend) : `${t.abwesend.code} (ohne Gutschrift)`,
       arbeitszeit: t.arbeitszeit == null ? '' : stundenText(t.arbeitszeit),
-      hinweis: t.vor_start ? 'vor IST-Start' : t.offen ? 'offen' : t.feiertag ?? '',
+      hinweis: [t.vor_start ? 'vor IST-Start' : t.offen ? 'offen' : '', t.feiertag ?? '',
+        (t.spannen ?? []).length > 1 ? `geteilter Dienst ${t.spannen.map((x) => zeitspanne(x.von, x.bis)).join(', ')}` : '']
+        .filter(Boolean).join(' · '),
     }));
     const wochen = (m.wochen ?? []).map((w) => ({
       montag: w.montag,
@@ -250,17 +254,17 @@ export function stundenblattSeiten(daten) {
       wochen,
       summe: {
         arbeitszeit: stundenText(summe((m.tage ?? []).map((t) => t.arbeitszeit))),
-        abwesend: stundenText(summe((m.tage ?? []).map((t) => t.abwesend?.stunden))),
+        // wie abwesend der Wochenrechnung: nur Abwesenheiten mit zaehlt (Gutschrift, kein Feiertag mit Gutschrift)
+        abwesend: stundenText(summe((m.tage ?? []).map((t) => (t.abwesend?.zaehlt ? t.abwesend.stunden : 0)))),
       },
     };
   });
 }
 
-const datumText = (iso) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
-
 // Journal als Excel-Blatt (ein Blatt) aus pep_zeitkonto_journal: je Mitarbeiter (nach Name) in Buchungsreihenfolge (id),
 // denn saldo_nach ist der Saldo nach der Buchung in id-Reihenfolge (G3) – nach Datum sortiert spränge die Spalte, sobald
-// eine Korrektur für eine alte Woche später gebucht wird. KW, Stunden und Saldo als Zahlen, Datum als Text TT.MM.JJJJ.
+// eine Korrektur für eine alte Woche später gebucht wird. KW, Stunden und Saldo als Zahlen, Datum als echte Excel-
+// Datumszelle ({ datum }, xlsx.js: Anzeige TT.MM.JJJJ, sortier- und filterbar).
 export function journalTabelle(buchungen) {
   const liste = [...(buchungen ?? [])].sort((a, b) => String(a.name).localeCompare(String(b.name), 'de')
     || a.mitarbeiter_id - b.mitarbeiter_id || a.id - b.id);
@@ -272,7 +276,7 @@ export function journalTabelle(buchungen) {
       { titel: 'Art', breite: 22 }, { titel: 'Stunden', breite: 10 }, { titel: 'Saldo', breite: 10 },
       { titel: 'Grund', breite: 40 }, { titel: 'Von', breite: 16 },
     ],
-    zeilen: liste.map((b) => [datumText(b.datum), Number(b.kw), b.name, ART_TEXT[b.art] ?? b.art,
+    zeilen: liste.map((b) => [{ datum: b.datum }, Number(b.kw), b.name, ART_TEXT[b.art] ?? b.art,
       Number(b.stunden), Number(b.saldo_nach), b.grund ?? '', b.angelegt_von_name ?? '']),
   };
 }

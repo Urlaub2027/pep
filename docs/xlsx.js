@@ -1,9 +1,12 @@
-// Kopie aus Urlaub2027/urlaub docs/xlsx.js, dort pflegen (Stand c7454fe). Nur diese Kopfzeile ist neu.
+// Kopie aus Urlaub2027/urlaub docs/xlsx.js (Stand c7454fe), WEICHT AB: PEP hat zusätzlich Datumszellen
+// ({ datum: 'JJJJ-MM-TT' } → excelDatum, Stil 3 mit numFmt 164 „dd.mm.yyyy“; Stufe 2, Journal als Excel). Beim
+// Übernehmen einer neueren Urlaubstool-Fassung diese Teile mitnehmen (oder sie dort einbauen).
 // Minimaler Excel-Schreiber (.xlsx) ohne fremde Bibliothek.
 // Eine .xlsx-Datei ist ein ZIP-Archiv mit XML-Dateien; hier unkomprimiert ("stored").
 //
 // blaetter: [{ name, spalten: [{ titel, breite }], zeilen: [[wert, ...]], fixiereSpalten }]
-// Werte: Zahl → Zahlzelle, alles andere → Text. null/undefined → leere Zelle.
+// Werte: Zahl → Zahlzelle, { datum: 'JJJJ-MM-TT' } → Datumszelle (Anzeige TT.MM.JJJJ), alles andere → Text.
+// null/undefined, '' und ein ungültiges Datum → leere Zelle.
 
 const enc = new TextEncoder();
 
@@ -30,9 +33,24 @@ function spaltenName(index) {
   return name;
 }
 
+// Excel-Seriennummer eines Datums 'JJJJ-MM-TT': Tage seit dem 30.12.1899 (so zählt Excel ab März 1900 richtig,
+// einschließlich des erfundenen 29.02.1900). Ungültig → null.
+export function excelDatum(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso ?? ''));
+  if (!m) return null;
+  const ms = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return Number.isFinite(ms) ? Math.round((ms - Date.UTC(1899, 11, 30)) / 86400000) : null;
+}
+
+const DATUMSSTIL = 3; // cellXfs-Index in styles.xml: numFmt 164 „dd.mm.yyyy“
+
 function zelle(wert, ref, stil) {
   const s = stil ? ` s="${stil}"` : '';
   if (wert === null || wert === undefined || wert === '') return '';
+  if (typeof wert === 'object' && 'datum' in wert) {
+    const n = excelDatum(wert.datum);
+    return n === null ? '' : `<c r="${ref}" s="${DATUMSSTIL}"><v>${n}</v></c>`;
+  }
   if (typeof wert === 'number' && Number.isFinite(wert)) return `<c r="${ref}"${s}><v>${wert}</v></c>`;
   return `<c r="${ref}" t="inlineStr"${s}><is><t xml:space="preserve">${xml(wert)}</t></is></c>`;
 }
@@ -84,17 +102,20 @@ function dateien(blaetter) {
     + blaetter.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')
     + `<Relationship Id="rId${blaetter.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
     + '</Relationships>';
-  // Stil 0 = Standard, 1 = Kopfzeile (fett, grau), 2 = Daten (oben ausgerichtet, Umbruch)
+  // Stil 0 = Standard, 1 = Kopfzeile (fett, grau), 2 = Daten (oben ausgerichtet, Umbruch), 3 = Datum (PEP, wie 2 mit
+  // eigenem Zahlenformat 164 „dd.mm.yyyy“; eigene Formate beginnen bei 164)
   const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    + '<numFmts count="1"><numFmt numFmtId="164" formatCode="dd.mm.yyyy"/></numFmts>'
     + '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'
     + '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
     + '<fill><patternFill patternType="solid"><fgColor rgb="FFDDE3EA"/><bgColor indexed="64"/></patternFill></fill></fills>'
     + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
     + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-    + '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    + '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
     + '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
-    + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs>'
+    + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
+    + '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment vertical="top"/></xf></cellXfs>'
     + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
     + '</styleSheet>';
   return [

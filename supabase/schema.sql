@@ -6181,16 +6181,28 @@ $$;
 
 -- Ein Mitarbeiter im Stundenblatt: je Tag von p_von bis p_bis die Werte aus dem bestätigten IST, je berührter Woche die
 -- Wochenrechnung (pep.zeitkonto_woche) mit dem Saldo nach allen Buchungen bis zu ihrem Sonntag.
--- Tag: vor_start (vor pep.ist_ab) trägt keine Werte. Sonst: abwesend = Abwesenheit des Tages {code, stunden} (ein
--- Eintrag, kein IST), feiertag = Name, wenn die Filiale an einem Feiertag geschlossen ist; offen = offene IST-Zeile nach
--- pep.ist_zeilen (dann keine Stunden, auch nicht das schon erfasste IST: nur Bestätigtes gilt). Nur an bestätigten
--- Tagen (pep.ist_tage): anwesend_von/bis = frühester Beginn / spätestes Ende der IST-Blöcke (Pausen eingeschlossen,
--- Mitternacht '24:00'), pause = Summe der Pausenblöcke, arbeitszeit = pep.arbeitsstunden (ohne Pause und ohne
--- unbesetzte Abschnitte, dieselbe Rechnung wie ist in pep.zeitkonto_woche).
+-- Tag: vor_start (vor pep.ist_ab) trägt keine Werte. Sonst: abwesend = Abwesenheit des Tages {code, stunden, zaehlt}
+-- (ein Eintrag, kein IST); zaehlt = sie geht in abwesend der Wochenrechnung ein – Code mit gutschrift an einem Tag aus
+-- pep.zeitkonto_tage (beschäftigt) ohne Feiertagsgutschrift, also dieselbe Regel wie pep.zeitkonto_woche über dieselbe
+-- Funktion (ZA und U an einem geschlossenen Feiertag zählen nicht). feiertag = Name, wenn die Filiale an einem
+-- Feiertag geschlossen ist; offen = offene IST-Zeile nach pep.ist_zeilen (dann keine Stunden, auch nicht das schon
+-- erfasste IST: nur Bestätigtes gilt). Nur an bestätigten Tagen (pep.ist_tage): anwesend_von/bis = frühester Beginn /
+-- spätestes Ende der IST-Blöcke (Pausen eingeschlossen, Mitternacht '24:00'), spannen = zusammenhängende Zeiten
+-- [{von, bis}] (Pausenblöcke verbinden, Lücken trennen: mehr als eine = geteilter Dienst), pause = Summe der
+-- Pausenblöcke, arbeitszeit = pep.arbeitsstunden (ohne Pause und ohne unbesetzte Abschnitte, dieselbe Rechnung wie ist
+-- in pep.zeitkonto_woche).
+-- Randfall: Ein bestätigter Tag vor pep.ist_ab (bestätigt, bevor der Start der IST-Erfassung vor dem ersten Abschluss
+-- nach hinten verlegt wurde) zeigt hier als vor_start keine Arbeitszeit, zählt aber weiter in ist der Wochenrechnung,
+-- denn pep.zeitkonto_woche summiert alle pep.ist_tage der Woche. Neu entstehen kann so ein Tag nicht (IST_VOR_START),
+-- und seine Woche liegt vor dem Start (ist_ab ist ein Montag), wird also nie gebucht (vor_ist_start): Der Saldo bleibt
+-- unberührt, nur die Spalte IST dieser Woche passt nicht zur Summe der Tage.
 -- Woche: Wochen, die der Zeitraum berührt, ganz (auch Tage außerhalb des Zeitraums); abgeschlossen = Woche gebucht,
 -- vor_ist_start = Woche vor dem Start der IST-Erfassung (wird nie gebucht). saldo_nach enthält nur Gebuchtes: in einer
 -- nicht abgeschlossenen Woche fehlt die Diff noch.
-create or replace function pep.stundenblatt_person(p_mitarbeiter_id bigint, p_von date, p_bis date)
+-- p_status: Öffnung je Tag des Zeitraums [{tag, geoeffnet, feiertag}] aus pep_stundenblatt, einmal je Aufruf statt je
+-- Mitarbeiter und Tag gerechnet (pep.tag_status hängt nur von Filiale und Tag ab).
+drop function if exists pep.stundenblatt_person(bigint, date, date); -- Fassung vor Fix-Runde 1 (ohne p_status)
+create or replace function pep.stundenblatt_person(p_mitarbeiter_id bigint, p_von date, p_bis date, p_status jsonb)
 returns jsonb
 language sql stable
 set search_path = ''
@@ -6201,11 +6213,14 @@ as $$
     select z.datum from m, pep.ist_zeilen(m.filiale_id, p_von, p_bis, array[p_mitarbeiter_id]) z
      where z.bestaetigt_am is null
   ), tage as (
-    select d::date as tag, d::date < m.ist_ab as vor_start, m.filiale_id
-      from m, generate_series(p_von::timestamp, p_bis::timestamp, interval '1 day') d
+    select (e ->> 'tag')::date as tag, (e ->> 'tag')::date < m.ist_ab as vor_start,
+           (e ->> 'geoeffnet')::boolean as geoeffnet, e ->> 'feiertag' as feiertag
+      from m, jsonb_array_elements(p_status) e
   ), wochen as (
     select d::date as mo, m.filiale_id, m.ist_ab
       from m, generate_series(date_trunc('week', p_von::timestamp), p_bis::timestamp, interval '7 days') d
+  ), zk_tage as ( -- beschäftigte Tage mit Feiertagsgutschrift-Merkmal, wie in pep.zeitkonto_woche
+    select k.tag, k.feiertag from wochen w cross join lateral pep.zeitkonto_tage(p_mitarbeiter_id, w.mo) k
   )
   select jsonb_build_object(
     'id', m.id, 'name', m.name, 'personalnummer', m.personalnummer,
@@ -6214,9 +6229,10 @@ as $$
                'datum', to_char(t.tag, 'YYYY-MM-DD'),
                'vor_start', t.vor_start,
                'offen', exists (select 1 from offen o where o.datum = t.tag),
-               'feiertag', case when not t.vor_start and not st.geoeffnet then st.feiertag end,
+               'feiertag', case when not t.vor_start and not t.geoeffnet then t.feiertag end,
                'anwesend_von', to_char(b.von, 'HH24:MI'),
                'anwesend_bis', to_char(b.bis, 'HH24:MI'),
+               'spannen', case when b.bestaetigt then sp.spannen end,
                'pause', b.pause,
                'abwesend', a.abwesend,
                'arbeitszeit', case when b.bestaetigt
@@ -6224,7 +6240,6 @@ as $$
                               end)
              order by t.tag)
         from tage t
-        cross join lateral pep.tag_status(t.filiale_id, t.tag) st
         left join lateral (
           select true as bestaetigt, min(ib.von) as von, max(ib.bis) as bis,
                  round(coalesce(sum(extract(epoch from ib.bis - ib.von) / 3600) filter (where r.art = 'pause'), 0), 2) as pause
@@ -6234,7 +6249,20 @@ as $$
            where it.mitarbeiter_id = p_mitarbeiter_id and it.datum = t.tag and not t.vor_start
            group by it.mitarbeiter_id) b on true
         left join lateral (
-          select jsonb_build_object('code', c.code, 'stunden', ab.stunden) as abwesend
+          -- Inseln: ein Block beginnt eine neue Insel, wenn er nicht direkt am Ende des vorigen anschließt
+          -- (IST-Blöcke überlappen nie, pep.ist_bloecke_ohne_ueberlappung).
+          select coalesce(jsonb_agg(jsonb_build_object('von', to_char(i.von, 'HH24:MI'), 'bis', to_char(i.bis, 'HH24:MI'))
+                                    order by i.von), '[]'::jsonb) as spannen
+            from (select min(x.von) as von, max(x.bis) as bis
+                    from (select y.von, y.bis, sum(case when y.von = y.vorher then 0 else 1 end) over (order by y.von) as insel
+                            from (select ib.von, ib.bis, lag(ib.bis) over (order by ib.von) as vorher
+                                    from pep.ist_bloecke ib
+                                   where ib.mitarbeiter_id = p_mitarbeiter_id and ib.datum = t.tag) y) x
+                   group by x.insel) i) sp on true
+        left join lateral (
+          select jsonb_build_object('code', c.code, 'stunden', ab.stunden,
+                                    'zaehlt', c.gutschrift and exists (select 1 from zk_tage k
+                                                                       where k.tag = ab.datum and not k.feiertag)) as abwesend
             from pep.abwesenheiten ab
             join pep.abwesenheitscodes c on c.id = ab.code_id
            where ab.mitarbeiter_id = p_mitarbeiter_id and ab.datum = t.tag and not t.vor_start
@@ -6252,7 +6280,9 @@ as $$
                'vor_ist_start', w.mo < w.ist_ab)
              order by w.mo)
         from wochen w
-        cross join lateral (select pep.zeitkonto_woche(p_mitarbeiter_id, w.mo) as zk) z
+        -- offset 0: Ohne ihn zieht der Planer die Unterabfrage hoch und rechnet pep.zeitkonto_woche je Verwendung von
+        -- z.zk neu (gemessen: sechsmal je Woche, 20 Mitarbeiter × 62 Tage 3,0 s statt 0,7 s).
+        cross join lateral (select pep.zeitkonto_woche(p_mitarbeiter_id, w.mo) as zk offset 0) z
        where z.zk is not null), '[]'::jsonb))
   from m
 $$;
@@ -6272,7 +6302,8 @@ security definer
 set search_path = ''
 as $$
 declare
-  v_b pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_b      pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_status jsonb;
 begin
   if p_mitarbeiter_id is not null then
     perform pep.eigener_mitarbeiter(p_mitarbeiter_id); -- MITARBEITER_NICHT_GEFUNDEN
@@ -6286,10 +6317,14 @@ begin
   if p_bis - p_von + 1 > 62 then
     raise exception 'ZEITRAUM_ZU_LANG';
   end if;
+  v_status := (select jsonb_agg(jsonb_build_object('tag', d::date, 'geoeffnet', st.geoeffnet, 'feiertag', st.feiertag)
+                                order by d)
+                 from generate_series(p_von::timestamp, p_bis::timestamp, interval '1 day') d
+                 cross join lateral pep.tag_status(v_b.filiale_id, d::date) st);
   return jsonb_build_object(
     'von', to_char(p_von, 'YYYY-MM-DD'), 'bis', to_char(p_bis, 'YYYY-MM-DD'),
     'mitarbeiter', coalesce((
-      select jsonb_agg(pep.stundenblatt_person(m.id, p_von, p_bis) order by m.aktiv desc, m.position, m.name, m.id)
+      select jsonb_agg(pep.stundenblatt_person(m.id, p_von, p_bis, v_status) order by m.aktiv desc, m.position, m.name, m.id)
         from pep.mitarbeiter m
        where m.filiale_id = v_b.filiale_id
          and case when p_mitarbeiter_id is not null then m.id = p_mitarbeiter_id

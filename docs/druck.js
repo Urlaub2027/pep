@@ -314,10 +314,16 @@ function stundenblatt(daten) {
         : element('tr', {}, element('td', { colspan: 9 }, 'Ohne Vertrag in diesen Wochen.'))));
     return element('div', { class: 'dr-seite dr-hoch' }, tage, element('h3', { class: 'dr-zwischentitel' }, 'Wochen'), wochen,
       element('p', { class: 'dr-fuss dr-legende' },
-        'Nur bestätigtes IST: Anwesend = erster Beginn bis letztes Ende (Pausen eingeschlossen), Arbeitszeit ohne Pause. '
+        'Jeder Mitarbeiter beginnt auf einer neuen Seite. '
+        + 'Nur bestätigtes IST: Anwesend = erster Beginn bis letztes Ende (Pausen eingeschlossen), Arbeitszeit ohne Pause. '
+        + 'Abwesenheit „ohne Gutschrift“ (z. B. ZA) zählt nicht in der Summe. '
         + '„offen“ = noch nicht bestätigt, ohne Stunden. Wochen ganz, auch Tage außerhalb des Zeitraums. '
         + 'Saldo = gebuchtes Zeitkonto nach dem Sonntag der Woche; die Diff einer nicht abgeschlossenen Woche ist darin '
-        + 'noch nicht enthalten.'));
+        + 'noch nicht enthalten.'),
+      // Unterschriften am Ende der Person: bei mehreren Seiten nur auf ihrer letzten (bricht nicht auseinander).
+      element('div', { class: 'dr-unterschriften' },
+        element('div', { class: 'dr-unterschrift' }, 'Datum, Unterschrift Mitarbeiter/in'),
+        element('div', { class: 'dr-unterschrift' }, 'Datum, Unterschrift Filialleitung')));
   });
 }
 
@@ -432,7 +438,8 @@ export function druckAuswahlZeitkonto(zeitkonto) {
   let blatt = null;
   let ist = null;
   dialog(`Drucken – Zeitkonto KW ${kw}/${jahr}`, [
-    element('p', { class: 'hinweis' }, 'Stundenblatt: A4 hoch, eine Seite je Mitarbeiter, höchstens 62 Tage. '
+    element('p', { class: 'hinweis' }, 'Stundenblatt: A4 hoch, jeder Mitarbeiter beginnt auf einer neuen Seite '
+      + '(höchstens 62 Tage). '
       + 'Wocheneinsatz-IST: A4 quer, die angezeigte Woche.'),
     element('label', { class: 'feld' }, 'Mitarbeiter (Stundenblatt)', wer),
     element('div', { class: 'zk-zeitraum' },

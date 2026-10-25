@@ -941,6 +941,8 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-hoch .dr-kopf-rechts { flex-direction: column; align-items: flex-end; gap: 0; white-space: nowrap; }
   .dr-person { display: block; margin-top: 1.5mm; font-size: 11pt; }
   .dr-zwischentitel { margin: 4mm 0 1.5mm; font-size: 9pt; }
+  .dr-unterschriften { display: flex; gap: 12mm; margin-top: 14mm; break-inside: avoid; }
+  .dr-unterschrift { flex: 1; padding-top: 1mm; border-top: 0.5pt solid #000; font-size: 7.5pt; }
   .dr-c-sb-tag { width: 20mm; }
   .dr-c-sb-zeit { width: 18mm; }
   .dr-c-sb-abw { width: 24mm; }

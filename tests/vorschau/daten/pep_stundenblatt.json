@@ -10,6 +10,7 @@
      "datum": "2026-10-12",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -21,6 +22,7 @@
      "datum": "2026-10-13",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -32,6 +34,7 @@
      "datum": "2026-10-14",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -43,6 +46,7 @@
      "datum": "2026-10-15",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -54,6 +58,7 @@
      "datum": "2026-10-16",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -65,6 +70,7 @@
      "datum": "2026-10-17",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -76,6 +82,7 @@
      "datum": "2026-10-18",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -87,6 +94,7 @@
      "datum": "2026-10-19",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -98,6 +106,7 @@
      "datum": "2026-10-20",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -109,6 +118,7 @@
      "datum": "2026-10-21",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -120,6 +130,7 @@
      "datum": "2026-10-22",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -131,6 +142,7 @@
      "datum": "2026-10-23",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -142,6 +154,7 @@
      "datum": "2026-10-24",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -153,6 +166,7 @@
      "datum": "2026-10-25",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -164,6 +178,7 @@
      "datum": "2026-10-26",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -175,6 +190,7 @@
      "datum": "2026-10-27",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -186,6 +202,7 @@
      "datum": "2026-10-28",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -197,6 +214,7 @@
      "datum": "2026-10-29",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -208,6 +226,7 @@
      "datum": "2026-10-30",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -219,6 +238,7 @@
      "datum": "2026-10-31",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -230,6 +250,7 @@
      "datum": "2026-11-01",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -241,6 +262,12 @@
      "datum": "2026-11-02",
      "offen": false,
      "pause": 0,
+     "spannen": [
+      {
+       "bis": "12:30",
+       "von": "06:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -252,6 +279,12 @@
      "datum": "2026-11-03",
      "offen": false,
      "pause": 0,
+     "spannen": [
+      {
+       "bis": "12:30",
+       "von": "06:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -263,6 +296,12 @@
      "datum": "2026-11-04",
      "offen": false,
      "pause": 0,
+     "spannen": [
+      {
+       "bis": "12:30",
+       "von": "06:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -274,6 +313,12 @@
      "datum": "2026-11-05",
      "offen": false,
      "pause": 0,
+     "spannen": [
+      {
+       "bis": "12:30",
+       "von": "06:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -285,6 +330,12 @@
      "datum": "2026-11-06",
      "offen": false,
      "pause": 0,
+     "spannen": [
+      {
+       "bis": "12:30",
+       "von": "06:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -296,6 +347,12 @@
      "datum": "2026-11-07",
      "offen": false,
      "pause": 0,
+     "spannen": [
+      {
+       "bis": "12:30",
+       "von": "06:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -307,6 +364,7 @@
      "datum": "2026-11-08",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -318,8 +376,10 @@
      "datum": "2026-11-09",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": {
       "code": "U",
+      "zaehlt": true,
       "stunden": 6.25
      },
      "feiertag": null,
@@ -332,8 +392,10 @@
      "datum": "2026-11-10",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": {
       "code": "U",
+      "zaehlt": true,
       "stunden": 6.25
      },
      "feiertag": null,
@@ -346,8 +408,10 @@
      "datum": "2026-11-11",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": {
       "code": "U",
+      "zaehlt": true,
       "stunden": 6.25
      },
      "feiertag": null,
@@ -434,6 +498,7 @@
      "datum": "2026-10-12",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -445,6 +510,7 @@
      "datum": "2026-10-13",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -456,6 +522,7 @@
      "datum": "2026-10-14",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -467,6 +534,7 @@
      "datum": "2026-10-15",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -478,6 +546,7 @@
      "datum": "2026-10-16",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -489,6 +558,7 @@
      "datum": "2026-10-17",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -500,6 +570,7 @@
      "datum": "2026-10-18",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -511,6 +582,7 @@
      "datum": "2026-10-19",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -522,6 +594,7 @@
      "datum": "2026-10-20",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -533,6 +606,7 @@
      "datum": "2026-10-21",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -544,6 +618,7 @@
      "datum": "2026-10-22",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -555,6 +630,7 @@
      "datum": "2026-10-23",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -566,6 +642,7 @@
      "datum": "2026-10-24",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -577,6 +654,7 @@
      "datum": "2026-10-25",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -588,6 +666,7 @@
      "datum": "2026-10-26",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -599,6 +678,7 @@
      "datum": "2026-10-27",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -610,6 +690,7 @@
      "datum": "2026-10-28",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -621,6 +702,7 @@
      "datum": "2026-10-29",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -632,6 +714,7 @@
      "datum": "2026-10-30",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -643,6 +726,7 @@
      "datum": "2026-10-31",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -654,6 +738,7 @@
      "datum": "2026-11-01",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -665,6 +750,12 @@
      "datum": "2026-11-02",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "15:30",
+       "von": "07:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -676,6 +767,12 @@
      "datum": "2026-11-03",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "15:30",
+       "von": "07:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -687,6 +784,7 @@
      "datum": "2026-11-04",
      "offen": false,
      "pause": 0,
+     "spannen": [],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -698,6 +796,12 @@
      "datum": "2026-11-05",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "15:30",
+       "von": "07:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -709,6 +813,12 @@
      "datum": "2026-11-06",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "15:30",
+       "von": "07:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -720,6 +830,12 @@
      "datum": "2026-11-07",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "15:30",
+       "von": "07:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -731,6 +847,7 @@
      "datum": "2026-11-08",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -742,6 +859,12 @@
      "datum": "2026-11-09",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "16:30",
+       "von": "07:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -753,6 +876,12 @@
      "datum": "2026-11-10",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "15:30",
+       "von": "07:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -764,6 +893,7 @@
      "datum": "2026-11-11",
      "offen": true,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -849,6 +979,7 @@
      "datum": "2026-10-12",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -860,6 +991,7 @@
      "datum": "2026-10-13",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -871,6 +1003,7 @@
      "datum": "2026-10-14",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -882,6 +1015,7 @@
      "datum": "2026-10-15",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -893,6 +1027,7 @@
      "datum": "2026-10-16",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -904,6 +1039,7 @@
      "datum": "2026-10-17",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -915,6 +1051,7 @@
      "datum": "2026-10-18",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -926,6 +1063,7 @@
      "datum": "2026-10-19",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -937,6 +1075,7 @@
      "datum": "2026-10-20",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -948,6 +1087,7 @@
      "datum": "2026-10-21",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -959,6 +1099,7 @@
      "datum": "2026-10-22",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -970,6 +1111,7 @@
      "datum": "2026-10-23",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -981,6 +1123,7 @@
      "datum": "2026-10-24",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -992,6 +1135,7 @@
      "datum": "2026-10-25",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -1003,6 +1147,7 @@
      "datum": "2026-10-26",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -1014,6 +1159,7 @@
      "datum": "2026-10-27",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -1025,6 +1171,7 @@
      "datum": "2026-10-28",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -1036,6 +1183,7 @@
      "datum": "2026-10-29",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -1047,6 +1195,7 @@
      "datum": "2026-10-30",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -1058,6 +1207,7 @@
      "datum": "2026-10-31",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -1069,6 +1219,7 @@
      "datum": "2026-11-01",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": true,
@@ -1080,6 +1231,12 @@
      "datum": "2026-11-02",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "20:00",
+       "von": "14:30"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -1091,8 +1248,10 @@
      "datum": "2026-11-03",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": {
       "code": "KM",
+      "zaehlt": true,
       "stunden": 5
      },
      "feiertag": null,
@@ -1105,8 +1264,10 @@
      "datum": "2026-11-04",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": {
       "code": "KM",
+      "zaehlt": true,
       "stunden": 5
      },
      "feiertag": null,
@@ -1119,8 +1280,10 @@
      "datum": "2026-11-05",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": {
       "code": "KM",
+      "zaehlt": true,
       "stunden": 5
      },
      "feiertag": null,
@@ -1133,6 +1296,12 @@
      "datum": "2026-11-06",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "20:00",
+       "von": "14:30"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -1144,6 +1313,12 @@
      "datum": "2026-11-07",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "20:00",
+       "von": "14:30"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -1155,6 +1330,7 @@
      "datum": "2026-11-08",
      "offen": false,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -1166,6 +1342,12 @@
      "datum": "2026-11-09",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "20:00",
+       "von": "14:30"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -1177,6 +1359,12 @@
      "datum": "2026-11-10",
      "offen": false,
      "pause": 0.5,
+     "spannen": [
+      {
+       "bis": "20:00",
+       "von": "15:00"
+      }
+     ],
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
@@ -1188,6 +1376,7 @@
      "datum": "2026-11-11",
      "offen": true,
      "pause": null,
+     "spannen": null,
      "abwesend": null,
      "feiertag": null,
      "vor_start": false,
