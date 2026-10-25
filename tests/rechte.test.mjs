@@ -54,7 +54,7 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
   'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
-  'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche'];
+  'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche', 'pep_zeitkonto_journal'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
@@ -114,6 +114,10 @@ const aufrufe = () => ({
   pep_ist_malen: `select public.pep_ist_malen(${ma}, '2026-03-02', '08:00', '12:00', 2, null)`,
   pep_ist_zeile_setzen: `select public.pep_ist_zeile_setzen(${ma}, '2026-03-02', '[{"von":"08:00","bis":"12:00","bereich_id":2}]', null)`,
   pep_ist_bestaetigen: `select public.pep_ist_bestaetigen('2026-03-02', array[${ma}]::bigint[])`,
+  // Nur Leitung. Abschluss einer vergangenen Woche (ohne Rechtecheck: IST_OFFEN, also ebenfalls kein Treffer für FEHLER);
+  // Buchung für Ida: ohne Rechtecheck entstünde eine Journalzeile.
+  pep_wochenabschluss: `select public.pep_wochenabschluss(2026, 10)`,
+  pep_zeitkonto_buchen: `select public.pep_zeitkonto_buchen(${ma}, 'manuell', 5, 'Test', '2026-03-02')`,
 });
 
 const zaehlen = async () => {
@@ -191,4 +195,14 @@ test('pep_zeitkonto_woche: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filia
   await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/);
   await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/);
   for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);
+});
+
+// Das Journal zeigt Buchungen und Salden aller Mitarbeiter: nur Leitung und Stellvertretung mit Filiale.
+test('pep_zeitkonto_journal: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
+  for (const sql of ['select public.pep_zeitkonto_journal(null, null, null)',
+    `select public.pep_zeitkonto_journal(${ma}, '2026-01-01', '2026-12-31')`]) {
+    await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/, `mitarbeiter: ${sql}`);
+    await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/, `Leitung ohne Filiale: ${sql}`);
+    for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);
+  }
 });

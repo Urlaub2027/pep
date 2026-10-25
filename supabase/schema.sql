@@ -5391,7 +5391,8 @@ $$;
 -- geöffnet eingestellt war, oder FT); feiertag = geschlossene gesetzliche Feiertage an
 -- beschäftigten Tagen × round(wochenstunden / feiertag_teiler, 2); Führung: Plus erst über der grenze, Minus erst
 -- unter dem soll; spaet = bestätigte IST-Arbeitszeit ab spaet_grenze; offene_tage = offene Zeilen aus pep.ist_zeilen.
--- grenze nur bei Vertragsart fuehrung, sonst null.
+-- grenze nur bei Vertragsart fuehrung, sonst null; ohne eingetragene Grenze wie in pep_vertrag_speichern der größere Wert
+-- von 42 und den Wochenstunden.
 create or replace function pep.zeitkonto_woche(p_mitarbeiter_id bigint, p_montag date)
 returns jsonb
 language plpgsql stable
@@ -5456,7 +5457,7 @@ begin
 
   v_summe := round(v_ist + v_abw + v_ft, 2);
   if v_v.vertragsart = 'fuehrung' then
-    v_grenze := round(coalesce(v_v.zeitkonto_grenze, 42) * v_tage / 6, 2);
+    v_grenze := round(coalesce(v_v.zeitkonto_grenze, greatest(42, v_v.wochenstunden)) * v_tage / 6, 2);
     v_diff := case when v_summe > v_grenze then v_summe - v_grenze
                    when v_summe < v_soll then v_summe - v_soll
                    else 0 end;
@@ -5519,6 +5520,466 @@ begin
                          coalesce(sum(k.stunden) filter (where k.datum between v_mo and v_mo + 6), 0) as woche
                     from pep.zeitkonto_buchungen k where k.mitarbeiter_id = m.id) s
                where m.filiale_id = v_b.filiale_id and z.zk is not null) x), '[]'::jsonb));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Journal und Abschluss (Stufe 2, G3–G5)
+-- ---------------------------------------------------------------------------
+
+-- G3: Das Journal ist append-only. Zeilenweise (nicht je Anweisung), damit das Löschen eines Mitarbeiters ohne
+-- Buchungen weiter geht; wer Buchungen hat, lässt sich bewusst nicht löschen (Austritt oder Deaktivieren).
+create or replace function pep.journal_unveraenderbar()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'JOURNAL_UNVERAENDERBAR';
+end;
+$$;
+
+drop trigger if exists zeitkonto_buchungen_unveraenderbar on pep.zeitkonto_buchungen;
+create trigger zeitkonto_buchungen_unveraenderbar
+  before update or delete on pep.zeitkonto_buchungen
+  for each row execute function pep.journal_unveraenderbar();
+drop trigger if exists zeitkonto_buchungen_nicht_leeren on pep.zeitkonto_buchungen;
+create trigger zeitkonto_buchungen_nicht_leeren
+  before truncate on pep.zeitkonto_buchungen
+  for each statement execute function pep.journal_unveraenderbar();
+
+-- G3: Einziger Schreibweg ins Journal (außer dem Einspielen einer Sicherung). saldo_nach = saldo_nach der letzten
+-- Buchung (höchste id) des Mitarbeiters + p_stunden; die Sperre je Mitarbeiter hält bis zum Ende der Transaktion.
+create or replace function pep.zeitkonto_buchen(
+  p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date, p_art text, p_stunden numeric, p_grund text)
+returns void
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_k pep.zeitkonto_buchungen;
+begin
+  perform pg_advisory_xact_lock(p_mitarbeiter_id);
+  insert into pep.zeitkonto_buchungen (filiale_id, mitarbeiter_id, datum, art, stunden, saldo_nach, grund, angelegt_von)
+  values (p_filiale_id, p_mitarbeiter_id, p_datum, p_art, p_stunden,
+          coalesce((select k.saldo_nach from pep.zeitkonto_buchungen k
+                     where k.mitarbeiter_id = p_mitarbeiter_id order by k.id desc limit 1), 0) + p_stunden,
+          p_grund, auth.uid())
+  returning * into v_k;
+  perform pep.protokolliere(p_filiale_id, 'buchen', 'zeitkonto_buchungen', v_k.id::text, null, to_jsonb(v_k));
+end;
+$$;
+
+-- Eine Journalzeile für den Browser.
+create or replace function pep.journal_zeile(p_k pep.zeitkonto_buchungen)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'id', p_k.id, 'mitarbeiter_id', p_k.mitarbeiter_id,
+    'name', (select m.name from pep.mitarbeiter m where m.id = p_k.mitarbeiter_id),
+    'datum', to_char(p_k.datum, 'YYYY-MM-DD'),
+    'kw', extract(week from p_k.datum)::int, 'jahr', extract(isoyear from p_k.datum)::int,
+    'art', p_k.art, 'stunden', p_k.stunden, 'saldo_nach', p_k.saldo_nach, 'grund', p_k.grund,
+    'angelegt_von_name', (select o.anzeigename from urlaub.organisatoren o where o.user_id = p_k.angelegt_von),
+    'angelegt_am', p_k.angelegt_am)
+$$;
+
+-- G5: Gleicht abgeschlossene Wochen ab: je (Mitarbeiter, Woche) eine Buchung korrektur = diff jetzt − Summe der
+-- Buchungen woche und korrektur dieser Woche, wenn ≠ 0. Ist die Wochenrechnung inzwischen NULL (nicht mehr beschäftigt),
+-- ist das Ziel 0. p_paare = [{mitarbeiter_id, montag}] oder null = alle Mitarbeiter der Filiale; p_ab = nur Wochen,
+-- deren Sonntag ≥ p_ab (null = alle). Nur abgeschlossene Wochen und aktive Mitarbeiter (Inaktive bekommen auch beim
+-- Abschluss keine Zeile). Grund „KW <kw>/<isojahr>: p_grund“. Liefert die Zahl der Korrekturen.
+create or replace function pep.zeitkonto_abgleichen(p_filiale_id bigint, p_paare jsonb, p_ab date, p_grund text)
+returns int
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_p    record;
+  v_ziel numeric;
+  v_hat  numeric;
+  v_n    int := 0;
+begin
+  for v_p in
+    select m.id as mitarbeiter_id, a.montag
+      from pep.wochen_abschluesse a
+      join pep.mitarbeiter m on m.filiale_id = a.filiale_id and m.aktiv
+     where a.filiale_id = p_filiale_id
+       and (p_ab is null or a.montag + 6 >= p_ab)
+       and (p_paare is null or exists (select 1 from jsonb_array_elements(p_paare) e
+                                        where (e ->> 'mitarbeiter_id')::bigint = m.id
+                                          and (e ->> 'montag')::date = a.montag))
+     order by m.id, a.montag
+  loop
+    -- Erst sperren, dann rechnen: eine gleichzeitige Korrektur derselben Person ist danach sichtbar.
+    perform pg_advisory_xact_lock(v_p.mitarbeiter_id);
+    v_ziel := coalesce((pep.zeitkonto_woche(v_p.mitarbeiter_id, v_p.montag) ->> 'diff')::numeric, 0);
+    select coalesce(sum(k.stunden), 0) into v_hat
+      from pep.zeitkonto_buchungen k
+     where k.mitarbeiter_id = v_p.mitarbeiter_id and k.datum = v_p.montag and k.art in ('woche', 'korrektur');
+    if v_ziel <> v_hat then
+      perform pep.zeitkonto_buchen(p_filiale_id, v_p.mitarbeiter_id, v_p.montag, 'korrektur', v_ziel - v_hat,
+        concat_ws(': ', 'KW ' || extract(week from v_p.montag)::int || '/' || extract(isoyear from v_p.montag)::int,
+                  p_grund));
+      v_n := v_n + 1;
+    end if;
+  end loop;
+  return v_n;
+end;
+$$;
+
+-- G5 Nachbuchen in zwei Schritten. Ein Arbeitsschritt besteht oft aus mehreren Anweisungen (IST-Zeile: Löschen und
+-- Einfügen; Vertrag: Vertrag und danach die Abwesenheitsstunden; Urlaub: je Tag ein Insert). Würde jede Anweisung
+-- sofort buchen, entstünden mehrere Korrekturen je Woche. Darum merken die Auslöse-Trigger (je Anweisung, mit
+-- Transition-Tabellen) nur (Mitarbeiter, Woche) vor, und ein aufgeschobener Trigger bucht beim Commit genau eine
+-- Korrektur je Paar – in derselben Transaktion. Der erste Grund je Paar gilt.
+create table if not exists pep.zeitkonto_vormerkungen (
+  xid            bigint not null default txid_current(),
+  filiale_id     bigint not null,
+  mitarbeiter_id bigint not null,
+  montag         date not null,
+  grund          text not null,
+  primary key (xid, mitarbeiter_id, montag)
+);
+alter table pep.zeitkonto_vormerkungen enable row level security;
+
+-- Weiche für das Einspielen einer Sicherung (Task 12): Journal und Abschlüsse kommen mit, nichts wird nachgebucht.
+create or replace function pep.einspielen()
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select coalesce(current_setting('pep.einspielen', true), '') = '1'
+$$;
+
+-- Merkt je Mitarbeiter alle abgeschlossenen Wochen vor, die den Zeitraum [von, bis] berühren (-infinity/infinity
+-- erlaubt). Grund: pep.grund (IST-Funktionen setzen ihn), sonst p_standard.
+create or replace function pep.zeitkonto_vormerken(p_mitarbeiter_ids bigint[], p_von date[], p_bis date[], p_standard text)
+returns void
+language sql
+set search_path = ''
+as $$
+  insert into pep.zeitkonto_vormerkungen (filiale_id, mitarbeiter_id, montag, grund)
+  select distinct m.filiale_id, m.id, a.montag, coalesce(nullif(current_setting('pep.grund', true), ''), p_standard)
+    from unnest(p_mitarbeiter_ids, p_von, p_bis) x (mitarbeiter_id, von, bis)
+    join pep.mitarbeiter m on m.id = x.mitarbeiter_id
+    join pep.wochen_abschluesse a on a.filiale_id = m.filiale_id and a.montag <= x.bis and a.montag + 6 >= x.von
+  on conflict do nothing
+$$;
+
+-- Auslöser ist_bloecke, ist_tage, abwesenheiten: der Tag jeder alten und neuen Zeile. tg_argv[0] = Standardgrund.
+create or replace function pep.nachbuchen_tage()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_ids  bigint[];
+  v_tage date[];
+begin
+  if pep.einspielen() then
+    return null;
+  end if;
+  if tg_op = 'INSERT' then
+    select array_agg(n.mitarbeiter_id), array_agg(n.datum) into v_ids, v_tage from neu n;
+  elsif tg_op = 'DELETE' then
+    select array_agg(o.mitarbeiter_id), array_agg(o.datum) into v_ids, v_tage from alt o;
+  else
+    select array_agg(x.mitarbeiter_id), array_agg(x.datum) into v_ids, v_tage
+      from (select n.mitarbeiter_id, n.datum from neu n union select o.mitarbeiter_id, o.datum from alt o) x;
+  end if;
+  perform pep.zeitkonto_vormerken(v_ids, v_tage, v_tage, tg_argv[0]);
+  return null;
+end;
+$$;
+
+-- Auslöser vertraege: ein Vertrag wirkt ab der Woche, in der gueltig_ab liegt (pep.wochenvertrag), bis zum nächsten –
+-- also alle abgeschlossenen Wochen ab dort (alter und neuer Beginn).
+create or replace function pep.nachbuchen_vertraege()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_ids bigint[];
+  v_ab  date[];
+  v_bis date[];
+begin
+  if pep.einspielen() then
+    return null;
+  end if;
+  if tg_op = 'INSERT' then
+    select array_agg(n.mitarbeiter_id), array_agg(n.gueltig_ab), array_agg('infinity'::date) into v_ids, v_ab, v_bis
+      from neu n;
+  elsif tg_op = 'DELETE' then
+    select array_agg(o.mitarbeiter_id), array_agg(o.gueltig_ab), array_agg('infinity'::date) into v_ids, v_ab, v_bis
+      from alt o;
+  else
+    select array_agg(x.mitarbeiter_id), array_agg(x.gueltig_ab), array_agg('infinity'::date) into v_ids, v_ab, v_bis
+      from (select n.mitarbeiter_id, n.gueltig_ab from neu n union select o.mitarbeiter_id, o.gueltig_ab from alt o) x;
+  end if;
+  perform pep.zeitkonto_vormerken(v_ids, v_ab, v_bis, 'Vertrag geändert');
+  return null;
+end;
+$$;
+
+-- Auslöser mitarbeiter (nur Änderungen an eintritt/austritt): die Tage zwischen altem und neuem Datum; ein leerer
+-- Eintritt heißt „seit jeher“ (-infinity), ein leerer Austritt „bis auf Weiteres“ (infinity).
+create or replace function pep.nachbuchen_mitarbeiter()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_ids bigint[];
+  v_von date[];
+  v_bis date[];
+begin
+  if pep.einspielen() then
+    return null;
+  end if;
+  select array_agg(x.id), array_agg(x.von), array_agg(x.bis) into v_ids, v_von, v_bis
+    from (select n.id, least(coalesce(o.eintritt, '-infinity'), coalesce(n.eintritt, '-infinity')) as von,
+                 greatest(coalesce(o.eintritt, '-infinity'), coalesce(n.eintritt, '-infinity')) as bis
+            from neu n join alt o on o.id = n.id
+           where n.eintritt is distinct from o.eintritt
+          union all
+          select n.id, least(coalesce(o.austritt, 'infinity'), coalesce(n.austritt, 'infinity')),
+                 greatest(coalesce(o.austritt, 'infinity'), coalesce(n.austritt, 'infinity'))
+            from neu n join alt o on o.id = n.id
+           where n.austritt is distinct from o.austritt) x;
+  perform pep.zeitkonto_vormerken(v_ids, v_von, v_bis, 'Ein-/Austritt geändert');
+  return null;
+end;
+$$;
+
+-- Auslöser tag_abweichungen: der Tag betrifft alle Mitarbeiter der Filiale (ob sie dort Abwesenheiten haben oder nicht).
+create or replace function pep.nachbuchen_abweichungen()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_ids  bigint[];
+  v_tage date[];
+begin
+  if pep.einspielen() then
+    return null;
+  end if;
+  if tg_op = 'INSERT' then
+    select array_agg(m.id), array_agg(n.datum) into v_ids, v_tage
+      from neu n join pep.mitarbeiter m on m.filiale_id = n.filiale_id;
+  elsif tg_op = 'DELETE' then
+    select array_agg(m.id), array_agg(o.datum) into v_ids, v_tage
+      from alt o join pep.mitarbeiter m on m.filiale_id = o.filiale_id;
+  else
+    select array_agg(m.id), array_agg(x.datum) into v_ids, v_tage
+      from (select n.filiale_id, n.datum from neu n union select o.filiale_id, o.datum from alt o) x
+      join pep.mitarbeiter m on m.filiale_id = x.filiale_id;
+  end if;
+  perform pep.zeitkonto_vormerken(v_ids, v_tage, v_tage, 'Öffnungstag geändert');
+  return null;
+end;
+$$;
+
+-- Auslöser abwesenheitscodes (nur Änderungen an gutschrift): alle Tage mit Abwesenheiten dieses Codes.
+create or replace function pep.nachbuchen_codes()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_ids  bigint[];
+  v_tage date[];
+begin
+  if pep.einspielen() then
+    return null;
+  end if;
+  select array_agg(a.mitarbeiter_id), array_agg(a.datum) into v_ids, v_tage
+    from neu n
+    join alt o on o.id = n.id
+    join pep.abwesenheiten a on a.code_id = n.id
+   where n.gutschrift is distinct from o.gutschrift;
+  perform pep.zeitkonto_vormerken(v_ids, v_tage, v_tage, 'Gutschrift eines Codes geändert');
+  return null;
+end;
+$$;
+
+-- Postgres erlaubt Transition-Tabellen nur bei Triggern mit genau einem Ereignis: je Tabelle und Ereignis ein Trigger.
+do $$
+declare
+  v record;
+begin
+  for v in select * from (values
+      ('ist_bloecke',      'pep.nachbuchen_tage(''IST geändert'')',         true),
+      ('ist_tage',         'pep.nachbuchen_tage(''IST geändert'')',         true),
+      ('abwesenheiten',    'pep.nachbuchen_tage(''Abwesenheit geändert'')', true),
+      ('vertraege',        'pep.nachbuchen_vertraege()',                    true),
+      ('tag_abweichungen', 'pep.nachbuchen_abweichungen()',                 true),
+      ('mitarbeiter',      'pep.nachbuchen_mitarbeiter()',                  false),
+      ('abwesenheitscodes','pep.nachbuchen_codes()',                        false)) x (tabelle, funktion, alle)
+  loop
+    execute format('drop trigger if exists %I on pep.%I', v.tabelle || '_nachbuchen_neu', v.tabelle);
+    execute format('drop trigger if exists %I on pep.%I', v.tabelle || '_nachbuchen_aenderung', v.tabelle);
+    execute format('drop trigger if exists %I on pep.%I', v.tabelle || '_nachbuchen_weg', v.tabelle);
+    execute format('create trigger %I after update on pep.%I referencing old table as alt new table as neu '
+                   'for each statement execute function %s', v.tabelle || '_nachbuchen_aenderung', v.tabelle, v.funktion);
+    if v.alle then
+      execute format('create trigger %I after insert on pep.%I referencing new table as neu '
+                     'for each statement execute function %s', v.tabelle || '_nachbuchen_neu', v.tabelle, v.funktion);
+      execute format('create trigger %I after delete on pep.%I referencing old table as alt '
+                     'for each statement execute function %s', v.tabelle || '_nachbuchen_weg', v.tabelle, v.funktion);
+    end if;
+  end loop;
+end
+$$;
+
+-- Beim Commit (aufgeschoben): bucht die vorgemerkten Paare. security definer: Vor PostgreSQL 18 läuft ein
+-- aufgeschobener Trigger unter der Rolle, die beim Commit aktiv ist (authenticated, ohne Rechte auf pep) – nicht unter
+-- der Rolle der public-Funktion, die ihn ausgelöst hat. PGlite in den Tests ist PostgreSQL 18 und zeigt das nicht.
+create or replace function pep.zeitkonto_vormerkung_buchen()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v pep.zeitkonto_vormerkungen;
+begin
+  delete from pep.zeitkonto_vormerkungen
+   where xid = new.xid and mitarbeiter_id = new.mitarbeiter_id and montag = new.montag
+  returning * into v;
+  if found then
+    perform pep.zeitkonto_abgleichen(v.filiale_id,
+      jsonb_build_array(jsonb_build_object('mitarbeiter_id', v.mitarbeiter_id, 'montag', v.montag)), null, v.grund);
+  end if;
+  return null;
+end;
+$$;
+
+drop trigger if exists zeitkonto_vormerkungen_buchen on pep.zeitkonto_vormerkungen;
+create constraint trigger zeitkonto_vormerkungen_buchen
+  after insert on pep.zeitkonto_vormerkungen
+  deferrable initially deferred
+  for each row execute function pep.zeitkonto_vormerkung_buchen();
+
+-- ---------------------------------------------------------------------------
+-- Journal und Abschluss: Funktionen für den Browser
+-- ---------------------------------------------------------------------------
+
+-- G4 (nur Leitung): schließt die ISO-Woche ab und bucht je aktivem Mitarbeiter mit Wochenrechnung eine Zeile woche mit
+-- diff (auch 0). Prüfungen: Woche vorbei (Sonntag < heute), nicht schon abgeschlossen, genau die Woche nach dem
+-- letzten Abschluss der Filiale (wenn es einen gibt), keine offenen IST-Zeilen (pep.ist_zeilen). Antwort {gebucht: n}.
+create or replace function public.pep_wochenabschluss(p_jahr int, p_kw int)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b     pep.benutzer := pep.leitung();
+  v_mo    date := pep.kw_montag(p_jahr, p_kw);
+  v_letzt date;
+  v_a     pep.wochen_abschluesse;
+  v_m     record;
+  v_n     int := 0;
+begin
+  if v_mo + 6 >= pep.heute() then
+    raise exception 'WOCHE_NICHT_VORBEI';
+  end if;
+  -- Zwei Leitungen gleichzeitig: die zweite wartet hier und sieht danach den Abschluss der ersten (WOCHE_GEBUCHT).
+  perform 1 from pep.filialen where id = v_b.filiale_id for no key update;
+  if exists (select 1 from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id and a.montag = v_mo) then
+    raise exception 'WOCHE_GEBUCHT';
+  end if;
+  select max(a.montag) into v_letzt from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id;
+  if v_letzt is not null and v_mo <> v_letzt + 7 then
+    raise exception 'VORWOCHE_OFFEN';
+  end if;
+  if exists (select 1 from pep.ist_zeilen(v_b.filiale_id, v_mo, v_mo + 6, null) z where z.bestaetigt_am is null) then
+    raise exception 'IST_OFFEN';
+  end if;
+
+  insert into pep.wochen_abschluesse (filiale_id, montag, abgeschlossen_von)
+  values (v_b.filiale_id, v_mo, v_b.user_id)
+  returning * into v_a;
+  perform pep.protokolliere(v_b.filiale_id, 'abschliessen', 'wochen_abschluesse', to_char(v_mo, 'YYYY-MM-DD'),
+    null, to_jsonb(v_a));
+  for v_m in select m.id, (pep.zeitkonto_woche(m.id, v_mo) ->> 'diff')::numeric as diff
+               from pep.mitarbeiter m
+              where m.filiale_id = v_b.filiale_id and m.aktiv
+              order by m.id loop
+    if v_m.diff is not null then
+      perform pep.zeitkonto_buchen(v_b.filiale_id, v_m.id, v_mo, 'woche', v_m.diff, null);
+      v_n := v_n + 1;
+    end if;
+  end loop;
+  return jsonb_build_object('gebucht', v_n);
+end;
+$$;
+
+-- Startsaldo (art start, nur als erste Buchung des Mitarbeiters) oder manuelle Buchung (nur Leitung). Grund Pflicht,
+-- Stunden ≠ 0, höchstens ±999, höchstens zwei Nachkommastellen. Ohne Datum: heute. Antwort: die neue Journalzeile.
+create or replace function public.pep_zeitkonto_buchen(
+  p_mitarbeiter_id bigint, p_art text, p_stunden numeric, p_grund text, p_datum date)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b     pep.benutzer := pep.leitung();
+  v_m     pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_grund text := nullif(urlaub.trim_alles(p_grund), '');
+  v_k     pep.zeitkonto_buchungen;
+begin
+  if p_art is null or p_art not in ('start', 'manuell') then
+    raise exception 'ART_UNGUELTIG';
+  end if;
+  if p_stunden is null or p_stunden = 0 or abs(p_stunden) > 999 or p_stunden <> round(p_stunden, 2) then
+    raise exception 'STUNDEN_UNGUELTIG';
+  end if;
+  if v_grund is null then
+    raise exception 'GRUND_FEHLT';
+  end if;
+  if char_length(v_grund) > 200 then
+    raise exception 'TEXT_ZU_LANG';
+  end if;
+  perform pg_advisory_xact_lock(v_m.id);
+  if p_art = 'start' and exists (select 1 from pep.zeitkonto_buchungen k where k.mitarbeiter_id = v_m.id) then
+    raise exception 'START_NICHT_ERSTE';
+  end if;
+  perform pep.zeitkonto_buchen(v_b.filiale_id, v_m.id, coalesce(p_datum, pep.heute()), p_art, p_stunden, v_grund);
+  select * into v_k from pep.zeitkonto_buchungen k where k.mitarbeiter_id = v_m.id order by k.id desc limit 1;
+  return pep.journal_zeile(v_k);
+end;
+$$;
+
+-- Journal (Leitung und Stellvertretung): Buchungen eines Mitarbeiters (null = alle der Filiale) mit datum zwischen
+-- p_von und p_bis (null = offen), nach datum, id. saldo_nach ist der Saldo nach der Buchung in Buchungsreihenfolge (id).
+create or replace function public.pep_zeitkonto_journal(p_mitarbeiter_id bigint, p_von date, p_bis date)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung_oder_stellvertretung();
+begin
+  if p_mitarbeiter_id is not null then
+    perform pep.eigener_mitarbeiter(p_mitarbeiter_id); -- MITARBEITER_NICHT_GEFUNDEN
+  end if;
+  if p_von > p_bis then
+    raise exception 'ZEITRAUM_UNGUELTIG';
+  end if;
+  return coalesce((
+    select jsonb_agg(pep.journal_zeile(k) order by k.datum, k.id)
+      from pep.zeitkonto_buchungen k
+     where k.filiale_id = v_b.filiale_id
+       and (p_mitarbeiter_id is null or k.mitarbeiter_id = p_mitarbeiter_id)
+       and (p_von is null or k.datum >= p_von) and (p_bis is null or k.datum <= p_bis)), '[]'::jsonb);
 end;
 $$;
 
@@ -5676,5 +6137,13 @@ grant execute on function public.pep_ist_bestaetigen(date, bigint[]) to authenti
 -- Zeitkonto
 revoke all on function public.pep_zeitkonto_woche(int, int) from public, anon, authenticated;
 grant execute on function public.pep_zeitkonto_woche(int, int) to authenticated;
+
+-- Journal und Abschluss
+revoke all on function public.pep_wochenabschluss(int, int) from public, anon, authenticated;
+revoke all on function public.pep_zeitkonto_buchen(bigint, text, numeric, text, date) from public, anon, authenticated;
+revoke all on function public.pep_zeitkonto_journal(bigint, date, date) from public, anon, authenticated;
+grant execute on function public.pep_wochenabschluss(int, int) to authenticated;
+grant execute on function public.pep_zeitkonto_buchen(bigint, text, numeric, text, date) to authenticated;
+grant execute on function public.pep_zeitkonto_journal(bigint, date, date) to authenticated;
 
 commit;
