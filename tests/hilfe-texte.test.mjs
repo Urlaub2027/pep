@@ -31,10 +31,10 @@ test('jede Ansicht hat Titel, „Wozu“, mindestens zwei Schritte und „Gut zu
   assert.deepEqual(Object.keys(HILFE).sort(), [...ANSICHTEN].sort());
 });
 
-test('kein „TODO“, höchstens 200 Wörter je Ansicht', () => {
+test('kein „TODO“, höchstens 180 Wörter je Ansicht', () => {
   for (const a of ANSICHTEN) {
     for (const t of alleTexte(HILFE[a])) assert.doesNotMatch(t, /TODO/i, `${a}: ${t}`);
-    assert.ok(woerter(HILFE[a]) <= 200, `${a}: ${woerter(HILFE[a])} Wörter`);
+    assert.ok(woerter(HILFE[a]) <= 180, `${a}: ${woerter(HILFE[a])} Wörter`);
   }
 });
 

@@ -2330,6 +2330,37 @@ await szenario('Hilfe: „?“ auf jedem Reiter, Escape, Klick daneben, IST, Tab
   await c.taste('Escape');
   await zu();
 
+  // Modus-Wechsel: die Hilfe folgt sofort dem gewünschten Modus (Woche lädt noch) und fällt mit der Ansicht zurück,
+  // wenn das Laden scheitert (dann bleibt der Plan stehen).
+  s.verzoegere(800);
+  try {
+    await c.klick('#ansicht-einsatzplan [data-modus="ist"]');
+    gleich(await oeffne(), HILFE.einsatzplan_ist.titel, 'IST angeklickt, Woche lädt noch: IST-Hilfe');
+    await c.taste('Escape');
+    await zu();
+  } finally {
+    s.verzoegere(0);
+  }
+  await ruhe();
+  await c.klick('#ansicht-einsatzplan [data-modus="plan"]');
+  await ruhe();
+  await c.werte(() => {
+    window.__fetchVorher = window.fetch;
+    window.fetch = (u, ...r) => (String(u).includes('pep_ist_woche') ? Promise.reject(new TypeError('Failed to fetch'))
+      : window.__fetchVorher(u, ...r));
+  });
+  try {
+    await c.klick('#ansicht-einsatzplan [data-modus="ist"]');
+    await ruhe();
+    gleich((await meldungen()).fehler, 'Keine Verbindung. Bitte prüfe dein Internet.', 'Laden des IST gescheitert: Meldung');
+    pruefe(!(await sichtbar('#ansicht-einsatzplan .ist-tabelle')), 'Laden gescheitert: der Plan bleibt stehen');
+    gleich(await oeffne(), HILFE.einsatzplan.titel, 'Laden gescheitert: Plan-Hilfe');
+    await c.taste('Escape');
+    await zu();
+  } finally {
+    await c.werte(() => { window.fetch = window.__fetchVorher; });
+  }
+
   // Tablet: Leiste füllt den Bildschirm, „Schließen“ per Finger
   await c.tablet(true);
   await pause(300);

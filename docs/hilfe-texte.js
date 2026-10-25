@@ -87,35 +87,38 @@ export const HILFE = {
       'Oben links „IST“ wählen und den Tag öffnen. Die Kachel „IST offen“ auf der Startseite springt zum ersten offenen Tag.',
       'Blass und gestrichelt steht der Plan als Vorschlag in der Zeile.',
       'Abweichungen malen wie im Plan: länger geblieben weiter malen, früher gegangen radieren. Nicht gekommen: die ganze Zeile radieren.',
-      'Nach Feierabend „Tag bestätigen“. Zeilen ohne eigenes IST übernehmen den Vorschlag. Einzelne Zeilen bestätigt der Haken ✓.',
+      'Nach Feierabend „Tag bestätigen“: PEP fragt vorher nach. Zeilen ohne eigenes IST übernehmen den Vorschlag. '
+        + 'Der Haken ✓ in einer Zeile bestätigt nur diese, ohne Rückfrage.',
     ],
     gut_zu_wissen: [
-      'Bestätigen lässt sich nicht zurücknehmen. Wer eine bestätigte Zeile ändert, muss einen Grund angeben.',
+      'Bestätigen lässt sich nicht zurücknehmen. Bestätigte Zeilen ändern geht nur mit Grund.',
       'Ist die Woche schon gebucht, bucht PEP die Änderung automatisch als Korrektur ins Zeitkonto.',
       'Rechts in jeder Zeile: der Status und „Abw.“ (IST minus Plan in Stunden).',
       '„Zeitrahmen erweitern“ zeigt 04:00 bis 24:00. Im IST gibt es keine Regel- und Kompetenzprüfung.',
-      'Krankheit trotzdem im Plan über „Krank/ZA“ eintragen.',
+      'Krankheit trotzdem eintragen: im Modus „Plan“ über „Krank/ZA“ oder im Reiter Abwesenheiten.',
       '„Wocheneinsatz-IST drucken“ druckt die ganze Woche.',
     ],
   },
 
   zeitkonto: {
     titel: 'Zeitkonto',
-    wozu: 'Das Zeitkonto zeigt je Woche, wie viele Stunden jeder mehr oder weniger gearbeitet hat als im Vertrag, '
-      + 'und führt den Saldo. Zuerst steht die Vorwoche da: Sie wird am Montag gebucht.',
+    wozu: 'Je Woche und Mitarbeiter: Stunden mehr oder weniger als im Vertrag, dazu der Saldo. Zuerst steht die Vorwoche da.',
     schritte: [
-      'Woche mit ◀ ▶ wählen. „Vorwoche“ springt zurück.',
-      'Sind noch Tage offen, auf „im IST offen“ klicken und die Tage im Einsatzplan bestätigen.',
-      'Nur Leitung: „Woche buchen“. PEP bucht für jeden Mitarbeiter die Diff ins Journal. Wochen gehen nur der Reihe nach.',
-      'Klick auf einen Namen öffnet das Journal mit allen Buchungen.',
-      'Nur Leitung: im Journal „Startsaldo“ (nur als erste Buchung) oder „Korrektur buchen“ mit Stunden, Datum und Grund.',
+      'Woche mit ◀ ▶ wählen, „Vorwoche“ springt zurück.',
+      'Offene Tage: auf „im IST offen“ klicken und im Einsatzplan bestätigen.',
+      'Nur Leitung, einmal vor dem ersten „Woche buchen“: je Mitarbeiter im Journal „Startsaldo“ buchen, '
+        + 'Datum = Sonntag vor der Startwoche.',
+      'Nur Leitung: „Woche buchen“ geht, wenn die Woche vorbei und kein Tag mehr offen ist. '
+        + 'PEP bucht für jeden aktiven Mitarbeiter mit Vertrag die Diff ins Journal.',
+      'Klick auf einen Namen öffnet das Journal. Nur Leitung: dort „Korrektur buchen“ mit Stunden, Datum und Grund.',
     ],
     gut_zu_wissen: [
-      'Diff = IST + Abwesend + Feiertag − Soll. Nur bestätigte Tage zählen.',
-      'In der laufenden Woche sind Diff und Saldo grau, also vorläufig.',
-      '⚠ auf gelbem Grund: Der Saldo liegt über dem Warnwert.',
-      'Ein Abschluss lässt sich nicht zurücknehmen. Ändert sich danach etwas, bucht PEP automatisch eine Korrektur.',
-      '„Drucken“: Stundenblatt oder Wocheneinsatz-IST. „Journal als Excel“ lädt alle Buchungen herunter.',
+      'Zuerst buchbar ist die Startwoche („IST-Erfassung ab“ in den Einstellungen), danach immer die nächste.',
+      'Nach dem ersten Abschluss geht nur noch „Korrektur buchen“. Abschlüsse lassen sich nicht zurücknehmen; '
+        + 'spätere Änderungen bucht PEP automatisch nach.',
+      'Diff = IST + Abwesend + Feiertag − Soll, nur bestätigte Tage. Grau = laufende Woche, vorläufig. '
+        + '⚠ = Saldo über dem Warnwert.',
+      '„Drucken“: Stundenblatt oder Wocheneinsatz-IST. „Journal als Excel“ lädt die Buchungen eines gewählten Zeitraums herunter.',
     ],
   },
 
@@ -143,18 +146,21 @@ export const HILFE = {
     wozu: 'Hier wird festgelegt, wie die Filiale arbeitet: Öffnungszeiten, Bereiche, Codes, Regeln, Urlaubstool, '
       + 'Benutzer und Sicherung. Diesen Reiter sieht nur die Leitung.',
     schritte: [
-      'Wert ändern und in der Zeile „Speichern“ klicken. Regelparameter speichern sofort beim Verlassen des Feldes.',
+      'Wert ändern, dann in der Zeile „Speichern“ bzw. „Anlegen“. Sofort gespeichert werden die Regelparameter, '
+        + '„IST-Erfassung ab“ und der Haken „aktiv“ einer Umfrage.',
       'Feiertage stehen unter „Abweichende Tage“. „öffnen …“ macht einen Feiertag zum Öffnungstag.',
-      'Urlaubstool: eine Umfrage mit „aktiv“ einschalten, dann unter „Teilnehmer zuordnen“ „Vorschläge übernehmen“ oder je Zeile wählen und „Speichern“.',
-      'Jede Woche unter „Sicherung“ auf „Sicherung herunterladen“ klicken. Die Datei auf dem PC oder USB-Stick aufheben, nicht per E-Mail schicken.',
+      'Urlaubstool: Umfrage mit „aktiv“ einschalten, dann unter „Teilnehmer zuordnen“ „Vorschläge übernehmen“ '
+        + 'oder je Zeile wählen und „Speichern“.',
+      'Jede Woche „Sicherung herunterladen“. Die Datei auf dem PC oder USB-Stick aufheben, nie per E-Mail schicken.',
     ],
     gut_zu_wissen: [
       '„IST-Erfassung ab“ lässt sich nur vor dem ersten „Woche buchen“ ändern.',
-      '„Gutschrift im Zeitkonto“ bei einem Code: Die Stunden zählen wie Arbeitszeit (bei ZA aus).',
-      'Umfragen einer anderen Leitung erscheinen erst nach deren erster Anmeldung in der PEP.',
+      '„Gutschrift im Zeitkonto“: Die Stunden des Codes zählen wie Arbeitszeit (bei ZA aus).',
+      'Eine Umfrage lässt sich nur in einer Filiale einschalten. Ausschalten behält die Zuordnungen. '
+        + 'Umfragen anderer Leitungen erscheinen erst nach deren erster Anmeldung.',
       'Unter „Benutzer“ eine Stellvertretung hinzufügen. Sie braucht ein Konto im Urlaubstool.',
-      'Eine Sicherung lässt sich nur in eine leere Filiale einspielen.',
-      'Damit die Datenbank nicht pausiert, weckt GitHub sie alle zwei Tage von selbst. Dafür ist nichts zu tun.',
+      'Die Sicherung enthält das Protokoll nur der letzten 12 Monate. Einspielen geht nur in eine leere Filiale.',
+      'GitHub weckt die Datenbank alle zwei Tage, damit sie nicht pausiert. Dafür ist nichts zu tun.',
     ],
   },
 };

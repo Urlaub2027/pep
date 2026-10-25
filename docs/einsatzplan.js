@@ -103,7 +103,14 @@ function waehlePinsel(wert) {
 let ladeNummer = 0; // verwirft veraltete Antworten, wenn die Woche schnell gewechselt wird
 async function lade() {
   const nummer = ++ladeNummer;
-  const antwort = await aufruf(modus === 'ist' ? 'pep_ist_woche' : 'pep_einsatzplan_woche', { p_jahr: jahr, p_kw: kw });
+  let antwort;
+  try {
+    antwort = await aufruf(modus === 'ist' ? 'pep_ist_woche' : 'pep_einsatzplan_woche', { p_jahr: jahr, p_kw: kw });
+  } catch (fehler) {
+    // Gescheitert: Die bisherige Woche bleibt stehen, also gilt auch wieder ihr Modus (Modus-Knöpfe, Hilfe „?“).
+    if (nummer === ladeNummer && woche) modus = woche.modus ?? 'plan';
+    throw fehler;
+  }
   if (nummer !== ladeNummer || !antwort) return;
   woche = antwort;
   if (!woche.tage.some((t) => t.datum === datum)) {
@@ -908,5 +915,6 @@ function zeichneSeite() {
   rahmen.seite.replaceChildren(...(tag()?.geoeffnet ? [regelBox(), wochenBox(), abteilungsBox()] : [wochenBox()]));
 }
 
-// Hilfe („?“): im Modus IST eigene Texte. Vor dem ersten Laden zählt der gewünschte Modus.
-reiter.einsatzplan = { zeigen, hilfe: () => ((woche?.modus ?? modus) === 'ist' ? 'einsatzplan_ist' : 'einsatzplan') };
+// Hilfe („?“): im Modus IST eigene Texte. Es zählt der gewünschte Modus (sofort nach dem Klick, auch während die Woche
+// noch lädt); scheitert das Laden, setzt lade() ihn auf den Modus der stehenden Woche zurück.
+reiter.einsatzplan = { zeigen, hilfe: () => (modus === 'ist' ? 'einsatzplan_ist' : 'einsatzplan') };
