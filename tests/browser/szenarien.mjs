@@ -2028,6 +2028,129 @@ await szenario('Stellvertretung: Zeitkonto ansehen, Journal lesen, Drucken und E
   pruefe(await sichtbar('#ansicht-einsatzplan [data-aktion="tag-bestaetigen"]'), 'IST: „Tag bestätigen“ auch für die Stellvertretung');
 });
 
+// ================================================================ Stufe 2: Sicherung
+// Herunterladen als chef (Blob abfangen: gültiges JSON, Prüfsumme wie der Server sie rechnet), dann als Leitung einer
+// zweiten, leeren Filiale derselben Datenbank einspielen (Datei per DataTransfer in das Dateifeld); danach zeigt die
+// zweite Filiale die Mitarbeiterliste der ersten. Umfrage, Zuordnungen und die Benutzer chef/vize gehören der ersten
+// Filiale und werden ausgelassen.
+await szenario('Sicherung: herunterladen, in zweite leere Filiale einspielen, Mitarbeiterliste erscheint', async () => {
+  if (!(await sql("select 1 from urlaub.organisatoren where benutzername = 'zweit'")).length) {
+    await sql("insert into urlaub.organisatoren (user_id, anzeigename, benutzername) values (gen_random_uuid(), 'zweit', 'zweit')");
+    await sql("select pep.start_leitung('zweit')");
+    const uid = (await sql("select user_id from urlaub.organisatoren where benutzername = 'zweit'"))[0].user_id;
+    const r = await s.rpc('pep_filiale_anlegen', { p_name: 'Netto Zweitfiliale', p_nummer: '9999', p_bundesland: 'BY' }, uid);
+    if (r.status !== 200) throw new Error(`pep_filiale_anlegen: ${r.json?.message}`);
+  }
+  const zweitFil = (await sql(`select b.filiale_id as f from pep.benutzer b join urlaub.organisatoren o on o.user_id = b.user_id
+    where o.benutzername = 'zweit'`))[0].f;
+  await sql('delete from pep.sicherungen where filiale_id = $1', [B.fil]); // wiederholbar: „noch keine Sicherung“
+
+  // Startseite der Leitung: noch keine Sicherung → gelb, Sprung zur Sicherung
+  await alsBenutzer('chef');
+  await reiter('start');
+  const zeile = () => c.werte(() => {
+    const p = document.querySelector('#ansicht-start .start-sicherung');
+    return p ? { text: p.textContent, gelb: p.classList.contains('hinweis-gelb') } : null;
+  });
+  gleich(await zeile(), { text: 'Noch keine Sicherung – bitte jede Woche eine Sicherung herunterladen. Sicherung →', gelb: true },
+    'Startseite ohne Sicherung');
+  await c.foto(`${FOTOS}sicherung-startseite-gelb.png`);
+  await c.klick({ text: 'Sicherung →', in: '#ansicht-start', sel: 'button' });
+  await ruhe();
+  pruefe(await sichtbar('#ansicht-einstellungen [data-aktion="sicherung-laden"]'), 'Einstellungen → Sicherung sichtbar');
+  pruefe((await text('#ansicht-einstellungen')).includes('Die Datei enthält Personaldaten. Auf dem PC oder USB-Stick aufbewahren, nicht per E-Mail verschicken.'),
+    'Hinweis Personaldaten');
+
+  // Herunterladen
+  await blobFangen();
+  await c.werte(() => {
+    window.__downloads = [];
+    const klick = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () { window.__downloads.push(this.download); return klick.call(this); };
+  });
+  await c.klick('#ansicht-einstellungen [data-aktion="sicherung-laden"]');
+  const { typ, puffer } = await blobHolen();
+  gleich(typ, 'application/json', 'Blob-Typ');
+  gleich(await c.werte(() => window.__downloads), [`PEP-Sicherung-2558-${HEUTE_IST}.json`], 'Dateiname');
+  const inhalt = puffer.toString('utf8');
+  const datei = JSON.parse(inhalt);
+  writeFileSync(`${FOTOS}PEP-Sicherung-2558-${HEUTE_IST}.json`, puffer);
+  gleich([datei.format, datei.version], ['pep-sicherung', 1], 'Format');
+  gleich(datei.pruefsumme, (await sql("select md5(($1::jsonb -> 'tabellen')::text) as p", [inhalt]))[0].p, 'Prüfsumme der Datei');
+  const maQuelle = (await sql('select count(*)::int as n from pep.mitarbeiter where filiale_id = $1', [B.fil]))[0].n;
+  gleich(datei.anzahl.mitarbeiter, maQuelle, 'Mitarbeiter in der Datei');
+  notiz(`Sicherung: ${puffer.length} Bytes, ${Object.values(datei.anzahl).reduce((x, n) => x + n, 0)} Zeilen`);
+  gleich((await meldungen()).toast, 'Sicherung heruntergeladen.', 'Toast');
+  // erstellt_am ist die echte Uhrzeit des Servers (now()), heute im Test aber fest HEUTE_IST (in Produktion dasselbe
+  // Datum): Zeitpunkt der Sicherung auf HEUTE_IST bzw. 9 Tage davor legen.
+  const sicherungAm = (tage) => sql("update pep.sicherungen set erstellt_am = ($1::date - $2::int) + time '10:00' where filiale_id = $3",
+    [HEUTE_IST, tage, B.fil]);
+  await sicherungAm(0);
+  await reiter('start');
+  gleich(await zeile(), { text: 'Letzte Sicherung heute · Sicherung →', gelb: false }, 'Startseite nach der Sicherung');
+  await c.foto(`${FOTOS}sicherung-startseite-heute.png`);
+  await sicherungAm(9);
+  await reiter('start');
+  gleich(await zeile(), { text: 'Letzte Sicherung vor 9 Tagen – bitte jede Woche eine Sicherung herunterladen. Sicherung →', gelb: true },
+    'Startseite 9 Tage nach der Sicherung');
+  await c.foto(`${FOTOS}sicherung-startseite-9-tage.png`);
+
+  // Einspielen in die zweite Filiale
+  await alsBenutzer('zweit');
+  gleich(await text('#kopf-filiale'), 'Netto Zweitfiliale', 'Kopf vor dem Einspielen');
+  await reiter('einstellungen');
+  await c.werte((t) => {
+    const e = document.querySelector('#ansicht-einstellungen [data-aktion="sicherung-datei"]');
+    const dt = new DataTransfer();
+    dt.items.add(new File([t], 'PEP-Sicherung-2558.json', { type: 'application/json' }));
+    e.files = dt.files;
+    e.dispatchEvent(new Event('change', { bubbles: true }));
+  }, inhalt);
+  await c.warteAuf(() => document.querySelector('#ansicht-einstellungen [data-ziel-leer]'), { text: 'Vorschau' });
+  await ruhe();
+  gleich(await c.werte(() => document.querySelector('#ansicht-einstellungen [data-ziel-leer]').dataset.zielLeer), 'ja', 'Ziel leer');
+  const vorschau = await text('#ansicht-einstellungen .sicherung-vorschau');
+  pruefe(vorschau.includes('Sicherung der Filiale Netto Aschaffenburg (Nr. 2558, BY)'), 'Vorschau: Filiale', vorschau);
+  pruefe(vorschau.includes(`${maQuelle} Mitarbeiter`), 'Vorschau: Anzahl Mitarbeiter', vorschau);
+  await c.werte(() => document.querySelector('#ansicht-einstellungen .sicherung-vorschau').closest('.box').scrollIntoView());
+  await c.foto(`${FOTOS}sicherung-einstellungen-vorschau.png`);
+  // Falsche Nummer, dann die richtige
+  const bestaetigung = await feldUnter('#ansicht-einstellungen .sicherung-vorschau', 'Filialnummer zur Bestätigung');
+  await c.tippe(bestaetigung, '9999');
+  await c.klick('#ansicht-einstellungen .sicherung-vorschau button[type="submit"]');
+  await ruhe();
+  pruefe((await meldungen()).fehler.startsWith('Die Bestätigung stimmt nicht.'), 'Meldung bei falscher Nummer', (await meldungen()).fehler);
+  gleich((await sql('select count(*)::int as n from pep.mitarbeiter where filiale_id = $1', [zweitFil]))[0].n, 0, 'nichts eingespielt');
+  await c.tippe(bestaetigung, '2558');
+  await c.klick('#ansicht-einstellungen .sicherung-vorschau button[type="submit"]');
+  await ruhe();
+  await c.warteAuf(() => document.querySelector('#ansicht-einstellungen [data-ergebnis]'), { text: 'Ergebnis' });
+  gleich((await meldungen()).toast, 'Sicherung eingespielt.', 'Toast eingespielt');
+  gleich(await text('#kopf-filiale'), 'Netto Aschaffenburg', 'Kopf nach dem Einspielen');
+  const ergebnis = await text('#ansicht-einstellungen [data-ergebnis]');
+  pruefe(ergebnis.includes(`${maQuelle} Mitarbeiter`) && ergebnis.includes('Ausgelassen:'), 'Ergebnis: eingespielt und ausgelassen', ergebnis);
+  await c.werte(() => document.querySelector('#ansicht-einstellungen [data-ergebnis]').closest('.box').scrollIntoView());
+  await c.foto(`${FOTOS}sicherung-einstellungen-ergebnis.png`);
+  // Datenbank: gleiche Mitarbeiter und Salden, keine Vormerkung
+  const salden = (f) => sql(`select m.name, coalesce(sum(k.stunden), 0)::float8 as s, count(k.id)::int as n
+    from pep.mitarbeiter m left join pep.zeitkonto_buchungen k on k.mitarbeiter_id = m.id
+   where m.filiale_id = $1 group by m.name order by m.name`, [f]);
+  gleich(await salden(zweitFil), await salden(B.fil), 'Mitarbeiter und Salden gleich');
+  gleich((await sql('select count(*)::int as n from pep.zeitkonto_vormerkungen'))[0].n, 0, 'keine Vormerkung');
+
+  // Mitarbeiterliste der zweiten Filiale
+  await reiter('mitarbeiter');
+  const namen = (await sql('select name from pep.mitarbeiter where filiale_id = $1 and aktiv order by position, name', [zweitFil])).map((r) => r.name);
+  const liste = await texte('#ma-liste .ma-name');
+  gleich(liste.length, namen.length, 'Mitarbeiterliste: Anzahl');
+  pruefe(namen.every((n, i) => (liste[i] ?? '').startsWith(n)), 'Mitarbeiterliste: Namen in Reihenfolge', liste);
+  pruefe(liste.some((n) => n.startsWith('Beispiel, Cem')), 'Cem in der Liste');
+  // Die Stellvertretung sieht die Zeile zur Sicherung nicht (sie kann nicht sichern)
+  await alsBenutzer('vize');
+  await reiter('start');
+  pruefe(!(await sichtbar('#ansicht-start .start-sicherung')), 'Stellvertretung: keine Zeile zur Sicherung');
+}, { erlaubeHttp: ['BESTAETIGUNG_FALSCH'] });
+
 // ================================================================ Ende
 
 const ok = ergebnisse.filter((e) => e.ok).length;

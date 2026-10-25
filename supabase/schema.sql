@@ -4928,6 +4928,9 @@ begin
     'offene_wuensche', v_wunsch_n,
     'erster_wunsch', to_char(v_wunsch_ab, 'YYYY-MM-DD'),
     'ist_offen', v_offen,
+    -- Stufe 2: Datum der letzten heruntergeladenen Sicherung (Ortszeit) oder null; die Oberfläche zeigt es nur der Leitung.
+    'letzte_sicherung', (select to_char(max(s.erstellt_am) at time zone 'Europe/Berlin', 'YYYY-MM-DD')
+                           from pep.sicherungen s where s.filiale_id = v_f),
     'zeitkonto_auffaellig', jsonb_build_object(
       'jahr', extract(isoyear from v_stand)::int, 'kw', extract(week from v_stand)::int,
       'montag', to_char(v_stand, 'YYYY-MM-DD'), 'liste', v_auff));
@@ -6337,6 +6340,510 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Sicherung (Stufe 2)
+-- ---------------------------------------------------------------------------
+-- Supabase sichert im kostenlosen Tarif nichts. Die Leitung lädt deshalb selbst eine Sicherungsdatei herunter
+-- (pep_sicherung) und kann sie in eine LEERE Filiale einspielen (pep_sicherung_einspielen), z. B. nach einem
+-- Datenverlust in eine neu angelegte Filiale eines neuen Projekts. Das Urlaubstool hat seine eigene Sicherung je Umfrage.
+--
+-- Datei (version 1):
+--   { format: 'pep-sicherung', version: 1, erstellt_am,
+--     filiale:    {name, nummer, bundesland},
+--     benutzer:   [{benutzername, rolle}]          pep.benutzer der Filiale (eine user_id gilt nur in einem Projekt),
+--     konten:     {"<user_id>": "<benutzername>"}  jede user_id, die in den Tabellen vorkommt (angelegt_von,
+--                                                  bestaetigt_von, abgeschlossen_von, entschieden_von, protokoll.user_id),
+--     tabellen:   {"<tabelle>": [Zeilen]}          jede Tabelle aus pep.sicherung_tabellen(); Zeile = to_jsonb der
+--                                                  Tabellenzeile mit ALLEN Spalten (auch Spalten späterer Stufen),
+--                                                  sortiert nach Primärschlüssel,
+--     anzahl:     {"<tabelle>": n},
+--     pruefsumme: md5 über den Text von tabellen }
+-- Prüfsumme: jsonb ordnet die Schlüssel fest und gibt Text immer gleich aus, die Zeilen stehen in fester Reihenfolge.
+-- Zahlen stehen in der kürzesten Form (über float8, so wie JavaScript sie schreibt): Der Browser liest die Antwort mit
+-- JSON.parse und speichert sie mit JSON.stringify, aus 37.50 würde sonst 37.5 und die Prüfsumme stimmte nicht mehr.
+-- pep_sicherung_pruefen rechnet sie darum über p_daten -> 'tabellen' als jsonb nach, nicht über den Dateitext. Sie
+-- erkennt beschädigte oder von Hand geänderte Dateien; gegen absichtliche Fälschung schützt md5 nicht.
+-- Einspielen: neue Ids, alle Verweise zwischen pep-Tabellen umgeschlüsselt (Fremdschlüssel aus dem Katalog, dazu die
+-- Ids in vorlagen.daten); user_id über den Benutzernamen im Urlaubstool, sonst leer und gezählt; Verweise auf Umfragen und
+-- Teilnehmer des Urlaubstools nur, wenn es sie hier gibt und keine andere Filiale sie belegt, sonst ausgelassen und
+-- gezählt (eine Umfrage außerdem nur, wenn sie der Leitung gehört, die einspielt – wie beim Einschalten).
+-- Unbekannte Tabellen und Spalten (Datei einer späteren Stufe) werden gemeldet und nicht eingespielt; fehlt
+-- eine Spalte in der Datei (ältere Stufe), gilt ihr Standardwert. Das Protokoll kommt mit: vorher, nachher und
+-- schluessel bleiben ein Schnappschuss mit den Ids der Quelle.
+
+create table if not exists pep.sicherungen (
+  id           bigint generated always as identity primary key,
+  filiale_id   bigint not null references pep.filialen (id) on delete cascade,
+  erstellt_am  timestamptz not null default now(),
+  erstellt_von uuid,
+  anzahl       jsonb not null
+);
+create index if not exists sicherungen_filiale_idx on pep.sicherungen (filiale_id, erstellt_am);
+alter table pep.sicherungen enable row level security;
+
+-- Gesicherte Tabellen in Einspiel-Reihenfolge (Fremdschlüssel: Ziel vor Verweis). Eine neue Tabelle späterer Stufen
+-- gehört hierher oder in pep.sicherung_ausnahmen; tests/sicherung.test.mjs prüft das.
+create or replace function pep.sicherung_tabellen()
+returns text[]
+language sql immutable
+set search_path = ''
+as $$
+  select array[
+    'bereiche', 'abwesenheitscodes', 'rahmen', 'einstellungen', 'tag_abweichungen', 'schulferien',
+    'mitarbeiter', 'vertraege', 'urlaubsjahre', 'kompetenzen', 'wochenvorgaben', 'wiederholungen',
+    'urlaub_umfragen', 'urlaub_zuordnung', 'urlaub_freigaben', 'abwesenheiten',
+    'plan_bloecke', 'plan_kommentare', 'wochen', 'vorlagen',
+    'ist_bloecke', 'ist_tage', 'ist_leer', 'wochen_abschluesse', 'zeitkonto_buchungen', 'protokoll']
+$$;
+
+-- Tabellen des Schemas pep, die bewusst NICHT in tabellen stehen, je mit Grund.
+create or replace function pep.sicherung_ausnahmen()
+returns jsonb
+language sql immutable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'sicherungen',            'Liste der heruntergeladenen Sicherungen selbst; sie beschreibt dieses Projekt, nicht die Filiale',
+    'zeitkonto_vormerkungen', 'Merkliste einer laufenden Transaktion (Nachbuchen), nach jedem Commit leer',
+    'filialen',               'eigener Abschnitt filiale (Name, Nummer, Bundesland)',
+    'benutzer',               'eigener Abschnitt benutzer (Benutzername und Rolle; eine user_id gilt nur in einem Projekt)')
+$$;
+
+-- Spalten einer pep-Tabelle aus dem Katalog: Typ (pg_type.typname), not null, Identity, Ziel eines einspaltigen
+-- Fremdschlüssels (Schema, Tabelle, Spalte). Generierte Spalten fehlen (sie lassen sich nicht einfügen).
+create or replace function pep.sicherung_spalten(p_tabelle text)
+returns table (spalte text, typ text, nicht_null boolean, identitaet boolean,
+               ziel_schema text, ziel_tabelle text, ziel_spalte text)
+language sql stable
+set search_path = ''
+as $$
+  select a.attname::text, t.typname::text, a.attnotnull, a.attidentity in ('a', 'd'),
+         zn.nspname::text, zc.relname::text, za.attname::text
+    from pg_catalog.pg_attribute a
+    join pg_catalog.pg_type t on t.oid = a.atttypid
+    left join pg_catalog.pg_constraint k
+           on k.conrelid = a.attrelid and k.contype = 'f' and k.conkey = array[a.attnum]
+    left join pg_catalog.pg_class zc on zc.oid = k.confrelid
+    left join pg_catalog.pg_namespace zn on zn.oid = zc.relnamespace
+    left join pg_catalog.pg_attribute za on za.attrelid = k.confrelid and za.attnum = k.confkey[1]
+   where a.attrelid = format('pep.%I', p_tabelle)::regclass and a.attnum > 0 and not a.attisdropped
+     and a.attgenerated <> 's'
+   order by a.attnum
+$$;
+
+-- Welche Zeilen gehören zur Filiale $1 (Alias x): über filiale_id, sonst über den Mitarbeiter.
+create or replace function pep.sicherung_bedingung(p_tabelle text)
+returns text
+language plpgsql stable
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from pep.sicherung_spalten(p_tabelle) s where s.spalte = 'filiale_id') then
+    return 'x.filiale_id = $1';
+  elsif exists (select 1 from pep.sicherung_spalten(p_tabelle) s where s.spalte = 'mitarbeiter_id') then
+    return 'x.mitarbeiter_id in (select m.id from pep.mitarbeiter m where m.filiale_id = $1)';
+  end if;
+  raise exception 'Tabelle pep.% hat keinen Bezug zur Filiale', p_tabelle;
+end;
+$$;
+
+-- Sortierung (Alias x): Primärschlüssel.
+create or replace function pep.sicherung_ordnung(p_tabelle text)
+returns text
+language sql stable
+set search_path = ''
+as $$
+  select string_agg(format('x.%I', a.attname), ', ' order by k.nr)
+    from pg_catalog.pg_index i
+    cross join lateral unnest(i.indkey::int2[]) with ordinality k (attnum, nr)
+    join pg_catalog.pg_attribute a on a.attrelid = i.indrelid and a.attnum = k.attnum
+   where i.indrelid = format('pep.%I', p_tabelle)::regclass and i.indisprimary
+$$;
+
+-- Zahlen in der kürzesten Form, wie JavaScript sie schreibt (37.50 → 37.5): über float8, dessen Textform seit
+-- PostgreSQL 12 die kürzeste exakte ist. Objekte und Listen nur, wenn ihr Text eine Dezimalzahl enthält.
+create or replace function pep.json_normal(p jsonb)
+returns jsonb
+language sql immutable
+set search_path = ''
+as $$
+  select case
+    when p is null then null
+    when jsonb_typeof(p) = 'number' then to_jsonb(p::float8)
+    when jsonb_typeof(p) not in ('object', 'array') or p::text !~ '[0-9]\.[0-9]' then p
+    when jsonb_typeof(p) = 'object' then (select jsonb_object_agg(e.key, pep.json_normal(e.value)) from jsonb_each(p) e)
+    else (select jsonb_agg(pep.json_normal(e.v) order by e.i) from jsonb_array_elements(p) with ordinality e (v, i))
+  end
+$$;
+
+-- Ausdruck für eine Zeile der Datei (Alias x): to_jsonb mit numeric- und jsonb-Spalten in der Form von pep.json_normal.
+create or replace function pep.sicherung_zeile(p_tabelle text)
+returns text
+language sql stable
+set search_path = ''
+as $$
+  select case when count(*) = 0 then 'to_jsonb(x)'
+    else 'to_jsonb(x) || jsonb_build_object(' || string_agg(format('%L, %s', s.spalte,
+           case when s.typ = 'numeric' then format('x.%I::float8', s.spalte) else format('pep.json_normal(x.%I)', s.spalte) end),
+           ', ' order by s.spalte) || ')' end
+    from pep.sicherung_spalten(p_tabelle) s
+   where s.typ in ('numeric', 'jsonb')
+$$;
+
+-- Leer heißt: keine Mitarbeiter, Abwesenheiten, Plan- und IST-Blöcke, Buchungen und Abschlüsse. Die Grundausstattung
+-- (Bereiche, Codes, Rahmen, Einstellungen) zählt nicht; sie wird beim Einspielen durch die der Datei ersetzt.
+create or replace function pep.sicherung_ziel_leer(p_filiale_id bigint)
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select not exists (select 1 from pep.mitarbeiter x where x.filiale_id = p_filiale_id)
+     and not exists (select 1 from pep.abwesenheiten x where x.filiale_id = p_filiale_id)
+     and not exists (select 1 from pep.plan_bloecke x where x.filiale_id = p_filiale_id)
+     and not exists (select 1 from pep.ist_bloecke x where x.filiale_id = p_filiale_id)
+     and not exists (select 1 from pep.zeitkonto_buchungen x where x.filiale_id = p_filiale_id)
+     and not exists (select 1 from pep.wochen_abschluesse x where x.filiale_id = p_filiale_id)
+$$;
+
+-- Format, Version, Aufbau und Prüfsumme; sonst SICHERUNG_UNGUELTIG.
+create or replace function pep.sicherung_gueltig(p_daten jsonb)
+returns void
+language plpgsql stable
+set search_path = ''
+as $$
+begin
+  if p_daten is null or jsonb_typeof(p_daten) <> 'object'
+     or p_daten ->> 'format' is distinct from 'pep-sicherung'
+     or p_daten -> 'version' is distinct from '1'::jsonb
+     or jsonb_typeof(p_daten -> 'tabellen') is distinct from 'object'
+     or jsonb_typeof(p_daten -> 'filiale') is distinct from 'object'
+     or coalesce(btrim(p_daten -> 'filiale' ->> 'name'), '') = ''
+     or coalesce(p_daten -> 'filiale' ->> 'bundesland', '') not in
+        ('BW','BY','BE','BB','HB','HH','HE','MV','NI','NW','RP','SL','SN','ST','SH','TH')
+     or jsonb_typeof(coalesce(p_daten -> 'benutzer', '[]'::jsonb)) <> 'array'
+     or jsonb_typeof(coalesce(p_daten -> 'konten', '{}'::jsonb)) <> 'object'
+     or p_daten ->> 'pruefsumme' is distinct from md5((p_daten -> 'tabellen')::text) then
+    raise exception 'SICHERUNG_UNGUELTIG';
+  end if;
+  if exists (select 1 from jsonb_each(p_daten -> 'tabellen') t where jsonb_typeof(t.value) <> 'array') then
+    raise exception 'SICHERUNG_UNGUELTIG';
+  end if;
+  if exists (select 1 from jsonb_each(p_daten -> 'tabellen') t cross join lateral jsonb_array_elements(t.value) z
+              where jsonb_typeof(z) <> 'object') then
+    raise exception 'SICHERUNG_UNGUELTIG';
+  end if;
+end;
+$$;
+
+-- Anzahl Zeilen je bekannter Tabelle der Datei (nachgezählt, nicht aus anzahl übernommen).
+create or replace function pep.sicherung_anzahl(p_daten jsonb)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select coalesce(jsonb_object_agg(t.key, jsonb_array_length(t.value)), '{}'::jsonb)
+    from jsonb_each(p_daten -> 'tabellen') t
+   where t.key = any (pep.sicherung_tabellen())
+$$;
+
+-- Was diese Fassung nicht kennt: {tabellen: [name], spalten: {tabelle: [spalte]}}.
+create or replace function pep.sicherung_unbekannt(p_daten jsonb)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'tabellen', coalesce((select jsonb_agg(t.key order by t.key) from jsonb_each(p_daten -> 'tabellen') t
+                           where t.key <> all (pep.sicherung_tabellen())), '[]'::jsonb),
+    'spalten', coalesce((select jsonb_object_agg(x.tabelle, x.spalten) from (
+        select t.key as tabelle, jsonb_agg(k.schluessel order by k.schluessel) as spalten
+          from jsonb_each(p_daten -> 'tabellen') t
+          cross join lateral (select distinct jsonb_object_keys(z) as schluessel
+                                from jsonb_array_elements(t.value) z) k
+         where t.key = any (pep.sicherung_tabellen())
+           and not exists (select 1 from pep.sicherung_spalten(t.key) s where s.spalte = k.schluessel)
+         group by t.key) x), '{}'::jsonb))
+$$;
+
+-- vorlagen.daten = [{wochentag, mitarbeiter_id, von, bis, bereich_id}]: Ids über p_ids ({tabelle: {alt: neu}});
+-- ohne Treffer (Mitarbeiter schon in der Quelle gelöscht) null, das Laden der Vorlage lässt die Zeile dann aus.
+create or replace function pep.sicherung_vorlage(p_daten jsonb, p_ids jsonb)
+returns jsonb
+language sql immutable
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(e.v || jsonb_build_object(
+           'mitarbeiter_id', (p_ids -> 'mitarbeiter' ->> (e.v ->> 'mitarbeiter_id'))::bigint,
+           'bereich_id', (p_ids -> 'bereiche' ->> (e.v ->> 'bereich_id'))::bigint) order by e.i), '[]'::jsonb)
+    from jsonb_array_elements(p_daten) with ordinality e (v, i)
+$$;
+
+-- Nur Leitung: Sicherungsdatei der eigenen Filiale (Format oben). Schreibt einen Eintrag in pep.sicherungen und ins
+-- Protokoll (Datum der letzten Sicherung für die Startseite).
+create or replace function public.pep_sicherung()
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b        pep.benutzer := pep.leitung();
+  v_f        pep.filialen;
+  v_t        text;
+  v_s        text;
+  v_zeilen   jsonb;
+  v_tabellen jsonb := '{}'::jsonb;
+  v_anzahl   jsonb := '{}'::jsonb;
+  v_uuids    uuid[];
+  v_daten    jsonb;
+  v_id       bigint;
+begin
+  select * into v_f from pep.filialen where id = v_b.filiale_id;
+  select coalesce(array_agg(b.user_id), '{}') into v_uuids from pep.benutzer b where b.filiale_id = v_f.id;
+  foreach v_t in array pep.sicherung_tabellen() loop
+    execute format('select coalesce(jsonb_agg(%s order by %s), ''[]''::jsonb) from pep.%I x where %s',
+                   pep.sicherung_zeile(v_t), pep.sicherung_ordnung(v_t), v_t, pep.sicherung_bedingung(v_t))
+      into v_zeilen using v_f.id;
+    v_tabellen := v_tabellen || jsonb_build_object(v_t, v_zeilen);
+    v_anzahl := v_anzahl || jsonb_build_object(v_t, jsonb_array_length(v_zeilen));
+    for v_s in select s.spalte from pep.sicherung_spalten(v_t) s where s.typ = 'uuid' loop
+      v_uuids := v_uuids || array(select distinct (z ->> v_s)::uuid from jsonb_array_elements(v_zeilen) z
+                                   where z ->> v_s is not null);
+    end loop;
+  end loop;
+  v_daten := jsonb_build_object(
+    'format', 'pep-sicherung',
+    'version', 1,
+    'erstellt_am', now(),
+    'filiale', jsonb_build_object('name', v_f.name, 'nummer', v_f.nummer, 'bundesland', v_f.bundesland),
+    'benutzer', coalesce((select jsonb_agg(jsonb_build_object('benutzername', o.benutzername, 'rolle', b.rolle)
+                                           order by o.benutzername)
+                            from pep.benutzer b join urlaub.organisatoren o on o.user_id = b.user_id
+                           where b.filiale_id = v_f.id), '[]'::jsonb),
+    'konten', coalesce((select jsonb_object_agg(o.user_id, o.benutzername) from urlaub.organisatoren o
+                         where o.user_id = any (v_uuids)), '{}'::jsonb),
+    'tabellen', v_tabellen,
+    'anzahl', v_anzahl,
+    'pruefsumme', md5(v_tabellen::text));
+  insert into pep.sicherungen (filiale_id, erstellt_von, anzahl) values (v_f.id, v_b.user_id, v_anzahl)
+  returning id into v_id;
+  perform pep.protokolliere(v_f.id, 'sichern', 'sicherungen', v_id::text, null,
+    jsonb_build_object('anzahl', v_anzahl, 'pruefsumme', v_daten ->> 'pruefsumme'));
+  return v_daten;
+end;
+$$;
+
+-- Nur Leitung, schreibt nichts: Vorschau vor dem Einspielen {gueltig, erstellt_am, filiale, anzahl, ziel_leer,
+-- unbekannt}; SICHERUNG_UNGUELTIG bei falschem Format, falscher Version oder Prüfsumme.
+create or replace function public.pep_sicherung_pruefen(p_daten jsonb)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung();
+begin
+  perform pep.sicherung_gueltig(p_daten);
+  return jsonb_build_object(
+    'gueltig', true,
+    'erstellt_am', p_daten -> 'erstellt_am',
+    'filiale', jsonb_build_object('name', p_daten -> 'filiale' ->> 'name', 'nummer', p_daten -> 'filiale' ->> 'nummer',
+                                  'bundesland', p_daten -> 'filiale' ->> 'bundesland'),
+    'anzahl', pep.sicherung_anzahl(p_daten),
+    'ziel_leer', pep.sicherung_ziel_leer(v_b.filiale_id),
+    'unbekannt', pep.sicherung_unbekannt(p_daten));
+end;
+$$;
+
+-- Nur Leitung: spielt die Datei in die eigene, leere Filiale ein (sonst FILIALE_NICHT_LEER). p_bestaetigung = Nummer
+-- der Filiale aus der Datei (ohne Nummer ihr Name), sonst BESTAETIGUNG_FALSCH. Übernimmt Name, Nummer und Bundesland
+-- (das Bundesland bestimmt die Feiertage, mit denen das Journal gerechnet wurde) und ersetzt die Grundausstattung.
+-- Die Nachbuch-Trigger laufen nicht (pep.einspielen): Journal, saldo_nach und Abschlüsse kommen mit ihren Werten aus
+-- der Datei, Zeitstempel ebenso. Benutzer der Datei werden der Filiale zugeordnet, wenn es den Benutzernamen im
+-- Urlaubstool gibt und er keiner anderen Filiale gehört; wer einspielt, bleibt Leitung.
+-- Antwort {eingespielt: {tabelle: n, benutzer: n}, ausgelassen: {tabelle: n, benutzer: n, benutzerverweise: n},
+-- unbekannt} (nur Einträge > 0); ein Protokolleintrag sicherung_eingespielt.
+create or replace function public.pep_sicherung_einspielen(p_daten jsonb, p_bestaetigung text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b          pep.benutzer := pep.leitung();
+  v_f          bigint := v_b.filiale_id;
+  v_alt        pep.filialen;
+  v_neu        pep.filialen;
+  v_t          text;
+  v_s          record;
+  v_zeilen     jsonb;
+  v_schluessel text[];
+  v_spalten    text[];
+  v_werte      text[];
+  v_beding     text[];
+  v_konflikt   boolean;
+  v_identitaet text;
+  v_karte      jsonb;
+  v_ids        jsonb := '{}'::jsonb; -- {tabelle: {alte id: neue id}}
+  v_konten     jsonb;                -- {alte user_id: user_id hier}
+  v_ein        jsonb := '{}'::jsonb;
+  v_aus        jsonb := '{}'::jsonb;
+  v_unbekannt  jsonb;
+  v_n          bigint;
+  v_verweise   bigint := 0;
+  v_e          jsonb;
+  v_uid        uuid;
+  v_vorhanden  pep.benutzer;
+  v_ben_ein    int := 0;
+  v_ben_aus    int := 0;
+begin
+  perform pep.sicherung_gueltig(p_daten);
+  select * into v_alt from pep.filialen where id = v_f for update;
+  if not pep.sicherung_ziel_leer(v_f) then
+    raise exception 'FILIALE_NICHT_LEER';
+  end if;
+  if btrim(coalesce(p_bestaetigung, '')) is distinct from
+     coalesce(nullif(btrim(p_daten -> 'filiale' ->> 'nummer'), ''), btrim(p_daten -> 'filiale' ->> 'name')) then
+    raise exception 'BESTAETIGUNG_FALSCH';
+  end if;
+  v_unbekannt := pep.sicherung_unbekannt(p_daten);
+
+  -- Ab hier buchen die Trigger aus „Journal und Abschluss“ nichts nach (nur in dieser Transaktion).
+  perform set_config('pep.einspielen', '1', true);
+
+  -- Übrige Filialdaten des Ziels entfernen (Grundausstattung, Urlaubstool-Schaltung, Vorlagen …), rückwärts wegen der
+  -- Fremdschlüssel. Was „leer“ ausmacht, ist schon leer (Journal: kein Löschen nötig); das Protokoll des Ziels bleibt.
+  for v_t in select u.t from unnest(pep.sicherung_tabellen()) with ordinality u (t, nr)
+              where u.t <> 'protokoll' order by u.nr desc loop
+    execute format('delete from pep.%I x where %s', v_t, pep.sicherung_bedingung(v_t)) using v_f;
+  end loop;
+
+  update pep.filialen
+     set name = btrim(p_daten -> 'filiale' ->> 'name'),
+         nummer = nullif(btrim(p_daten -> 'filiale' ->> 'nummer'), ''),
+         bundesland = p_daten -> 'filiale' ->> 'bundesland'
+   where id = v_f
+  returning * into v_neu;
+
+  select coalesce(jsonb_object_agg(k.key, o.user_id), '{}'::jsonb) into v_konten
+    from jsonb_each_text(coalesce(p_daten -> 'konten', '{}'::jsonb)) k
+    join urlaub.organisatoren o on o.benutzername = k.value;
+
+  foreach v_t in array pep.sicherung_tabellen() loop
+    v_zeilen := coalesce(p_daten -> 'tabellen' -> v_t, '[]'::jsonb);
+    continue when jsonb_array_length(v_zeilen) = 0;
+    select array_agg(distinct k) into v_schluessel from jsonb_array_elements(v_zeilen) z, jsonb_object_keys(z) k;
+    v_spalten := '{}'; v_werte := '{}'; v_beding := '{}'; v_konflikt := false; v_identitaet := null;
+    for v_s in select * from pep.sicherung_spalten(v_t) loop
+      if v_s.spalte = 'filiale_id' then
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || '$4'::text;
+      elsif not (v_s.spalte = any (v_schluessel)) then
+        continue; -- fehlt in der Datei (ältere Fassung): Standardwert der Spalte
+      elsif v_s.identitaet then
+        v_identitaet := v_s.spalte;
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || format('($2 -> %L ->> (z.r ->> %L))::bigint', v_t, v_s.spalte);
+      elsif v_s.ziel_schema = 'pep' then
+        -- Verweis auf eine pep-Tabelle (früher in der Liste): neue Id; ohne Treffer null bzw. Zeile auslassen
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || format('($2 -> %L ->> (z.r ->> %L))::bigint', v_s.ziel_tabelle, v_s.spalte);
+        if v_s.nicht_null then
+          v_beding := v_beding || format('$2 -> %L ? (z.r ->> %L)', v_s.ziel_tabelle, v_s.spalte);
+        end if;
+      elsif v_s.ziel_schema is not null then
+        -- Verweis ins Urlaubstool: nur, wenn es den Datensatz hier gibt und keine andere Filiale ihn belegt (on
+        -- conflict). Umfragen und Teilnehmer mit denselben Regeln wie pep_urlaub_umfrage_schalten und
+        -- pep_urlaub_zuordnung_setzen: einschalten nur eigene Umfragen (Organisator = wer einspielt), zuordnen nur
+        -- Teilnehmer eingeschalteter Umfragen. Sonst könnte eine selbst gebaute Datei fremde Umfragen lesbar machen.
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || format('p.%I', v_s.spalte);
+        v_beding := v_beding || case
+          when v_t = 'urlaub_umfragen' and v_s.spalte = 'umfrage_id' then
+            'exists (select 1 from urlaub.umfragen u join urlaub.fragen f on f.umfrage_id = u.id and f.typ = ''urlaubswochen'''
+            || ' where u.id = p.umfrage_id and u.organisator_id = $5)'
+          when v_t = 'urlaub_zuordnung' and v_s.spalte = 'urlaub_mitarbeiter_id' then
+            'exists (select 1 from urlaub.mitarbeiter t join pep.urlaub_umfragen s on s.umfrage_id = t.umfrage_id'
+            || ' where t.id = p.urlaub_mitarbeiter_id and s.filiale_id = $4)'
+          else format('(p.%1$I is null or exists (select 1 from %2$I.%3$I u where u.%4$I = p.%1$I))',
+                      v_s.spalte, v_s.ziel_schema, v_s.ziel_tabelle, v_s.ziel_spalte)
+        end;
+        v_konflikt := true;
+      elsif v_s.typ = 'uuid' then
+        -- Benutzer: über den Benutzernamen; unbekannt → leer (gezählt)
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || format('($3 ->> (z.r ->> %L))::uuid', v_s.spalte);
+        execute format('select count(*) from jsonb_array_elements($1) r where r ->> %L is not null and not $2 ? (r ->> %L)',
+                       v_s.spalte, v_s.spalte)
+          into v_n using v_zeilen, v_konten;
+        v_verweise := v_verweise + v_n;
+      elsif v_t = 'vorlagen' and v_s.spalte = 'daten' then
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || 'pep.sicherung_vorlage(p.daten, $2)'::text;
+      else
+        v_spalten := v_spalten || v_s.spalte;
+        v_werte := v_werte || format('p.%I', v_s.spalte);
+      end if;
+    end loop;
+    -- Neue Ids in der Reihenfolge der alten (das Journal rechnet saldo_nach in id-Reihenfolge); offset 0 hält die
+    -- Sortierung unter dem nextval.
+    if v_identitaet is not null then
+      execute format('select coalesce(jsonb_object_agg(o.alt, nextval(%L)), ''{}''::jsonb)
+                        from (select (r ->> %L)::bigint as alt from jsonb_array_elements($1) r order by 1 offset 0) o',
+                     pg_catalog.pg_get_serial_sequence(format('pep.%I', v_t), v_identitaet), v_identitaet)
+        into v_karte using v_zeilen;
+      v_ids := v_ids || jsonb_build_object(v_t, v_karte);
+    end if;
+    execute format('insert into pep.%I (%s) %s select %s from jsonb_array_elements($1) with ordinality z (r, nr) '
+                   'cross join lateral jsonb_populate_record(null::pep.%I, z.r) p %s order by z.nr %s',
+                   v_t, (select string_agg(format('%I', c), ', ') from unnest(v_spalten) c),
+                   case when v_identitaet is not null then 'overriding system value' else '' end,
+                   array_to_string(v_werte, ', '), v_t,
+                   case when cardinality(v_beding) > 0 then 'where ' || array_to_string(v_beding, ' and ') else '' end,
+                   case when v_konflikt then 'on conflict do nothing' else '' end)
+      using v_zeilen, v_ids, v_konten, v_f, v_b.user_id;
+    get diagnostics v_n = row_count;
+    if v_n > 0 then
+      v_ein := v_ein || jsonb_build_object(v_t, v_n);
+    end if;
+    if v_n < jsonb_array_length(v_zeilen) then
+      v_aus := v_aus || jsonb_build_object(v_t, jsonb_array_length(v_zeilen) - v_n);
+    end if;
+  end loop;
+
+  for v_e in select b from jsonb_array_elements(coalesce(p_daten -> 'benutzer', '[]'::jsonb)) b loop
+    v_uid := null;
+    select o.user_id into v_uid from urlaub.organisatoren o where o.benutzername = v_e ->> 'benutzername';
+    continue when v_uid = v_b.user_id; -- wer einspielt, bleibt Leitung
+    select * into v_vorhanden from pep.benutzer where user_id = v_uid;
+    if v_uid is null or coalesce(v_e ->> 'rolle', '') not in ('leitung', 'stellvertretung', 'mitarbeiter')
+       or v_vorhanden.filiale_id <> v_f then
+      v_ben_aus := v_ben_aus + 1;
+      continue;
+    end if;
+    insert into pep.benutzer (user_id, filiale_id, rolle) values (v_uid, v_f, v_e ->> 'rolle')
+    on conflict (user_id) do update set filiale_id = excluded.filiale_id, rolle = excluded.rolle;
+    v_ben_ein := v_ben_ein + 1;
+  end loop;
+  if v_ben_ein > 0 then
+    v_ein := v_ein || jsonb_build_object('benutzer', v_ben_ein);
+  end if;
+  if v_ben_aus > 0 then
+    v_aus := v_aus || jsonb_build_object('benutzer', v_ben_aus);
+  end if;
+  if v_verweise > 0 then
+    v_aus := v_aus || jsonb_build_object('benutzerverweise', v_verweise);
+  end if;
+
+  perform pep.protokolliere(v_f, 'sicherung_eingespielt', 'sicherungen', null, to_jsonb(v_alt),
+    jsonb_build_object('filiale', to_jsonb(v_neu), 'erstellt_am', p_daten -> 'erstellt_am',
+                       'pruefsumme', p_daten ->> 'pruefsumme', 'eingespielt', v_ein, 'ausgelassen', v_aus,
+                       'unbekannt', v_unbekannt));
+  return jsonb_build_object('eingespielt', v_ein, 'ausgelassen', v_aus, 'unbekannt', v_unbekannt);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Rechte
 -- ---------------------------------------------------------------------------
 
@@ -6502,6 +7009,14 @@ grant execute on function public.pep_zeitkonto_journal(bigint, date, date) to au
 -- Ausdrucke Stufe 2
 revoke all on function public.pep_stundenblatt(bigint, date, date) from public, anon, authenticated;
 grant execute on function public.pep_stundenblatt(bigint, date, date) to authenticated;
+
+-- Sicherung
+revoke all on function public.pep_sicherung() from public, anon, authenticated;
+revoke all on function public.pep_sicherung_pruefen(jsonb) from public, anon, authenticated;
+revoke all on function public.pep_sicherung_einspielen(jsonb, text) from public, anon, authenticated;
+grant execute on function public.pep_sicherung() to authenticated;
+grant execute on function public.pep_sicherung_pruefen(jsonb) to authenticated;
+grant execute on function public.pep_sicherung_einspielen(jsonb, text) to authenticated;
 
 -- Weckruf gegen das Pausieren (Supabase Free pausiert Projekte nach etwa 7 Tagen mit wenig Aktivität).
 -- Ein GitHub-Workflow ruft diese Funktion alle zwei Tage ohne Anmeldung auf. Sie ist deshalb die einzige

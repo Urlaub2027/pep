@@ -8,7 +8,8 @@ Für die Filialleitung und für dtn (Einrichtung). PEP läuft als statische Seit
   Krankmeldung mit Ersatzsuche, Eckdaten, Vorausplanung, Ausdrucke und Startseite.
 - **Stufe 2** (dieser Stand): IST-Erfassung (tatsächliche Arbeitszeiten je Tag bestätigen)
   und Zeitkonto (Woche buchen, Journal, Korrekturen), dazu Stundenblatt,
-  Wocheneinsatz-IST und das Journal als Excel.
+  Wocheneinsatz-IST, das Journal als Excel und die Sicherung (Datei herunterladen und
+  in eine leere Filiale einspielen).
 
 **Datenschutz:** Das Repository ist öffentlich. Echte Namen, Vertragsstunden und
 Geburtsdaten gehören nie hinein. Die Startdatei mit den Namen liegt in `privat/`
@@ -108,6 +109,11 @@ Nach dem Anmelden erscheint die Startseite mit sechs Kacheln. Jede zeigt eine gr
 Zahl und hat einen Knopf, der zur passenden Stelle springt. Eine Kachel ohne Befund
 hat einen grünen Rand und zeigt „alles im grünen Bereich“.
 
+Über den Kacheln steht für die Leitung, wann zuletzt eine Sicherung heruntergeladen
+wurde („Letzte Sicherung vor 3 Tagen“). Ab 8 Tagen und solange es noch keine gibt
+(„Noch keine Sicherung“), ist die Zeile gelb. „Sicherung →“ springt zu Einstellungen →
+Sicherung (siehe Abschnitt „Sicherung“ unten).
+
 - **Abwesend diese Woche:** wie viele Personen in der laufenden Kalenderwoche
   (Montag bis Sonntag) mindestens einen Abwesenheitstag haben, an dem sie nicht
   eingeplant werden können: alle Codes mit „sperrt“ (Urlaub, Krank, Berufsschule,
@@ -176,6 +182,8 @@ sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck
   Organisatoren, auch wenn sie als Stellvertretung eingetragen sind, lassen sich
   nicht einschalten. Ausschalten kann jede Leitung der Filiale.
 - **Benutzer:** Stellvertretung hinzufügen, Rolle ändern, entfernen.
+- **Sicherung:** Sicherungsdatei herunterladen und in eine leere Filiale einspielen
+  (siehe Abschnitt „Sicherung“ unten).
 
 ### Abwesenheiten
 Monatsraster mit Kalenderwochen, Tagen und Summenzeile. Sa/So grau, Feiertage
@@ -555,6 +563,19 @@ nachgebildete Datenbank, nicht gegen Supabase, und ohne echtes Excel und echten 
 5. Als Stellvertretung: Zeitkonto ansehen, drucken, Excel – aber kein „Woche buchen“,
    im Journal nur „Schließen“.
 
+**Sicherung (gegen Supabase)**
+1. Einstellungen → Sicherung → „Sicherung herunterladen“: Die Datei
+   `PEP-Sicherung-2558-<Datum>.json` landet im Download-Ordner; Dauer und Größe notieren.
+   Die Startseite zeigt danach „Letzte Sicherung heute“.
+2. Dieselbe Datei unter „Datei wählen“ auswählen: Die Vorschau zeigt die Filiale, die
+   Anzahlen und „nicht leer“ (Einspielen geht hier nicht – das ist richtig).
+3. **Einspielen gegen Supabase** einmal in einem **zweiten, leeren Supabase-Projekt**
+   ausprobieren, nie im echten: Eine eingespielte Filiale lässt sich nicht wieder löschen,
+   weil Zeitkonto-Buchungen unveränderbar sind. Schritte wie unter „Nach einem Datenverlust
+   in ein neues Supabase-Projekt“; die Seite dafür lokal mit einer `docs/config.js` öffnen,
+   die auf das Testprojekt zeigt. Dauer notieren. Zeigt PEP einen Fehler (z. B. Anfrage zu
+   groß oder Zeitüberschreitung), den Wortlaut an dtn.
+
 ## Pausieren verhindern und Projekt wiederherstellen
 
 Das kostenlose Supabase-Projekt wird nach etwa sieben Tagen mit wenig Aktivität
@@ -572,6 +593,67 @@ pausiert. Dagegen ruft GitHub alle zwei Tage von selbst eine harmlose Funktion
   öffnen und „Restore project“ wählen. Die Daten bleiben erhalten, wenn das
   innerhalb von 90 Tagen geschieht.
 - Ein Projekt trägt PEP und das Urlaubstool zusammen; der Weckruf schützt beide.
+
+## Sicherung
+
+Supabase sichert im kostenlosen Tarif nichts. Darum hat PEP eine eigene
+Sicherungsdatei mit allen Daten der Filiale: Mitarbeiter, Verträge, Abwesenheiten,
+Plan, IST, Zeitkonto-Journal, Abschlüsse, Einstellungen und Protokoll.
+
+**Herunterladen (jede Woche, nur Leitung).** Einstellungen → Sicherung →
+„Sicherung herunterladen“. Die Datei heißt `PEP-Sicherung-2558-<Datum>.json`.
+
+- Die Datei enthält Personaldaten. **Auf dem PC oder einem USB-Stick aufbewahren,
+  nicht per E-Mail verschicken** und nicht in ein öffentliches Verzeichnis legen.
+- Ein paar ältere Dateien aufheben, damit auch eine Sicherung von vor einem Fehler da ist.
+- Die Startseite erinnert daran: Ab 8 Tagen ohne Sicherung ist die Zeile gelb.
+- Ein Jahr mit 18 Mitarbeitern ergibt eine Datei von rund 16 MB (gemessen mit
+  erfundenen Daten, siehe Bekannte Grenzen).
+- **Das Urlaubstool hat seine eigene Sicherung je Umfrage** (dort herunterladen).
+  Die PEP-Sicherung enthält nur, welche Umfragen die Filiale liest
+  und wie die Teilnehmer zugeordnet sind, nicht die Umfragen selbst.
+
+**Einspielen.** Das geht nur in eine **leere** Filiale: ohne Mitarbeiter,
+Abwesenheiten, Plan, IST, Zeitkonto-Buchungen und Wochenabschlüsse. Bereiche, Codes,
+Zeiten und Einstellungen einer neuen Filiale zählen nicht; sie werden durch die aus
+der Datei ersetzt, ebenso Name, Nummer und Bundesland der Filiale. Eine volle Filiale
+lässt sich so nicht überschreiben.
+
+1. Einstellungen → Sicherung → „Datei wählen“ und die Sicherung auswählen.
+2. PEP zeigt eine Vorschau: Filiale, Datum der Sicherung, wie viele Mitarbeiter,
+   Abwesenheiten, Blöcke, Buchungen usw. und ob die eigene Filiale leer ist.
+3. Zur Bestätigung die **Filialnummer aus der Datei** eintippen (z. B. 2558) und
+   „Einspielen“ klicken.
+4. PEP zeigt, was eingespielt und was ausgelassen wurde:
+   - **Benutzer** (Stellvertretung usw.) werden nur zugeordnet, wenn es den
+     Benutzernamen im Urlaubstool gibt und er keiner anderen Filiale gehört. Wer
+     einspielt, bleibt Leitung.
+   - Steht in einem Eintrag ein Benutzer, den es hier nicht gibt (z. B. „angelegt von“),
+     bleibt das Feld leer.
+   - **Urlaubstool-Umfragen** kommen nur mit, wenn es sie hier gibt, sie der Leitung
+     gehören, die einspielt (wie beim Einschalten), und keine andere Filiale sie nutzt;
+     **Teilnehmer-Zuordnungen** nur zu eingeschalteten Umfragen. Sonst danach unter
+     Einstellungen → Urlaubstool die Umfrage einschalten und die Teilnehmer zuordnen.
+
+Das Zeitkonto kommt genau so zurück, wie es war: alle Buchungen mit Saldo, Grund und
+Zeitpunkt, alle abgeschlossenen Wochen und der Start der IST-Erfassung. Beim
+Einspielen bucht PEP keine automatischen Korrekturen.
+
+**Nach einem Datenverlust in ein neues Supabase-Projekt:**
+
+1. Neues Supabase-Projekt anlegen. Zuerst das **Urlaubstool** dort einrichten (wie in
+   seiner Anleitung), die Organisatoren mit **denselben Benutzernamen** wie vorher
+   anlegen und die Umfragen aus den Sicherungen des Urlaubstools einspielen.
+2. Im SQL-Editor den Inhalt von `supabase/schema.sql` ausführen.
+3. Im SQL-Editor die erste Leitung festlegen:
+   `select pep.start_leitung('<benutzername>');`
+4. In `docs/config.js` Adresse und öffentlichen Schlüssel des neuen Projekts
+   eintragen und auf GitHub hochladen (die Seite und der Weckruf lesen beides von dort).
+5. Seite öffnen, anmelden, **Filiale anlegen** (Name, Nummer und Bundesland werden
+   beim Einspielen aus der Datei übernommen).
+6. Einstellungen → Sicherung → die letzte Sicherung einspielen (wie oben).
+7. Danach prüfen: Benutzer (Stellvertretung), Einstellungen → Urlaubstool (Umfragen
+   und Zuordnungen), Reiter Zeitkonto (Salden).
 
 ## 5. Bekannte Grenzen
 - Die Reihenfolge der Mitarbeiter wird mit ▲/▼ geändert, nicht per Ziehen.
@@ -598,3 +680,16 @@ pausiert. Dagegen ruft GitHub alle zwei Tage von selbst eine harmlose Funktion
   „Korrektur von Hand“ nachbuchen.
 - Selten meldet PEP einen Fehler, wenn „Woche buchen“ und das Speichern eines Vertrags
   genau gleichzeitig laufen. Dann einfach noch einmal klicken.
+
+**Sicherung (Stufe 2)**
+- Einspielen geht nur in eine leere Filiale, nicht als „Zurückspulen“ einer vollen. Eine
+  Filiale mit Zeitkonto-Buchungen lässt sich nicht löschen (das Journal ist unveränderbar):
+  Zum Ausprobieren also nie in eine zweite Filiale des echten Projekts einspielen.
+- Im Protokoll stehen nach dem Einspielen die alten Einträge mit den Nummern (Ids) der
+  alten Datenbank; die übrigen Daten bekommen neue Nummern.
+- Größe: Ein Jahr mit 18 Mitarbeitern ergibt mit erfundenen Daten rund 16 MB, knapp die
+  Hälfte davon Protokoll. Die Datei enthält immer alle Jahre, wächst also mit. Ob Supabase eine so große Datei beim Einspielen in einem
+  Stück annimmt und ob das Zeitlimit einer Anfrage reicht, ist **nicht geprüft**
+  (in der Testdatenbank dauerte das Einspielen rund 2 s). Siehe Handprüf-Checkliste.
+- Die Prüfsumme erkennt eine beschädigte oder von Hand geänderte Datei. Gegen
+  absichtliche Fälschung schützt sie nicht; deshalb die Datei nicht aus der Hand geben.

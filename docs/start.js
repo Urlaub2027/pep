@@ -2,15 +2,18 @@
 // (schema.sql): Abwesende der laufenden Woche, Stunden-Lücke der nächsten 6 Wochen, Regelverstöße der nächsten
 // 7 Tage (Wochenregeln und Ruhezeiten je einmal, Tage ganz ohne Block getrennt als „noch nicht geplant“),
 // offene Urlaubswünsche und (Stufe 2) offene IST-Tage der letzten 6 Wochen bis gestern sowie Mitarbeiter mit
-// Zeitkonto-Warnung in der zuletzt abgeschlossenen Woche. Hier wird nur angezeigt.
+// Zeitkonto-Warnung in der zuletzt abgeschlossenen Woche. Hier wird nur angezeigt. Darüber (nur Leitung) eine Zeile zur
+// letzten Sicherung.
 import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE } from './hilfe.js';
-import { aufruf, reiter } from './app.js';
+import { aufruf, reiter, ich } from './app.js';
 import { isoWoche, plusTage, kwVorZurueck } from './zeit.js';
 import { oeffneWoche, oeffneIst } from './einsatzplan.js';
 import { oeffneZeitkonto } from './zeitkonto.js';
 import { vorzeichen } from './zeitkonto-daten.js';
 import { oeffneMonat } from './abwesenheiten.js';
 import { oeffneVorausplanung } from './vorausplanung.js';
+import { oeffneSicherung } from './einstellungen.js';
+import { sicherungHinweis } from './sicherung.js';
 
 const GRUEN = 'alles im grünen Bereich';
 const MAX_ZEILEN = 6; // längere Listen enden mit „+ n weitere“
@@ -186,10 +189,20 @@ function zeitkontoKachel(d) {
   });
 }
 
+// Letzte Sicherung (Stufe 2): nur für die Leitung, nur sie kann sichern. Gelb ab 8 Tagen oder ohne Sicherung.
+function sicherungZeile(d) {
+  if (ich?.rolle !== 'leitung') return [];
+  const h = sicherungHinweis(d.letzte_sicherung, d.heute);
+  return [element('p', { class: `start-sicherung ${h.gelb ? 'hinweis-gelb gelb' : 'hinweis'}` }, h.text,
+    h.gelb ? ' – bitte jede Woche eine Sicherung herunterladen. ' : ' · ',
+    element('button', { type: 'button', class: 'kachel-tag', onclick: oeffneSicherung }, 'Sicherung →'))];
+}
+
 function zeichne(d) {
   const { kw } = isoWoche(d.heute);
   $('ansicht-start').replaceChildren(
     element('p', { class: 'start-kopf' }, element('strong', {}, `Heute: ${wochentag(d.heute)}, ${datumDE(d.heute)}`), ` · KW ${kw}`),
+    ...sicherungZeile(d),
     element('div', { class: 'kacheln' }, abwesendKachel(d), lueckeKachel(d), verstossKachel(d), wunschKachel(d),
       istKachel(d), zeitkontoKachel(d)));
 }

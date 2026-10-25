@@ -10,7 +10,8 @@ Ausdrucke mit Excel-Export und die Startseite. Stufe 2 bringt die IST-Erfassung
 (tatsächliche Zeiten je Tag, Vorschlag aus dem Plan, Bestätigen, Grund bei Änderungen)
 und das Zeitkonto (Wochenabschluss, Journal mit automatischen Korrekturen,
 Startsaldo, Korrektur von Hand) mit Stundenblatt, Wocheneinsatz-IST und dem Journal
-als Excel.
+als Excel, dazu eine eigene Sicherung (Datei herunterladen und in eine leere Filiale
+einspielen; Supabase sichert im kostenlosen Tarif nichts).
 Einrichtung und Bedienung: [ANLEITUNG.md](ANLEITUNG.md).
 
 ## Aufbau
@@ -18,7 +19,7 @@ Einrichtung und Bedienung: [ANLEITUNG.md](ANLEITUNG.md).
 | Pfad | Inhalt |
 |---|---|
 | `docs/` | Statische Seite (GitHub Pages), ohne Framework und ohne Build. `index.html`, `main.js` (Einstieg), `app.js` (Anmeldung, Reiter), `api.js`, `sitzung.js`, `config.js`, `hilfe.js` (Helfer, Fehlertexte), `dialog.js`, `style.css` |
-| `docs/` – Reiter | `start.js` (Startseite), `abwesenheiten.js`, `vorausplanung.js`, `einsatzplan.js` (Plan und IST), `zeitkonto.js`, `mitarbeiter.js`, `einstellungen.js` |
+| `docs/` – Reiter | `start.js` (Startseite), `abwesenheiten.js`, `vorausplanung.js`, `einsatzplan.js` (Plan und IST), `zeitkonto.js`, `mitarbeiter.js`, `einstellungen.js`, `sicherung.js` (Abschnitt „Sicherung“ der Einstellungen und Hinweis der Startseite) |
 | `docs/` – Einsatzplan | `plan-raster.js` (reine Logik: Zeitraster, Striche, Abdeckung, Stunden, Rückgängig), `plan-dialoge.js` (Kopieren, Vorlagen, Krank/ZA, Ersatz, Eckdaten), `ist-ansicht.js` (Modus IST: Status, Vorschlag, Bestätigen, Grund-Dialog) |
 | `docs/` – Zeitkonto | `zeitkonto.js` (Reiter: Woche, „Woche buchen“, Journal, Startsaldo, Korrektur von Hand), `zeitkonto-daten.js` (reine Logik: Vorzeichen, Journalzeilen, Stunden-Eingabe) |
 | `docs/` – Druck | `druck.js` (Druckansicht und Auswahl-Dialoge, auch Stundenblatt und Wocheneinsatz-IST), `druck-daten.js` (reine Aufbereitung), `xlsx.js` (Excel-Datei ohne Bibliothek, mit Datumszellen) |
@@ -59,7 +60,8 @@ Das Repository ist öffentlich, die Daten sind es nicht. Alle Tabellen liegen im
 Schema `pep`; Row Level Security ist eingeschaltet, es gibt bewusst keine Policies,
 und `anon`/`authenticated` haben keinen Zugriff auf das Schema. Der Browser ruft
 ausschließlich `SECURITY DEFINER`-Funktionen `public.pep_*` auf, die Anmeldung,
-Rolle (Leitung, Stellvertretung, Mitarbeiter) und Filiale serverseitig prüfen.
+Rolle (Leitung, Stellvertretung, Mitarbeiter) und Filiale serverseitig prüfen;
+`anon` (ohne Anmeldung) darf davon nur `pep_lebenszeichen` aufrufen (Weckruf, liest nichts).
 Die Anmeldung läuft über die Konten des Urlaubstools. Der Schlüssel in
 `docs/config.js` ist absichtlich öffentlich. `tests/rechte.test.mjs` prüft jede
 `public.pep_*`-Funktion: neue Funktionen müssen dort eingetragen werden.
@@ -82,6 +84,31 @@ pausiert. Dagegen ruft GitHub alle zwei Tage von selbst eine harmlose Funktion
   innerhalb von 90 Tagen geschieht.
 - Ein Projekt trägt PEP und das Urlaubstool zusammen; der Weckruf schützt beide.
 
+## Sicherung
+
+Supabase sichert im kostenlosen Tarif nichts. Die Leitung lädt unter Einstellungen →
+Sicherung eine JSON-Datei mit allen Daten der Filiale herunter (`pep_sicherung`) und
+kann sie in eine **leere** Filiale einspielen (`pep_sicherung_pruefen` für die Vorschau,
+`pep_sicherung_einspielen`), z. B. nach einem Datenverlust in ein neues Projekt.
+Schritte und Grenzen: [ANLEITUNG.md](ANLEITUNG.md), Abschnitt „Sicherung“.
+
+- **Format** (`version: 1`, im Kopf des Abschnitts „Sicherung“ in `schema.sql`):
+  `filiale`, `benutzer` (Benutzername und Rolle), `konten` (user_id → Benutzername),
+  `tabellen` (jede Tabelle mit allen Spalten, nach Primärschlüssel), `anzahl` und
+  `pruefsumme` = md5 über den Text von `tabellen`. Zahlen stehen in der Form, die
+  JavaScript schreibt, damit die Prüfsumme `JSON.parse`/`JSON.stringify` im Browser übersteht.
+- **Vollständigkeit:** `pep.sicherung_tabellen()` (gesichert, in Einspiel-Reihenfolge)
+  und `pep.sicherung_ausnahmen()` (mit Grund: `sicherungen`, `zeitkonto_vormerkungen`,
+  `filialen` und `benutzer` als eigene Abschnitte). `tests/sicherung.test.mjs` schlägt
+  fehl, wenn eine Tabelle des Schemas `pep` in keiner der beiden Listen steht, wenn eine
+  `…_id`-Spalte kein Fremdschlüssel ist oder eine jsonb-Spalte nicht eingeordnet ist.
+  **Neue Tabelle in einer späteren Stufe → dort eintragen.**
+- **Einspielen:** neue Ids; Verweise zwischen pep-Tabellen über die Fremdschlüssel im
+  Katalog umgeschlüsselt, dazu die Ids in `vorlagen.daten`; Benutzer über den
+  Benutzernamen; die Nachbuch-Trigger laufen nicht (`pep.einspielen`), das Journal kommt
+  mit seinen Werten. Unbekannte Tabellen und Spalten (Datei einer späteren Stufe) meldet
+  die Vorschau, eingespielt werden sie nicht.
+
 ## Verhältnis zum Urlaubstool
 
 PEP nutzt dieselbe Supabase-Datenbank. Das Schema `urlaub` des Urlaubstools bleibt
@@ -96,7 +123,7 @@ npm install
 npm test
 ```
 
-Stand Stufe 2: **343 Tests, alle grün** (rund 30 s). Die zwei Startbestand-Tests
+Stand Stufe 2: **359 Tests, alle grün** (rund 35 s). Die zwei Startbestand-Tests
 lesen `privat/stammdaten-aschaffenburg.sql` und werden ohne diese Datei
 übersprungen; alle anderen Tests laufen in jedem Checkout.
 
@@ -123,9 +150,10 @@ Die Oberfläche lässt sich ohne Supabase ansehen, mit erfundenen Daten.
 Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funktionen.
 
 - **Lauf:** `node tests/browser/szenarien.mjs [filter]` startet den Testserver und Chrome,
-  spielt **54 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 2,5 min) und
+  spielt **55 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 2,5 min) und
   prüft jeweils Oberfläche und Datenbankstand. Die Szenarien 1–44 decken Stufe 1 ab,
-  45–54 IST-Erfassung, Zeitkonto, die neuen Kacheln und Ausdrucke von Stufe 2. Fotos,
+  45–54 IST-Erfassung, Zeitkonto, die neuen Kacheln und Ausdrucke von Stufe 2, 55 die
+  Sicherung (herunterladen, in eine zweite, leere Filiale einspielen). Fotos,
   PDFs, die Excel-Dateien und `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
 - **Server:** `tests/browser/server.mjs` baut die Datenbank wie `tests/helfer.mjs` in
   PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026, Start der

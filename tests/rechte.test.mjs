@@ -3,7 +3,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { neueDatenbank, als, pepBenutzer, filiale } from './helfer.mjs';
 
-let db, leitung, stellv, azubi, ohne, fil, ma, jo, vorlage;
+let db, leitung, stellv, azubi, ohne, fil, ma, jo, vorlage, sicherung;
 
 const aufruf = (nutzer, sql) => als(db, 'authenticated', nutzer, sql);
 
@@ -30,6 +30,8 @@ before(async () => {
     select $1, $2, '2027-05-03', '08:00', '12:00', id from pep.bereiche where filiale_id = $1 and kuerzel = 'KA'`, [fil, ma]);
   await db.query(`insert into pep.abwesenheiten (filiale_id, mitarbeiter_id, code_id, datum, stunden, quelle)
     select $1, $2, id, '2027-05-03', 6.25, 'manuell' from pep.abwesenheitscodes where filiale_id = $1 and code = 'KM'`, [fil, ma]);
+  // Echte Sicherung dieser Filiale: ohne Rechtecheck scheiterte das Einspielen erst an FILIALE_NICHT_LEER (sichtbar).
+  sicherung = (await aufruf(leitung, 'select public.pep_sicherung() as r'))[0].r;
 });
 
 const pepFunktionen = async () => (await db.query(`
@@ -55,7 +57,8 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
   'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
-  'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche', 'pep_zeitkonto_journal', 'pep_stundenblatt'];
+  'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche', 'pep_zeitkonto_journal', 'pep_stundenblatt',
+  'pep_sicherung_pruefen'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
@@ -121,6 +124,10 @@ const aufrufe = () => ({
   // Buchung für Ida: ohne Rechtecheck entstünde eine Journalzeile.
   pep_wochenabschluss: `select public.pep_wochenabschluss(2026, 10)`,
   pep_zeitkonto_buchen: `select public.pep_zeitkonto_buchen(${ma}, 'manuell', 5, 'Test', '2026-03-02')`,
+  // Nur Leitung. Sichern schreibt pep.sicherungen und das Protokoll; Einspielen mit der echten Datei und richtiger
+  // Bestätigung (ohne Rechtecheck: FILIALE_NICHT_LEER, also kein Treffer für FEHLER).
+  pep_sicherung: 'select public.pep_sicherung()',
+  pep_sicherung_einspielen: `select public.pep_sicherung_einspielen('${JSON.stringify(sicherung).replaceAll("'", "''")}'::jsonb, '2558')`,
 });
 
 const zaehlen = async () => {
@@ -218,6 +225,15 @@ test('pep_stundenblatt: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale 
     await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/, `Leitung ohne Filiale: ${sql}`);
     for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);
   }
+});
+
+// Die Vorschau einer Sicherung zeigt Filialnummer und Anzahlen und ob die eigene Filiale leer ist: nur Leitung.
+test('pep_sicherung_pruefen: Stellvertretung und Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
+  const sql = `select public.pep_sicherung_pruefen('${JSON.stringify(sicherung).replaceAll("'", "''")}'::jsonb)`;
+  await assert.rejects(aufruf(stellv, sql), /NUR_LEITUNG/);
+  await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/);
+  await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/);
+  await aufruf(leitung, sql);
 });
 
 test('Weckruf: pep_lebenszeichen liefert anon true, liest keine Tabelle, sonst bleibt anon überall gesperrt', async () => {

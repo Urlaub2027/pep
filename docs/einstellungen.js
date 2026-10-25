@@ -1,11 +1,12 @@
 // Reiter „Einstellungen“ (nur Filialleitung): Zeiten, abweichende Tage, Bereiche, Codes, Regelparameter,
-// Schulferien, Urlaubstool, Benutzer. Jede Zeile speichert für sich und lädt danach ihren Abschnitt neu.
+// Schulferien, Urlaubstool, Benutzer, Sicherung. Jede Zeile speichert für sich und lädt danach ihren Abschnitt neu.
 import {
   $, meldung, fehlerText, element, datumDE, WOCHENTAGE,
   zahl, uhrzeit, feld, eingabe as eingabeBasis, auswahlfeld as auswahlBasis,
   zeilenformular, abschnitt, fuehreAus,
 } from './hilfe.js';
-import { aufruf, ich, reiter } from './app.js';
+import { aufruf, ich, reiter, zeigeAnsicht, aktualisiereIch } from './app.js';
+import { zeichneSicherung } from './sicherung.js';
 
 const ARTEN_ABWEICHUNG = [
   ['feiertag', 'Feiertag'], ['heiligabend', 'Heiligabend'], ['silvester', 'Silvester'],
@@ -46,6 +47,7 @@ let umfragen = [];
 let zuordnung = [];
 let mitarbeiter = [];
 const boxen = {}; // Abschnittsname → Container
+let zurSicherung = false; // nach dem Laden zum Abschnitt „Sicherung“ springen (Hinweis auf der Startseite)
 
 const darfSchreiben = () => ich?.rolle === 'leitung';
 const eingabe = (typ, wert, attrs = {}) => eingabeBasis(typ, wert, { disabled: !darfSchreiben(), ...attrs });
@@ -86,6 +88,14 @@ async function zeigen() {
     return;
   }
   Object.values(ZEICHNER).forEach((zeichne) => zeichne());
+  if (zurSicherung) boxen.sicherung.scrollIntoView({ block: 'start' });
+  zurSicherung = false;
+}
+
+// Reiter öffnen und zum Abschnitt „Sicherung“ springen (Startseite).
+export function oeffneSicherung() {
+  zurSicherung = true;
+  zeigeAnsicht('einstellungen');
 }
 
 // ---------------------------------------------------------------- Zeiten (Rahmen und Abweichungen)
@@ -367,10 +377,27 @@ function zeichneBenutzer() {
   boxen.benutzer.replaceChildren(abschnitt('Benutzer', daten.benutzer.map(zeile), formular));
 }
 
+// ---------------------------------------------------------------- Sicherung (Stufe 2, nur Leitung)
+
+function zeichneSicherungAbschnitt() {
+  if (!darfSchreiben()) { boxen.sicherung.replaceChildren(); return; }
+  zeichneSicherung(boxen.sicherung, {
+    aufruf,
+    abschnitt,
+    // Nach dem Einspielen: Kopfzeile (Name der Filiale) und die übrigen Abschnitte neu; das Ergebnis bleibt stehen.
+    nachEinspielen: async () => {
+      await aktualisiereIch();
+      await Promise.all([ladeDaten(), ladeUrlaub()]);
+      for (const [name, zeichne] of Object.entries(ZEICHNER)) if (name !== 'sicherung') zeichne();
+    },
+  });
+}
+
 // Reihenfolge = Reihenfolge auf der Seite
 const ZEICHNER = {
   rahmen: zeichneRahmen, abweichungen: zeichneAbweichungen, bereiche: zeichneBereiche, codes: zeichneCodes,
   parameter: zeichneParameter, ist: zeichneIst, schulferien: zeichneSchulferien, urlaub: zeichneUrlaub, benutzer: zeichneBenutzer,
+  sicherung: zeichneSicherungAbschnitt,
 };
 
 reiter.einstellungen = { zeigen };

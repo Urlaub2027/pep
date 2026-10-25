@@ -266,6 +266,9 @@ input.schalter:checked::before { transform: translateX(16px); }
 
 .hinweis { color: var(--text-2); }
 .hinweis-gelb { padding: var(--a2) var(--a3); background: var(--hinweis); border-left: 4px solid var(--netto-gelb); border-radius: 4px; }
+/* Einstellungen → Sicherung (sicherung.js): Anzahlen in der Vorschau und im Ergebnis */
+.sicherung-anzahl { margin: var(--a1) 0 var(--a3); padding-left: var(--a4); columns: 2 260px; }
+.sicherung-anzahl li { padding: 2px 0; break-inside: avoid; }
 .warnung { padding: var(--a2) var(--a3); color: var(--text); background: #fdecee; border-left: 4px solid var(--netto-rot); border-radius: 4px; }
 .unbesetzt {
   background: repeating-linear-gradient(-45deg, rgba(227, 6, 19, .22) 0 4px, rgba(227, 6, 19, .05) 4px 8px);
@@ -831,6 +834,8 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
    Vier Kacheln: oben ein farbiger Rand (Rot nur bei Verstoß oder Lücke, Grün ohne Befund, sonst Gelb). */
 .start-kopf { margin: 0 0 var(--a3); color: var(--text-2); }
 .start-kopf strong { color: var(--text); }
+.start-sicherung { margin: calc(-1 * var(--a2)) 0 var(--a3); }
+.start-sicherung.hinweis-gelb { display: inline-block; }
 .kacheln { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--a4); align-items: stretch; }
 @media (max-width: 1200px) { .kacheln { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .kacheln { grid-template-columns: minmax(0, 1fr); } }
