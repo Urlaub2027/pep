@@ -1,0 +1,36 @@
+# Weckruf gegen das Pausieren: Supabase (Free) pausiert Projekte nach etwa 7 Tagen mit wenig Aktivität.
+# Alle zwei Tage ruft dieser Lauf die harmlose Funktion pep_lebenszeichen() auf (liest keine Daten, liefert true).
+# URL und öffentlicher Schlüssel stehen nur in docs/config.js (eine Quelle, kein Secret nötig).
+# Der Schlüssel (sb_publishable_…) ist kein JWT und gehört deshalb nur in den apikey-Header, nicht als Bearer.
+name: Weckruf
+
+on:
+  schedule:
+    - cron: '17 5 */2 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  weckruf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lebenszeichen an Supabase senden
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL=$(sed -n "s/^export const SUPABASE_URL = '\(.*\)';.*/\1/p" docs/config.js)
+          KEY=$(sed -n "s/^export const SUPABASE_KEY = '\(.*\)';.*/\1/p" docs/config.js)
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "SUPABASE_URL oder SUPABASE_KEY nicht in docs/config.js gefunden" >&2
+            exit 1
+          fi
+          ANTWORT=$(curl -fsS -X POST "$URL/rest/v1/rpc/pep_lebenszeichen" \
+            -H "apikey: $KEY" -H "Content-Type: application/json" -d '{}')
+          echo "Antwort: $ANTWORT"
+          if [ "$ANTWORT" != "true" ]; then
+            echo "Unerwartete Antwort (erwartet: true)" >&2
+            exit 1
+          fi

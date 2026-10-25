@@ -64,6 +64,24 @@ Die Anmeldung läuft über die Konten des Urlaubstools. Der Schlüssel in
 `docs/config.js` ist absichtlich öffentlich. `tests/rechte.test.mjs` prüft jede
 `public.pep_*`-Funktion: neue Funktionen müssen dort eingetragen werden.
 
+## Pausieren verhindern und Projekt wiederherstellen
+
+Das kostenlose Supabase-Projekt wird nach etwa sieben Tagen mit wenig Aktivität
+pausiert. Dagegen ruft GitHub alle zwei Tage von selbst eine harmlose Funktion
+(`pep_lebenszeichen`) auf; sie liest keine Daten. Das erledigt der Workflow
+„Weckruf“ (`.github/workflows/weckruf.yml`), es ist nichts zu tun.
+
+- **Vor dem ersten Lauf** muss `pep_lebenszeichen` in Supabase eingespielt sein.
+  Sie gehört zum Schema-Update (`supabase/schema.sql` im SQL-Editor ausführen).
+- **Schlägt ein Lauf fehl**, schickt GitHub eine E-Mail.
+- **GitHub schaltet zeitgesteuerte Workflows ab**, wenn das Repository 60 Tage
+  ohne Änderung bleibt. Dann auf GitHub unter Actions → Weckruf auf
+  „Enable workflow“ klicken.
+- **Wurde das Projekt trotzdem pausiert:** im Supabase-Dashboard das Projekt
+  öffnen und „Restore project“ wählen. Die Daten bleiben erhalten, wenn das
+  innerhalb von 90 Tagen geschieht.
+- Ein Projekt trägt PEP und das Urlaubstool zusammen; der Weckruf schützt beide.
+
 ## Verhältnis zum Urlaubstool
 
 PEP nutzt dieselbe Supabase-Datenbank. Das Schema `urlaub` des Urlaubstools bleibt

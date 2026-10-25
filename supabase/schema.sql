@@ -6503,4 +6503,12 @@ grant execute on function public.pep_zeitkonto_journal(bigint, date, date) to au
 revoke all on function public.pep_stundenblatt(bigint, date, date) from public, anon, authenticated;
 grant execute on function public.pep_stundenblatt(bigint, date, date) to authenticated;
 
+-- Weckruf gegen das Pausieren (Supabase Free pausiert Projekte nach etwa 7 Tagen mit wenig Aktivität).
+-- Ein GitHub-Workflow ruft diese Funktion alle zwei Tage ohne Anmeldung auf. Sie ist deshalb die einzige
+-- PEP-Funktion, die auch anon ausführen darf: Sie liest keine Tabelle und liefert nur true, gibt also nichts preis.
+create or replace function public.pep_lebenszeichen() returns boolean
+language sql security definer set search_path = '' as $$ select true $$;
+revoke all on function public.pep_lebenszeichen() from public, authenticated;
+grant execute on function public.pep_lebenszeichen() to anon, authenticated;
+
 commit;

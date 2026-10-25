@@ -43,7 +43,8 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
   const fns = await pepFunktionen();
   assert.ok(fns.length > 30);
   for (const f of fns) {
-    assert.equal(f.anon, false, `anon: ${f.name}`);
+    // Einzige Ausnahme: der Weckruf gegen das Pausieren (GitHub Actions ruft ihn ohne Anmeldung auf, s. u.).
+    assert.equal(f.anon, f.name === 'pep_lebenszeichen', `anon: ${f.name}`);
     assert.equal(f.angemeldet, true, `angemeldet: ${f.name}`);
     assert.equal(f.prosecdef, true, `security definer: ${f.name}`);
     assert.ok((f.proconfig ?? []).some((c) => /^search_path=/.test(c)), `search_path: ${f.name}`);
@@ -63,6 +64,8 @@ const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loesche
   'pep_schnell_abwesend', 'pep_ersatz_uebernehmen', 'pep_woche_speichern',
   'pep_ist_malen', 'pep_ist_zeile_setzen', 'pep_ist_bestaetigen'];
 // Legt für die Leitung ohne Filiale die Filiale an – das ist gewollt und in basis.test.mjs geprüft.
+// Weckruf: ohne Anmeldung aufrufbar, ohne Rollenprüfung, ohne Daten; eigener Test am Dateiende.
+const OHNE_ANMELDUNG = ['pep_lebenszeichen'];
 const OHNE_FILIALE_ERLAUBT = ['pep_filiale_anlegen'];
 
 // Plausible Dummy-Aufrufe (Mitarbeiter-Id echt, damit ein fehlender Rechtecheck sichtbar etwas ändern würde).
@@ -129,7 +132,7 @@ const zaehlen = async () => {
 };
 
 test('jede schreibende pep_*-Funktion ist abgedeckt (neue Funktion → hier eintragen)', async () => {
-  const schreibend = (await pepFunktionen()).map((f) => f.name).filter((n) => !NUR_LESEN.includes(n));
+  const schreibend = (await pepFunktionen()).map((f) => f.name).filter((n) => !NUR_LESEN.includes(n) && !OHNE_ANMELDUNG.includes(n));
   const karte = aufrufe();
   for (const n of schreibend) assert.ok(karte[n], `kein Dummy-Aufruf für ${n}`);
   for (const n of Object.keys(karte)) assert.ok(schreibend.includes(n), `${n} ist nicht (mehr) schreibend/vorhanden`);
@@ -215,4 +218,14 @@ test('pep_stundenblatt: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale 
     await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/, `Leitung ohne Filiale: ${sql}`);
     for (const nutzer of [leitung, stellv]) await aufruf(nutzer, sql);
   }
+});
+
+test('Weckruf: pep_lebenszeichen liefert anon true, liest keine Tabelle, sonst bleibt anon überall gesperrt', async () => {
+  const r = await als(db, 'anon', null, 'select public.pep_lebenszeichen() as r');
+  assert.equal(r[0].r, true);
+  const fns = await pepFunktionen();
+  const offen = fns.filter((f) => f.anon).map((f) => f.name);
+  assert.deepEqual(offen, ['pep_lebenszeichen']);
+  const q = (await db.query(`select prosrc from pg_proc where proname = 'pep_lebenszeichen'`)).rows[0].prosrc;
+  assert.doesNotMatch(q, /from/i, 'darf keine Tabelle lesen');
 });
