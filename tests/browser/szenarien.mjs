@@ -1290,18 +1290,39 @@ await szenario('Einsatzplan: zwei schnelle Striche in einer Zeile bei langsamer 
   await epTag(MI);
   await pinsel('KA');
   const vorher = await bloecke(MIA, MI);
+  const belegtVorher = await zeilenBelegung(MIA);
+  const wartendeZellen = () => c.werte((m) => [...document.querySelectorAll(`#ansicht-einsatzplan tr[data-mitarbeiter="${m}"] td.ep-z.wartet`)]
+    .map((td) => td.dataset.von), MIA);
+  const hinweis = () => c.werte(() => { const e = document.querySelector('#ansicht-einsatzplan .ep-speichert'); return e && !e.hidden ? e.textContent : ''; });
   s.verzoegere(800);
   try {
     const p = async (von) => zellPunkt(epZelle(MIA, von), false);
     await c.ziehe(await p('13:00'), await p('13:30'));
     await c.ziehe(await p('15:00'), await p('15:30'));
-    const sichtbarerHinweis = await c.werte(() => document.getElementById('meldung').hidden ? '' : document.getElementById('meldung').textContent);
+    gleich(await wartendeZellen(), ['13:00', '13:30', '15:00', '15:30'], 'Beide Striche markiert, solange sie warten');
+    gleich(await hinweis(), 'wird gespeichert …', 'Hinweis „wird gespeichert …“');
+    await pause(350); // der Hinweis blendet nach 300 ms ein
+    await c.foto(`${FOTOS}zwei-striche-wartend.png`);
     await ruhe();
-    notiz(`Meldung nach dem zweiten Strich: „${sichtbarerHinweis}“`);
+    await c.warteAuf(() => !document.querySelector('#ansicht-einsatzplan td.ep-z.wartet'), { text: 'Markierung weg', ms: 8000 });
   } finally {
     s.verzoegere(0);
   }
   gleich(await bloecke(MIA, MI), [...vorher, 'KA 13:00-14:00', 'KA 15:00-16:00'], 'Beide Striche gespeichert');
+  gleich(await hinweis(), '', 'Hinweis nach dem Speichern weg');
+  const belegt = await zeilenBelegung(MIA);
+  pruefe(['13:00', '13:30', '15:00', '15:30'].every((v) => belegt.includes(v)), 'Beide Blöcke im Raster', belegt);
+  // Zwei schnelle Rückgängig (langsam): jeder nimmt genau einen Strich zurück, zusammen der Ausgangszustand.
+  s.verzoegere(400);
+  try {
+    await c.klick({ text: 'Rückgängig', in: '#ansicht-einsatzplan .ep-knoepfe', sel: 'button' });
+    await c.klick({ text: 'Rückgängig', in: '#ansicht-einsatzplan .ep-knoepfe', sel: 'button' });
+    await ruhe();
+  } finally {
+    s.verzoegere(0);
+  }
+  gleich(await bloecke(MIA, MI), vorher, 'Zwei Rückgängig: Zeile wie vorher');
+  gleich(await zeilenBelegung(MIA), belegtVorher, 'Raster zeigt die Zeile wie vorher');
 });
 
 await szenario('Einsatzplan: Strich, dann sofort Tageswechsel (langsame Verbindung)', async () => {

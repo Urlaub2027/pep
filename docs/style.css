@@ -575,6 +575,9 @@ th { background: var(--hell); font-weight: 600; }
 .ep-pinsel { gap: 4px; }
 .ep-pinsel .chip { gap: 5px; padding: 0 9px; font-size: 0.85rem; }
 .ep-knoepfe { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+/* „wird gespeichert …“ erst nach 300 ms zeigen, damit es bei schneller Antwort nicht flackert */
+.ep-speichert { align-self: center; font-size: 0.85rem; color: var(--text-2); opacity: 0; animation: ep-einblenden 0s 300ms forwards; }
+@keyframes ep-einblenden { to { opacity: 1; } }
 .ep-werkzeug .hinweis-gelb { margin: 0; }
 
 /* Raster links, Seitenleiste ab 1600 px rechts, sonst darunter */
@@ -649,7 +652,8 @@ th { background: var(--hell); font-weight: 600; }
   cursor: pointer;
 }
 .ep-ersatz:hover { color: #fff; background: var(--netto-rot); }
-.ep-tabelle td.ep-z.markiert { background-image: linear-gradient(rgba(255, 229, 0, .65), rgba(255, 229, 0, .65)); box-shadow: inset 0 2px 0 var(--schwarz), inset 0 -2px 0 var(--schwarz); }
+/* Gezogener Strich; „wartet“: Antwort steht noch aus (hinter dem vorigen Strich der Zeile), sieht gleich aus */
+.ep-tabelle td.ep-z.markiert, .ep-tabelle td.ep-z.wartet { background-image: linear-gradient(rgba(255, 229, 0, .65), rgba(255, 229, 0, .65)); box-shadow: inset 0 2px 0 var(--schwarz), inset 0 -2px 0 var(--schwarz); }
 
 /* Malen: waagerechtes Ziehen malt, senkrechtes Wischen scrollt weiter (Tablet). Kopf und Fußzeilen scrollen quer. */
 .malt .ep-tabelle { touch-action: auto; }
