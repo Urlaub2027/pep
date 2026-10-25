@@ -2288,7 +2288,6 @@ set search_path = ''
 as $$
 declare
   v_b pep.benutzer := pep.leitung();
-  v_n bigint := 0;
 begin
   if p_aktiv is null then
     raise exception 'WERT_UNGUELTIG';
@@ -2312,17 +2311,13 @@ begin
       raise exception 'UMFRAGE_ANDERE_FILIALE';
     end if;
   else
+    -- Die Zuordnungen bleiben (Entscheidung Koordinator): Wird die Umfrage wieder eingeschaltet, sind sie wieder da,
+    -- auch die von Hand gemachten. Alle Leser filtern nach der Filiale, eine zurückgebliebene Zeile stört also nicht;
+    -- übernimmt eine andere Filiale die Umfrage, schreibt pep_urlaub_zuordnung_setzen die Zeile auf diese um.
     delete from pep.urlaub_umfragen where umfrage_id = p_umfrage_id and filiale_id = v_b.filiale_id;
-    -- Zuordnungen dieser Umfrage in der Filiale gehen mit (nach einer Übergabe an eine andere Filiale gehörten sie
-    -- sonst noch der alten). Freigaben hängen nicht daran: Sie tragen den Wunsch als Schnappschuss, und
-    -- pep.wunsch_vorhanden / pep.freigabe_zum_wunsch lesen keine Zuordnung.
-    delete from pep.urlaub_zuordnung z using urlaub.mitarbeiter t
-     where t.id = z.urlaub_mitarbeiter_id and t.umfrage_id = p_umfrage_id and z.filiale_id = v_b.filiale_id;
-    get diagnostics v_n = row_count;
   end if;
   perform pep.protokolliere(v_b.filiale_id, 'schalten', 'urlaub_umfragen', p_umfrage_id::text, null,
-    jsonb_build_object('aktiv', p_aktiv) || case when p_aktiv then '{}'::jsonb
-                                                 else jsonb_build_object('zuordnungen_geloescht', v_n) end);
+    jsonb_build_object('aktiv', p_aktiv));
 end;
 $$;
 

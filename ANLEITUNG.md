@@ -188,10 +188,9 @@ sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck
     einschalten, auch die einer anderen Leitung. Eine Umfrage kann nur in einer
     Filiale eingeschaltet sein; ist sie schon in einer anderen eingeschaltet, meldet
     PEP „Diese Umfrage ist schon in einer anderen Filiale eingeschaltet.“ Ausschalten
-    kann jede Leitung der Filiale, auch wenn der Organisator nicht mehr dabei ist;
-    dabei werden die Zuordnungen ihrer Teilnehmer in dieser Filiale gelöscht
-    (genehmigte Urlaubstage bleiben). Wer sie wieder einschaltet, ordnet neu zu – die
-    Vorschläge helfen dabei.
+    kann jede Leitung der Filiale, auch wenn der Organisator nicht mehr dabei ist.
+    Die Zuordnungen bleiben dabei erhalten: Wird die Umfrage wieder eingeschaltet, sind
+    sie wieder da, auch die von Hand gemachten.
     Wer als Leitung in die PEP aufgenommen wird, macht damit seine
     Urlaubstool-Umfragen für die anderen Leitungen der Filiale sichtbar.
   - **Teilnehmer zuordnen, Schritt für Schritt:**

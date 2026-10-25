@@ -438,30 +438,52 @@ test('bestaetigt_am: pep_ich setzt es einmal für sich selbst; Rollenwechsel beh
   await aufruf(fremd, 'select public.pep_benutzer_entfernen($1)', [neu]);
 });
 
-test('Übergabe einer Umfrage an eine andere Filiale: Ausschalten löscht die Zuordnungen, alte Zeilen werden übernommen', async () => {
+test('Aus- und wieder einschalten: die Zuordnung von Hand bleibt; die Sicherung der Filiale enthält sie auch dazwischen', async () => {
+  const haus = await pepBenutzer(db, 'haus', 'leitung', fil);
+  await aufruf(haus, 'select public.pep_ich()');
+  const u = await umfrageAnlegen(db, haus, { titel: 'Hand 2027' });
+  const t = await umfrageMitarbeiter(db, u, 'Spitzname Annie'); // kein Vorschlag: nur von Hand zuzuordnen
+  const zeile = async () => (await json(leitung, 'select public.pep_urlaub_zuordnung() as r')).find((x) => x.urlaub_mitarbeiter_id === t.id);
+  const gesichert = async () => (await json(leitung, 'select public.pep_sicherung() as r')).tabellen.urlaub_zuordnung
+    .filter((z) => z.urlaub_mitarbeiter_id === t.id).map((z) => z.mitarbeiter_id);
+  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
+  assert.equal((await zeile()).vorschlag_id, null);
+  await aufruf(leitung, 'select public.pep_urlaub_zuordnung_setzen($1, $2)', [t.id, anna]);
+  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, false)', [u]);
+  // Ausgeschaltet: Teilnehmer nicht in der Liste, die Zeile bleibt (Filiale A) und steht in der Sicherung von A
+  assert.equal(await zeile(), undefined);
+  assert.deepEqual((await db.query('select mitarbeiter_id, filiale_id from pep.urlaub_zuordnung where urlaub_mitarbeiter_id = $1', [t.id])).rows,
+    [{ mitarbeiter_id: anna, filiale_id: fil }]);
+  assert.deepEqual(await gesichert(), [anna]);
+  // Wieder eingeschaltet: die Zuordnung von Hand ist wieder da
+  await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
+  assert.equal((await zeile()).mitarbeiter_id, anna);
+});
+
+test('Übergabe einer Umfrage an eine andere Filiale: die alte Zeile stört B nicht und geht beim Zuordnen auf B über', async () => {
   const gast = await pepBenutzer(db, 'gast', 'leitung', fil);
   await aufruf(gast, 'select public.pep_ich()');
   const u = await umfrageAnlegen(db, gast, { titel: 'Übergabe 2027' });
   const t = await umfrageMitarbeiter(db, u, 'Test, Anna');
-  const anzahl = async (sql, p) => (await db.query(sql, p)).rows[0].n;
-  const andere = await anzahl('select count(*)::int as n from pep.urlaub_zuordnung z join urlaub.mitarbeiter m on m.id = z.urlaub_mitarbeiter_id where m.umfrage_id <> $1', [u]);
+  const gesichertA = async () => (await json(leitung, 'select public.pep_sicherung() as r')).tabellen.urlaub_zuordnung
+    .filter((z) => z.urlaub_mitarbeiter_id === t.id).length;
   await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
   await aufruf(leitung, 'select public.pep_urlaub_zuordnung_setzen($1, $2)', [t.id, anna]);
-  // Ausschalten in A: Zuordnungen dieser Umfrage in A weg, andere bleiben
   await aufruf(leitung, 'select public.pep_urlaub_umfrage_schalten($1, false)', [u]);
-  assert.equal(await anzahl('select count(*)::int as n from pep.urlaub_zuordnung where urlaub_mitarbeiter_id = $1', [t.id]), 0);
-  assert.equal(await anzahl('select count(*)::int as n from pep.urlaub_zuordnung z join urlaub.mitarbeiter m on m.id = z.urlaub_mitarbeiter_id where m.umfrage_id <> $1', [u]), andere);
-  // Zeile aus der Zeit vor dieser Regel (Filiale A, Umfrage nicht mehr eingeschaltet)
-  await db.query('insert into pep.urlaub_zuordnung (urlaub_mitarbeiter_id, mitarbeiter_id, filiale_id) values ($1, $2, $3)', [t.id, anna, fil]);
-  // gast wechselt nach B (Fremdstadt) und meldet sich dort an; B schaltet ein und ordnet zu
+  // gast wechselt nach B (Fremdstadt) und meldet sich dort an; B schaltet ein: die Zeile von A ist für B unsichtbar
   await aufruf(leitung, 'select public.pep_benutzer_entfernen($1)', [gast]);
   await aufruf(fremd, 'select public.pep_benutzer_setzen($1, $2)', ['gast', 'leitung']);
   await aufruf(gast, 'select public.pep_ich()');
   await aufruf(fremd, 'select public.pep_urlaub_umfrage_schalten($1, true)', [u]);
   const annaB = await json(fremd, 'select public.pep_mitarbeiter_speichern(null, $1::jsonb) as r', [JSON.stringify({ name: 'Test, Anna' })]);
   const fremdFil = (await db.query('select filiale_id from pep.benutzer where user_id = $1', [fremd])).rows[0].filiale_id;
+  const inB = async () => (await json(fremd, 'select public.pep_urlaub_zuordnung() as r')).find((x) => x.urlaub_mitarbeiter_id === t.id);
+  assert.deepEqual([(await inB()).mitarbeiter_id, (await inB()).vorschlag_id], [null, annaB]);
+  assert.equal(await gesichertA(), 1, 'bis zur Übernahme steht die Zeile noch in der Sicherung von A');
+  // B ordnet zu: dieselbe Zeile gehört jetzt B (vorher blieb filiale_id bei A und B sah die Zuordnung nie)
   await aufruf(fremd, 'select public.pep_urlaub_zuordnung_setzen($1, $2)', [t.id, annaB]);
   assert.deepEqual((await db.query('select mitarbeiter_id, filiale_id from pep.urlaub_zuordnung where urlaub_mitarbeiter_id = $1', [t.id])).rows,
     [{ mitarbeiter_id: annaB, filiale_id: fremdFil }]);
-  assert.equal((await json(fremd, 'select public.pep_urlaub_zuordnung() as r')).find((x) => x.urlaub_mitarbeiter_id === t.id).mitarbeiter_id, annaB);
+  assert.equal((await inB()).mitarbeiter_id, annaB);
+  assert.equal(await gesichertA(), 0);
 });
