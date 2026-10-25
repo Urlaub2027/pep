@@ -116,7 +116,6 @@ const schreib = (name, wert) => writeFileSync(new URL(`${name}.json`, aus), JSON
 schreib('pep_ich', await q('select public.pep_ich() as r'));
 // Die Attrappe kennt keine Parameter: Kandidaten für den ersten roten Block der Woche (Krankmeldung Montag).
 schreib('pep_ersatz_kandidaten', await q('select public.pep_ersatz_kandidaten($1, $2::date) as r', [ids[3], TAGE[0]]));
-schreib('pep_einstellungen', e);
 schreib('pep_abwesenheiten', await q('select public.pep_abwesenheiten(2026, 11) as r'));
 schreib('pep_mitarbeiter_liste', await q('select public.pep_mitarbeiter_liste() as r'));
 // Die Attrappe kennt keine Parameter: pep_mitarbeiter ist immer der erste Mitarbeiter.
@@ -127,8 +126,6 @@ schreib('pep_urlaub_umfragen', await q('select public.pep_urlaub_umfragen() as r
 schreib('pep_urlaub_zuordnung', await q('select public.pep_urlaub_zuordnung() as r'));
 schreib('pep_einsatzplan_woche', await q('select public.pep_einsatzplan_woche(2026, 46) as r'));
 schreib('pep_vorlagen', await q('select public.pep_vorlagen() as r'));
-// Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
-schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
 schreib('pep_vorausplanung', await q('select public.pep_vorausplanung(2026, 46) as r'));
 schreib('pep_resturlaub', await q('select public.pep_resturlaub(2026) as r'));
 // Startseite: zuletzt, mit zwei offenen Urlaubswünschen aus einer Urlaubstool-Umfrage und einer Woche mit Stunden-Lücke
@@ -143,7 +140,6 @@ for (const [i, kw] of [[6, 48], [11, 47]]) {
   await q('select public.pep_urlaub_zuordnung_setzen($1, $2) as r', [tn.id, ids[i]]);
   await abgeben(db, tn.code, { [frage]: [kw] });
 }
-schreib('pep_startseite', await q('select public.pep_startseite() as r'));
 
 // IST-Modus KW 46 (pep_ist_woche), ganz zuletzt, damit alle übrigen Dateien unverändert bleiben. „Heute“ ist dafür
 // Do 12.11.: Mo und Di bestätigt (Mo mit einer Änderung samt Grund), Mi gemischt, Do offen mit Vorschlag, Fr/Sa künftig.
@@ -194,4 +190,17 @@ await buchen(ids[4], 'manuell', -4, 'Überstunden ausgezahlt', TAGE[0]);
 schreib('pep_zeitkonto_woche', await q('select public.pep_zeitkonto_woche(2026, 46) as r'));
 schreib('pep_zeitkonto_woche_2026_45', await q('select public.pep_zeitkonto_woche(2026, 45) as r'));
 schreib('pep_zeitkonto_journal', await q('select public.pep_zeitkonto_journal($1, null, null) as r', [ids[4]]));
+
+// Startseite, Eckdaten und Einstellungen ganz zuletzt, damit sie das Zeitkonto zeigen (Stufe 2; „heute“ bleibt Do 12.11.):
+// Kachel „Zeitkonto auffällig“ (KW 45 abgeschlossen, Ben und Anna über dem Warnwert), Kachel „IST offen“ (Oktober
+// bestätigt bis auf Fr 30.10., dazu der gemischte Mi 11.11.), Zeitkonto-Zeile der Eckdaten und der Hinweis an den Codes
+// (abschluss_vorhanden). Das Bestätigen im Oktober berührt keine abgeschlossene Woche und keine Datei oben.
+for (let d = new Date('2026-10-01T00:00:00Z'); d < new Date('2026-11-01T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) {
+  const iso = d.toISOString().slice(0, 10);
+  if (iso !== '2026-10-30') await bestaetigen(iso);
+}
+schreib('pep_startseite', await q('select public.pep_startseite() as r'));
+// Die Attrappe kennt keine Parameter: Eckdaten immer für „Demo, Emil“ am Montag der Vorschauwoche.
+schreib('pep_eckdaten', await q('select public.pep_eckdaten($1, $2::date) as r', [ids[4], TAGE[0]]));
+schreib('pep_einstellungen', await q('select public.pep_einstellungen() as r'));
 console.log('Vorschau-Daten geschrieben');

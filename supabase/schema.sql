@@ -1027,7 +1027,10 @@ begin
                                  order by o.benutzername)
                             from pep.benutzer bn
                             join urlaub.organisatoren o on o.user_id = bn.user_id
-                           where bn.filiale_id = v_f), '[]'::jsonb));
+                           where bn.filiale_id = v_f), '[]'::jsonb),
+    -- Stufe 2: Gibt es schon einen Wochenabschluss? Dann ändern gutschrift und sperrt eines Codes abgeschlossene
+    -- Wochen (automatische Korrekturen, pep.nachbuchen_codes) – die Oberfläche weist darauf hin.
+    'abschluss_vorhanden', exists (select 1 from pep.wochen_abschluesse a where a.filiale_id = v_f));
 end;
 $$;
 
@@ -1195,7 +1198,8 @@ end;
 $$;
 
 -- p_id null = anlegen. Fehlende Schlüssel in p_daten lassen beim Ändern den
--- bisherigen Wert stehen. Schlüssel: code, name, farbe, stundenregel, sperrt, aktiv, position.
+-- bisherigen Wert stehen. Schlüssel: code, name, farbe, stundenregel, sperrt, aktiv, position, gutschrift (Stufe 2:
+-- zählt im Zeitkonto als geleistete Zeit; beim Anlegen ohne Angabe true).
 create or replace function public.pep_code_speichern(p_id bigint, p_daten jsonb)
 returns bigint
 language plpgsql
@@ -1240,9 +1244,10 @@ begin
   end if;
 
   if p_id is null then
-    insert into pep.abwesenheitscodes (filiale_id, code, name, farbe, stundenregel, sperrt, aktiv, position)
+    insert into pep.abwesenheitscodes (filiale_id, code, name, farbe, stundenregel, sperrt, aktiv, gutschrift, position)
     values (v_b.filiale_id, v_code, v_name, v_farbe, v_regel,
             coalesce((p_daten ->> 'sperrt')::boolean, true), coalesce((p_daten ->> 'aktiv')::boolean, true),
+            coalesce((p_daten ->> 'gutschrift')::boolean, true),
             coalesce((p_daten ->> 'position')::int,
                      (select coalesce(max(c.position), 0) + 1 from pep.abwesenheitscodes c where c.filiale_id = v_b.filiale_id)))
     returning * into v_neu;
@@ -1252,6 +1257,7 @@ begin
       code = v_code, name = v_name, farbe = v_farbe, stundenregel = v_regel,
       sperrt = coalesce((p_daten ->> 'sperrt')::boolean, sperrt),
       aktiv = coalesce((p_daten ->> 'aktiv')::boolean, aktiv),
+      gutschrift = coalesce((p_daten ->> 'gutschrift')::boolean, gutschrift),
       position = coalesce((p_daten ->> 'position')::int, position)
      where id = p_id returning * into v_neu;
     perform pep.protokolliere(v_b.filiale_id, 'aendern', 'abwesenheitscodes', v_neu.id::text, to_jsonb(v_alt), to_jsonb(v_neu));
@@ -4453,6 +4459,9 @@ $$;
 --   frei_jahr = freie Samstage des Jahres ab Eintritt vor dem Datum; Ziele aus den Einstellungen.
 -- vorwoche: Lage (F8) je Tag der ISO-Woche davor; vorwoche_lage und letzter_samstag_spaet wie in pep.pruefung
 --   (pep.lage_vorwoche, pep.lage_letzter_samstag). hinweise: Texte dazu, nie Sperren.
+-- zeitkonto (Stufe 2, unabhängig von p_datum): saldo = Summe aller Journalbuchungen des Mitarbeiters (G2);
+--   stand_montag = Montag der zuletzt abgeschlossenen Woche der Filiale oder null; warnung nach pep.zeitkonto_warnung
+--   mit den Wochenstunden des Vertrags dieser Woche (ohne Abschluss: der laufenden Woche). Ohne Buchung 0 / null.
 create or replace function public.pep_eckdaten(p_mitarbeiter_id bigint, p_datum date)
 returns jsonb
 language plpgsql stable
@@ -4470,6 +4479,8 @@ declare
   v_vertrag   pep.vertraege;
   v_vorwoche  text;
   v_sa_spaet  boolean;
+  v_stand     date;
+  v_saldo     numeric;
 begin
   if p_datum is null then
     raise exception 'DATUM_UNGUELTIG';
@@ -4483,6 +4494,8 @@ begin
    order by v.gueltig_ab desc limit 1;
   v_vorwoche := pep.lage_vorwoche(v_f, v_m.id, p_datum);
   v_sa_spaet := coalesce(pep.lage_letzter_samstag(v_f, v_m.id, p_datum) in ('spaet', 'lang'), false);
+  select max(a.montag) into v_stand from pep.wochen_abschluesse a where a.filiale_id = v_f;
+  select coalesce(sum(k.stunden), 0) into v_saldo from pep.zeitkonto_buchungen k where k.mitarbeiter_id = v_m.id;
 
   return jsonb_build_object(
     'mitarbeiter', jsonb_build_object('id', v_m.id, 'name', v_m.name, 'personalnummer', v_m.personalnummer,
@@ -4541,7 +4554,12 @@ begin
                       when 'spaet' then 'Hatte letzte Woche überwiegend spät – eher früh planen' end,
       case when v_sa_spaet then 'Letzter gearbeiteter Samstag war spät – nicht wieder spät planen' end], null)),
     'kommentar', (select k.text from pep.plan_kommentare k where k.mitarbeiter_id = v_m.id and k.datum = p_datum),
-    'zeitkonto', null);  -- Platzhalter: Anzeige „ab Zeitkonto-Stufe“
+    'zeitkonto', jsonb_build_object(
+      'saldo', v_saldo,
+      'stand_montag', to_char(v_stand, 'YYYY-MM-DD'),
+      'warnung', pep.zeitkonto_warnung(v_saldo,
+        (pep.wochenvertrag(v_m.id, coalesce(v_stand, pep.heute() - (extract(isodow from pep.heute())::int - 1)))).wochenstunden,
+        v_f)));
 end;
 $$;
 
@@ -4719,7 +4737,7 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- Startseite: vier Kacheln (Spec 14)
+-- Startseite: sechs Kacheln (Spec 14; Stufe 2: IST offen, Zeitkonto auffällig)
 -- ---------------------------------------------------------------------------
 
 -- Was die Startseite zählt (Leitung und Stellvertretung), Stichtag pep.heute():
@@ -4738,6 +4756,13 @@ $$;
 --             Nur Tage mit mindestens einem gezählten Eintrag oder ungeplant.
 -- offene_wuensche  Wünsche aus dem Urlaubstool, die heute bis heute + 365 berühren und keine entschiedene Freigabe
 --             haben (wie pep_abwesenheiten); erster_wunsch = frühester Beginn davon (Sprungziel), sonst null.
+-- ist_offen   {tage, zeilen, erster}: offene IST-Zeilen (pep.ist_zeilen, nicht bestätigt – dieselbe Definition wie
+--             IST-Ansicht und Zeitkonto) von heute − 42 bis gestern; tage = verschiedene Daten, zeilen = Mitarbeiter-Tage,
+--             erster = frühestes offenes Datum (Sprungziel) oder null.
+-- zeitkonto_auffaellig  {jahr, kw, montag, liste}: zuletzt abgeschlossene Woche der Filiale (ohne Abschluss alles null,
+--             liste []); liste = Mitarbeiter mit Wochenrechnung in dieser Woche, deren Saldo aus allen Buchungen bis zu
+--             ihrem Sonntag eine Warnung trägt (pep.zeitkonto_warnung, Vertrag der Woche) – also saldo_aktuell und
+--             warnung wie pep_zeitkonto_woche dieser Woche; je {id, name, saldo, warnung}, Reihenfolge wie dort.
 create or replace function public.pep_startseite()
 returns jsonb
 language plpgsql stable
@@ -4755,6 +4780,9 @@ declare
   v_verst    jsonb;
   v_wunsch_n bigint;
   v_wunsch_ab date;
+  v_offen    jsonb;
+  v_stand    date;
+  v_auff     jsonb;
 begin
   select jsonb_build_object(
            'anzahl', count(distinct x.mitarbeiter_id),
@@ -4832,13 +4860,36 @@ begin
                       case when w.art = 'tag' then w.von end)) fg on true
    where coalesce(fg.status, 'offen') = 'offen';
 
+  select jsonb_build_object('tage', count(distinct z.datum), 'zeilen', count(*),
+                            'erster', to_char(min(z.datum), 'YYYY-MM-DD'))
+    into v_offen
+    from pep.ist_zeilen(v_f, v_heute - 42, v_heute - 1, null) z
+   where z.bestaetigt_am is null;
+
+  select max(a.montag) into v_stand from pep.wochen_abschluesse a where a.filiale_id = v_f;
+  -- Erst die (billige) Warnung, nur dann die Wochenrechnung: wer dort NULL hat, steht nicht im Reiter Zeitkonto.
+  select coalesce(jsonb_agg(jsonb_build_object('id', x.id, 'name', x.name, 'saldo', x.saldo, 'warnung', x.warnung)
+                            order by x.aktiv desc, x.position, x.name, x.id), '[]'::jsonb)
+    into v_auff
+    from (select m.id, m.name, m.aktiv, m.position, s.saldo,
+                 pep.zeitkonto_warnung(s.saldo, (pep.wochenvertrag(m.id, v_stand)).wochenstunden, v_f) as warnung
+            from pep.mitarbeiter m
+            cross join lateral (select coalesce(sum(k.stunden), 0) as saldo from pep.zeitkonto_buchungen k
+                                 where k.mitarbeiter_id = m.id and k.datum <= v_stand + 6) s
+           where m.filiale_id = v_f and v_stand is not null) x
+   where case when x.warnung is null then false else pep.zeitkonto_woche(x.id, v_stand) is not null end;
+
   return jsonb_build_object(
     'heute', to_char(v_heute, 'YYYY-MM-DD'),
     'abwesend', v_abw,
     'luecke', v_luecke,
     'verstoesse', v_verst,
     'offene_wuensche', v_wunsch_n,
-    'erster_wunsch', to_char(v_wunsch_ab, 'YYYY-MM-DD'));
+    'erster_wunsch', to_char(v_wunsch_ab, 'YYYY-MM-DD'),
+    'ist_offen', v_offen,
+    'zeitkonto_auffaellig', jsonb_build_object(
+      'jahr', extract(isoyear from v_stand)::int, 'kw', extract(week from v_stand)::int,
+      'montag', to_char(v_stand, 'YYYY-MM-DD'), 'liste', v_auff));
 end;
 $$;
 
@@ -5472,6 +5523,19 @@ begin
 end;
 $$;
 
+-- Warnregel am Saldo, einzige Stelle (Reiter Zeitkonto, Eckdaten, Startseite): 'plus', wenn der Saldo über
+-- zeitkonto_warnfaktor × wochenstunden liegt, 'minus', wenn er unter dem Negativen davon liegt, sonst null – die
+-- Grenze selbst warnt nicht; ohne Wochenstunden null. docs/zeitkonto-daten.js (saldoWarnung) spiegelt sie im Browser.
+create or replace function pep.zeitkonto_warnung(p_saldo numeric, p_wochenstunden numeric, p_filiale_id bigint)
+returns text
+language sql stable
+set search_path = ''
+as $$
+  select case when p_saldo > f.faktor * p_wochenstunden then 'plus'
+              when p_saldo < -f.faktor * p_wochenstunden then 'minus' end
+    from (select (pep.einstellung(p_filiale_id, 'zeitkonto_warnfaktor') #>> '{}')::numeric as faktor) f
+$$;
+
 -- ---------------------------------------------------------------------------
 -- Zeitkonto: Funktionen für den Browser
 -- ---------------------------------------------------------------------------
@@ -5479,8 +5543,8 @@ $$;
 -- Zeitkonto einer Woche (Leitung und Stellvertretung): je Mitarbeiter mit Wochenrechnung (pep.zeitkonto_woche nicht
 -- NULL) alle Felder der Rechnung, dazu der Saldo nach G2 aus dem Journal, verglichen über Datumswerte (nie über
 -- jahr/kw): saldo_vorwoche = Buchungen vor dem Montag; saldo_aktuell = saldo_vorwoche + Buchungen der Woche + (Woche
--- nicht abgeschlossen ? diff : 0 – beim Abschluss steckt diff in der Buchung „woche“). warnung plus/minus, wenn
--- saldo_aktuell über zeitkonto_warnfaktor × wochenstunden bzw. unter dem Negativen davon liegt.
+-- nicht abgeschlossen ? diff : 0 – beim Abschluss steckt diff in der Buchung „woche“). warnung am saldo_aktuell nach
+-- pep.zeitkonto_warnung.
 -- offene_tage = offene IST-Zeilen der Filiale in der Woche (pep.ist_zeilen). abgeschlossen = {am, von_name} oder null.
 create or replace function public.pep_zeitkonto_woche(p_jahr int, p_kw int)
 returns jsonb
@@ -5491,7 +5555,6 @@ as $$
 declare
   v_b      pep.benutzer := pep.leitung_oder_stellvertretung();
   v_mo     date := pep.kw_montag(p_jahr, p_kw);
-  v_faktor numeric := (pep.einstellung(v_b.filiale_id, 'zeitkonto_warnfaktor') #>> '{}')::numeric;
   v_a      pep.wochen_abschluesse;
 begin
   select * into v_a from pep.wochen_abschluesse a where a.filiale_id = v_b.filiale_id and a.montag = v_mo;
@@ -5508,8 +5571,7 @@ begin
       select jsonb_agg(jsonb_build_object('id', x.id, 'name', x.name, 'aktiv', x.aktiv) || x.zk
                        || jsonb_build_object(
                             'saldo_vorwoche', x.vor, 'saldo_aktuell', x.akt,
-                            'warnung', case when x.akt > v_faktor * x.ws then 'plus'
-                                            when x.akt < -v_faktor * x.ws then 'minus' end)
+                            'warnung', pep.zeitkonto_warnung(x.akt, x.ws, v_b.filiale_id))
                        order by x.aktiv desc, x.position, x.name, x.id)
         from (select m.id, m.name, m.aktiv, m.position, z.zk, (z.zk ->> 'wochenstunden')::numeric as ws, s.vor,
                      s.vor + s.woche + case when v_a.montag is null then (z.zk ->> 'diff')::numeric else 0 end as akt

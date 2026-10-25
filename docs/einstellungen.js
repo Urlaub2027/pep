@@ -207,6 +207,11 @@ function zeichneBereiche() {
     daten.bereiche.map(zeile), darfSchreiben() ? zeile({}) : null));
 }
 
+// Nach dem ersten Wochenabschluss: gutschrift und sperrt ändern auch abgeschlossene Wochen (die Datenbank bucht
+// Korrekturen, pep.nachbuchen_codes). Der Hinweis steht über den Codes und, wenn sich einer der beiden Haken
+// tatsächlich geändert hat, noch einmal in der Bestätigung.
+const KORREKTUR_HINWEIS = 'Ändert die Wirkung in schon abgeschlossenen Wochen – das Zeitkonto bucht dann automatisch Korrekturen.';
+
 function zeichneCodes() {
   const zeile = (c) => {
     const neu = !c.id;
@@ -216,19 +221,31 @@ function zeichneCodes() {
     const regel = auswahlfeld(STUNDENREGELN, c.stundenregel ?? 'teiler');
     const sperrt = eingabe('checkbox', neu ? true : c.sperrt);
     const aktiv = eingabe('checkbox', neu ? true : c.aktiv);
+    const gutschrift = eingabe('checkbox', neu ? true : c.gutschrift);
     return zeilenformular(
-      () => speichere(() => aufruf('pep_code_speichern', {
-        p_id: c.id ?? null,
-        p_daten: {
-          code: code.value, name: name.value, farbe: f.value, stundenregel: regel.value,
-          sperrt: sperrt.checked, aktiv: aktiv.checked,
-        },
-      }), 'codes'),
+      async () => {
+        const wirkt = !neu && daten.abschluss_vorhanden
+          && (gutschrift.checked !== c.gutschrift || sperrt.checked !== c.sperrt);
+        const ok = await speichere(() => aufruf('pep_code_speichern', {
+          p_id: c.id ?? null,
+          p_daten: {
+            code: code.value, name: name.value, farbe: f.value, stundenregel: regel.value,
+            sperrt: sperrt.checked, aktiv: aktiv.checked, gutschrift: gutschrift.checked,
+          },
+        }), 'codes');
+        if (ok && wirkt) meldung(`Gespeichert. ${KORREKTUR_HINWEIS}`, 'ok');
+      },
       feld('Code', code), feld('Name', name), feld('Farbe', f), feld('Stundenregel', regel),
-      haken('sperrt', sperrt), haken('aktiv', aktiv), knopfSpeichern(neu ? 'Anlegen' : 'Speichern'));
+      haken('sperrt', sperrt), haken('aktiv', aktiv), haken('Gutschrift im Zeitkonto', gutschrift),
+      knopfSpeichern(neu ? 'Anlegen' : 'Speichern'));
   };
   boxen.codes.replaceChildren(abschnitt('Abwesenheitscodes',
+    element('p', { class: 'hinweis' }, '„Gutschrift im Zeitkonto“: Die Abwesenheit zählt im Zeitkonto als geleistete Zeit. ',
+      'Ohne Haken zählt sie nicht – so beim Zeitausgleich (ZA), der Stunden aus dem Zeitkonto abbaut.'),
+    daten.abschluss_vorhanden
+      ? element('p', { class: 'hinweis-gelb' }, '„Gutschrift im Zeitkonto“ und „sperrt“: ', KORREKTUR_HINWEIS) : null,
     daten.codes.map(zeile), darfSchreiben() ? zeile({}) : null));
+  boxen.codes.firstChild.classList.add('codes'); // drei Haken: schmal, damit „Speichern“ bei 1440 px in der Zeile bleibt
 }
 
 // ---------------------------------------------------------------- Regelparameter

@@ -477,6 +477,10 @@ th { background: var(--hell); font-weight: 600; }
 .pd-eck-liste { margin: 0; padding-left: 1.1em; }
 .pd-eck-liste li { margin-bottom: 2px; overflow-wrap: anywhere; }
 .pd-eck-liste small { display: block; color: var(--text-2); }
+.pd-eck-zk { min-height: 32px; padding: 2px 4px; font: inherit; font-weight: 700; color: inherit; text-align: left;
+  background: none; border: 0; border-bottom: 2px solid var(--netto-gelb); cursor: pointer; }
+.pd-eck-zk:hover { background: var(--hover-gelb); }
+.pd-eck-zk.warnung { background: var(--hinweis); }
 .pd-samstage, .pd-lagen { display: flex; flex-wrap: wrap; gap: var(--a1); margin: 0 0 var(--a2); padding: 0; list-style: none; }
 .pd-sa { padding: 2px 8px; font-size: 0.9rem; border: 1px solid var(--linie-stark); border-radius: 4px; background: var(--flaeche); }
 .pd-sa.gearbeitet { background: var(--hell); }
@@ -525,6 +529,7 @@ th { background: var(--hell); font-weight: 600; }
 .zeile:last-child { border-bottom: 0; }
 .zeile .feld { width: 170px; margin-bottom: 0; }
 .zeile .feld.breit { width: 100%; }
+.codes .zeile .feld.haken { width: auto; }
 .zeile .zeilentitel { width: 100%; }
 .zeile .zeiten { display: flex; gap: var(--a3); }
 .zeile .zeiten[hidden] { display: none; }
@@ -823,7 +828,7 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
    Vier Kacheln: oben ein farbiger Rand (Rot nur bei Verstoß oder Lücke, Grün ohne Befund, sonst Gelb). */
 .start-kopf { margin: 0 0 var(--a3); color: var(--text-2); }
 .start-kopf strong { color: var(--text); }
-.kacheln { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--a4); align-items: stretch; }
+.kacheln { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--a4); align-items: stretch; }
 @media (max-width: 1200px) { .kacheln { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .kacheln { grid-template-columns: minmax(0, 1fr); } }
 .kachel { display: flex; flex-direction: column; margin: 0; border-top: 6px solid var(--netto-gelb); }

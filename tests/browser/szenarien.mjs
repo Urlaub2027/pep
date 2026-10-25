@@ -262,7 +262,8 @@ await szenario('Startseite: Kacheln gegen Datenbank, Sprünge', async () => {
     titel: k.querySelector('h2').textContent, zahl: k.querySelector('.kachel-zahl').firstChild.textContent,
     liste: [...k.querySelectorAll('.kachel-liste li')].map((l) => l.textContent),
   })));
-  gleich(kacheln.map((k) => k.titel), ['Abwesend diese Woche', 'Stunden-Lücke', 'Regelverstöße', 'Offene Urlaubswünsche'], 'Kacheln');
+  gleich(kacheln.map((k) => k.titel), ['Abwesend diese Woche', 'Stunden-Lücke', 'Regelverstöße', 'Offene Urlaubswünsche',
+    'IST offen', 'Zeitkonto auffällig'], 'Kacheln');
   // 1) Abwesende KW 45 (02.–08.11.)
   const abw = await sql(`select count(distinct a.mitarbeiter_id)::int as n from pep.abwesenheiten a
     join pep.mitarbeiter m on m.id = a.mitarbeiter_id where m.aktiv and a.datum between '2026-11-02' and '2026-11-08'`);
@@ -1479,7 +1480,7 @@ await szenario('Stellvertretung: Rechte in allen Reitern', async () => {
   await reiter('vorausplanung');
   pruefe(await c.werte(() => [...document.querySelectorAll('#ansicht-vorausplanung input')].every((e) => !e.disabled)), 'Vorausplanung beschreibbar');
   await reiter('start');
-  pruefe((await anzahl('#ansicht-start .kachel')) === 4, 'Startseite mit vier Kacheln');
+  pruefe((await anzahl('#ansicht-start .kachel')) === 6, 'Startseite mit sechs Kacheln');
 });
 
 // ================================================================ Ende

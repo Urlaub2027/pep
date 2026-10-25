@@ -7,7 +7,8 @@ import { element, feld, eingabe, meldung, datumDE, fehlerText, stundenDE } from 
 import { aufruf, zeigeAnsicht } from './app.js';
 import { dialog } from './dialog.js';
 import { waehleMitarbeiter, VERTRAGSARTEN } from './mitarbeiter.js';
-import { plusTage, montagDerKw, zeitspanne, isoWoche } from './zeit.js';
+import { plusTage, montagDerKw, zeitspanne, isoWoche, heuteDatum } from './zeit.js';
+import { vorzeichen } from './zeitkonto-daten.js';
 import {
   gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText, vorgabeText, ersatzBloecke,
   uebernahmeText,
@@ -366,6 +367,29 @@ const MONATE = ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'A
 const LAGE = { frueh: 'früh', spaet: 'spät', lang: 'lang', mitte: 'mitte' };
 const h = (n) => `${stundenDE(n)} h`;
 
+// Zeitkonto-Zeile (pep_eckdaten.zeitkonto): „Zeitkonto: +2,50 h (Stand KW 46)“, ⚠ bei Warnung. Klick schließt den
+// Dialog und öffnet den Reiter Zeitkonto mit dem Journal des Mitarbeiters – in der zuletzt abgeschlossenen Woche, ohne
+// Abschluss in der Vorwoche (wie der Reiter selbst). zeitkonto.js wird erst beim Klick geladen: ein statischer Import
+// schlösse den Kreis zeitkonto.js → einsatzplan.js → plan-dialoge.js.
+function zeitkontoZeile(z, mitarbeiterId, datum) {
+  const stand = z.stand_montag ? isoWoche(z.stand_montag) : null;
+  const ziel = stand ?? isoWoche(plusTage(heuteDatum(new URLSearchParams(location.search).get('heute')), -7));
+  const standText = !stand ? 'noch keine Woche abgeschlossen'
+    : `Stand KW ${stand.kw}${stand.jahr !== isoWoche(datum).jahr ? `/${stand.jahr}` : ''}`;
+  const warnung = z.warnung === 'plus' || z.warnung === 'minus';
+  const knopf = element('button', {
+    type: 'button', class: `pd-eck-zk${warnung ? ' warnung' : ''}`,
+    title: warnung ? `Saldo über der Warngrenze (${z.warnung === 'plus' ? 'zu viel Plus' : 'zu viel Minus'}) – zum Zeitkonto`
+      : 'Zum Zeitkonto',
+    onclick: async (e) => {
+      e.currentTarget.closest('dialog')?.close();
+      const { oeffneZeitkonto } = await import('./zeitkonto.js');
+      oeffneZeitkonto(ziel.jahr, ziel.kw, mitarbeiterId);
+    },
+  }, warnung ? '⚠ ' : '', `Zeitkonto: ${vorzeichen(z.saldo)} h (${standText})`);
+  return element('p', {}, knopf);
+}
+
 // Abschnitt des Eckdaten-Fensters: Überschrift und Inhalt; leere Listen zeigen „keine“.
 function eckTeil(titel, ...inhalt) {
   const leer = inhalt.flat(Infinity).every((x) => x == null || x === false);
@@ -396,7 +420,7 @@ export async function eckdatenDialog(kontext, mitarbeiterId, datum) {
       : 'Kein Vertrag an diesem Tag'),
     element('p', {}, e.kompetenzen.length ? e.kompetenzen.map((k) => element('span', { class: 'badge' }, k))
       : element('span', { class: 'hinweis' }, 'keine Kompetenzen')),
-    element('p', { class: 'hinweis' }, 'Zeitkonto: ab Zeitkonto-Stufe'));
+    e.zeitkonto ? zeitkontoZeile(e.zeitkonto, m.id, datum) : null);
 
   const soll = e.woche.soll;
   const woche = eckTeil(`Woche KW ${kw}`,

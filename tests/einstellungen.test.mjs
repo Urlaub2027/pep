@@ -240,3 +240,35 @@ test('Schreibzugriffe landen im Protokoll', async () => {
     assert.ok(t.includes(n), n);
   }
 });
+
+test('Code-Gutschrift (Stufe 2): lesen, beim Anlegen Standard true, beim Ändern ohne Schlüssel unverändert; abschluss_vorhanden', async () => {
+  const codeSpeichern = (id, d) =>
+    json(leitung, 'select public.pep_code_speichern($1, $2::jsonb) as r', [id, JSON.stringify(d)]);
+  const gutschrift = async (id) => (await alle()).codes.find((c) => c.id === id).gutschrift;
+  const e = await alle();
+  const g = Object.fromEntries(e.codes.map((c) => [c.code, c.gutschrift]));
+  assert.equal(g.ZA, false);
+  assert.equal(g.U, true);
+  assert.equal(g.KM, true);
+  assert.equal(e.abschluss_vorhanden, false);
+
+  const gs = await codeSpeichern(null, { code: 'GS', name: 'Gutschrift-Test', farbe: '#123456', stundenregel: 'teiler' });
+  assert.equal(await gutschrift(gs), true);
+  const ng = await codeSpeichern(null, { code: 'NG', name: 'Ohne Gutschrift', farbe: '#123456', stundenregel: 'teiler', gutschrift: false });
+  assert.equal(await gutschrift(ng), false);
+  await codeSpeichern(ng, { name: 'Ohne Gutschrift neu' });
+  assert.equal(await gutschrift(ng), false);
+  await codeSpeichern(ng, { gutschrift: true });
+  assert.equal(await gutschrift(ng), true);
+  await codeSpeichern(ng, { gutschrift: false, sperrt: false });
+  const ngNeu = (await alle()).codes.find((c) => c.id === ng);
+  assert.deepEqual([ngNeu.gutschrift, ngNeu.sperrt, ngNeu.name], [false, false, 'Ohne Gutschrift neu']);
+  // Die Stellvertretung liest die Codes mit, darf aber nicht schreiben
+  assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).codes.find((c) => c.id === ng).gutschrift, false);
+  await wirft(json(stellv, 'select public.pep_code_speichern($1, $2::jsonb) as r', [ng, '{"gutschrift":true}']), 'NUR_LEITUNG');
+
+  // Nach dem ersten Wochenabschluss (Filiale ohne Mitarbeiter: eine vergangene Woche geht sofort)
+  await json(leitung, 'select public.pep_wochenabschluss(2026, 10) as r');
+  assert.equal((await alle()).abschluss_vorhanden, true);
+  assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).abschluss_vorhanden, true);
+});
