@@ -1961,7 +1961,10 @@ begin
                            'id', a.id, 'code', c.code, 'code_id', a.code_id, 'stunden', a.stunden,
                            'von', a.von, 'bis', a.bis, 'quelle', a.quelle,
                            'freigabe_id', a.freigabe_id, 'wiederholung_id', a.wiederholung_id, 'notiz', a.notiz,
-                           'wunsch_geaendert', coalesce(fg.status = 'genehmigt' and not pep.wunsch_vorhanden(fg.wunsch), false)))
+                           'wunsch_geaendert', coalesce(fg.status = 'genehmigt' and not fg.wunsch ? 'nicht_zugeordnet'
+                                                        and not pep.wunsch_vorhanden(fg.wunsch), false),
+                           -- Freigabe aus einer Sicherung, deren Wunsch hier keiner Umfrage zugeordnet werden konnte
+                           'wunsch_fehlt', coalesce(fg.wunsch ? 'nicht_zugeordnet', false)))
                     from pep.abwesenheiten a join pep.abwesenheitscodes c on c.id = a.code_id
                     left join pep.urlaub_freigaben fg on fg.id = a.freigabe_id
                    where a.mitarbeiter_id = m.id and a.datum between v_von and v_bis), '{}'::jsonb))
@@ -2133,13 +2136,14 @@ as $$
    where p_wunsch ->> 'art' = 'kw' and k.kw = (p_wunsch ->> 'kw')::int
 $$;
 
--- Steht der Wunsch noch in der aktuellen Antwort des Teilnehmers (Abgabe vorhanden)?
+-- Steht der Wunsch noch in der aktuellen Antwort des Teilnehmers (Abgabe vorhanden)? Ein beim Einspielen einer
+-- Sicherung nicht zugeordneter Wunsch (Schlüssel nicht_zugeordnet, alte Ids) ist nie vorhanden.
 create or replace function pep.wunsch_vorhanden(p_wunsch jsonb)
 returns boolean
 language sql stable
 set search_path = ''
 as $$
-  select exists (
+  select not p_wunsch ? 'nicht_zugeordnet' and exists (
     select 1
       from urlaub.abgaben ab
       join urlaub.fragen f on f.umfrage_id = (p_wunsch ->> 'umfrage_id')::bigint and f.typ = 'urlaubswochen'
@@ -6386,7 +6390,9 @@ $$;
 -- Damit werden urlaub_umfragen.umfrage_id, urlaub_zuordnung.urlaub_mitarbeiter_id und die Ids in
 -- urlaub_freigaben.wunsch umgeschlüsselt (sonst erschienen genehmigte Wünsche wieder als offen). Ohne Treffer:
 -- Schaltung und Zuordnung ausgelassen und gezählt; die Freigabe bleibt (sie trägt die U-Tage und die Entscheidung),
--- ihr Wunsch behält die alten Ids und zählt als wunsch_nicht_zugeordnet.
+-- ihr Wunsch behält die alten Ids, bekommt den Schlüssel "nicht_zugeordnet": true und zählt als
+-- wunsch_nicht_zugeordnet. Der Schlüssel verhindert, dass die alten Ids zufällig zu einer hier neu eingeschalteten
+-- Umfrage passen (pep.freigabe_zum_wunsch vergleicht den ganzen Wunsch); pep.wunsch_vorhanden ist für ihn false.
 -- Version: Tabellen mit Zeilen oder Spalten mit Werten, die diese Fassung nicht kennt (Datei einer neueren Stufe),
 -- lehnen Vorschau und Einspielen ab (SICHERUNG_NEUER); unbekannte leere Tabellen und nur leere Spalten werden gemeldet
 -- und übergangen. Fehlt eine Spalte in der Datei (ältere Stufe), gilt ihr Standardwert; fehlen Einstellungen oder
@@ -6554,6 +6560,27 @@ begin
               where jsonb_typeof(z) <> 'object') then
     raise exception 'SICHERUNG_UNGUELTIG';
   end if;
+  -- Abschnitt urlaub (optional): {umfragen: {"<id>": {titel, jahr, organisator}}, teilnehmer: {"<id>": {umfrage_id,
+  -- name}}}; Ids und Jahr als Zahlen, Texte als Text oder null. Erst die Typen, dann der Inhalt (jsonb_each braucht
+  -- ein Objekt).
+  if p_daten ? 'urlaub' and (jsonb_typeof(p_daten -> 'urlaub') <> 'object'
+     or jsonb_typeof(coalesce(p_daten #> '{urlaub,umfragen}', '{}'::jsonb)) <> 'object'
+     or jsonb_typeof(coalesce(p_daten #> '{urlaub,teilnehmer}', '{}'::jsonb)) <> 'object') then
+    raise exception 'SICHERUNG_UNGUELTIG';
+  end if;
+  if exists (select 1 from jsonb_each(coalesce(p_daten #> '{urlaub,umfragen}', '{}'::jsonb)) u
+              where u.key !~ '^[0-9]{1,18}$' or jsonb_typeof(u.value) <> 'object'
+                 or jsonb_typeof(coalesce(u.value -> 'titel', 'null'::jsonb)) not in ('string', 'null')
+                 or jsonb_typeof(coalesce(u.value -> 'organisator', 'null'::jsonb)) not in ('string', 'null')
+                 or (jsonb_typeof(coalesce(u.value -> 'jahr', 'null'::jsonb)) <> 'null'
+                     and (jsonb_typeof(u.value -> 'jahr') <> 'number' or u.value ->> 'jahr' !~ '^[0-9]{4}$')))
+     or exists (select 1 from jsonb_each(coalesce(p_daten #> '{urlaub,teilnehmer}', '{}'::jsonb)) t
+                 where t.key !~ '^[0-9]{1,18}$' or jsonb_typeof(t.value) <> 'object'
+                    or jsonb_typeof(t.value -> 'umfrage_id') is distinct from 'number'
+                    or t.value ->> 'umfrage_id' !~ '^[0-9]{1,18}$'
+                    or jsonb_typeof(coalesce(t.value -> 'name', 'null'::jsonb)) not in ('string', 'null')) then
+    raise exception 'SICHERUNG_UNGUELTIG';
+  end if;
   -- Journal: je Mitarbeiter in id-Reihenfolge saldo_nach = vorheriges saldo_nach (am Anfang 0) + stunden (± 0,01).
   begin
     if exists (select 1 from (
@@ -6654,12 +6681,14 @@ as $$
     select (z ->> 'urlaub_mitarbeiter_id')::bigint as id from jsonb_array_elements(p_tabellen -> 'urlaub_zuordnung') z
     union
     select (z #>> '{wunsch,urlaub_mitarbeiter_id}')::bigint from jsonb_array_elements(p_tabellen -> 'urlaub_freigaben') z
+     where not z -> 'wunsch' ? 'nicht_zugeordnet'
   ), teilnehmer as (
     select t.id, t.umfrage_id, t.name from urlaub.mitarbeiter t where t.id in (select tn.id from tn)
   ), umf as (
     select (z ->> 'umfrage_id')::bigint as id from jsonb_array_elements(p_tabellen -> 'urlaub_umfragen') z
     union
     select (z #>> '{wunsch,umfrage_id}')::bigint from jsonb_array_elements(p_tabellen -> 'urlaub_freigaben') z
+     where not z -> 'wunsch' ? 'nicht_zugeordnet'
     union
     select t.umfrage_id from teilnehmer t
   )
@@ -6675,13 +6704,15 @@ as $$
 $$;
 
 -- Wunsch einer Freigabe mit den Ids dieses Projekts (p_ids -> 'urlaub.umfragen' / 'urlaub.mitarbeiter': alt → neu);
--- null, wenn Umfrage oder Teilnehmer hier nicht eindeutig gefunden wurden.
+-- null, wenn Umfrage oder Teilnehmer hier nicht eindeutig gefunden wurden oder der Wunsch schon als nicht zugeordnet
+-- markiert ist (seine Ids stammen aus einem noch früheren Projekt).
 create or replace function pep.sicherung_wunsch(p_wunsch jsonb, p_ids jsonb)
 returns jsonb
 language sql immutable
 set search_path = ''
 as $$
-  select case when p_ids -> 'urlaub.umfragen' ? (p_wunsch ->> 'umfrage_id')
+  select case when not p_wunsch ? 'nicht_zugeordnet'
+               and p_ids -> 'urlaub.umfragen' ? (p_wunsch ->> 'umfrage_id')
                and p_ids -> 'urlaub.mitarbeiter' ? (p_wunsch ->> 'urlaub_mitarbeiter_id')
     then p_wunsch || jsonb_build_object(
            'umfrage_id', (p_ids -> 'urlaub.umfragen' ->> (p_wunsch ->> 'umfrage_id'))::bigint,
@@ -6919,9 +6950,9 @@ begin
                                        v_s.spalte, v_s.ziel_schema, v_s.ziel_tabelle, v_s.ziel_spalte);
         v_konflikt := true;
       elsif v_t = 'urlaub_freigaben' and v_s.spalte = 'wunsch' then
-        -- Wunsch mit den Ids dieses Projekts; ohne Treffer bleibt er unverändert (gezählt)
+        -- Wunsch mit den Ids dieses Projekts; ohne Treffer markiert (nicht_zugeordnet, gezählt)
         v_spalten := v_spalten || v_s.spalte;
-        v_werte := v_werte || 'coalesce(pep.sicherung_wunsch(p.wunsch, $2), p.wunsch)'::text;
+        v_werte := v_werte || 'coalesce(pep.sicherung_wunsch(p.wunsch, $2), p.wunsch || ''{"nicht_zugeordnet": true}''::jsonb)'::text;
         select count(*) into v_n from jsonb_array_elements(v_zeilen) r
          where pep.sicherung_wunsch(r -> 'wunsch', v_ids) is null;
         if v_n > 0 then

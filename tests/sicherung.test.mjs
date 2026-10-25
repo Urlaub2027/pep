@@ -343,6 +343,19 @@ test('manipulierte oder fremde Datei → SICHERUNG_UNGUELTIG (Format, Version, P
   d = kopie();
   d.tabellen.zeitkonto_buchungen[0].stunden += 0.5;
   faelle.push(['Journal: stunden passen nicht zur Kette (Prüfsumme neu)', await neuePruefsumme(A.db, d)]);
+  // Abschnitt urlaub (nicht in der Prüfsumme): falsche Form → SICHERUNG_UNGUELTIG statt SQL-Fehler
+  const urlaubFalsch = [
+    ['urlaub ist Liste', []],
+    ['umfragen ist Liste', { umfragen: [], teilnehmer: {} }],
+    ['Umfrage-Id kein Zahltext', { umfragen: { abc: { titel: 'x', jahr: 2026, organisator: 'chef' } }, teilnehmer: {} }],
+    ['Jahr als Text', { umfragen: { 1: { titel: 'x', jahr: '2026', organisator: 'chef' } }, teilnehmer: {} }],
+    ['Jahr zu groß', { umfragen: { 1: { titel: 'x', jahr: 123456, organisator: 'chef' } }, teilnehmer: {} }],
+    ['Titel als Zahl', { umfragen: { 1: { titel: 5, jahr: 2026, organisator: 'chef' } }, teilnehmer: {} }],
+    ['Teilnehmer ohne umfrage_id', { umfragen: {}, teilnehmer: { 1: { name: 'x' } } }],
+    ['Teilnehmer umfrage_id als Text', { umfragen: {}, teilnehmer: { 1: { umfrage_id: '1', name: 'x' } } }],
+    ['Teilnehmer ist Zahl', { umfragen: {}, teilnehmer: { 1: 5 } }],
+  ];
+  for (const [name, urlaub] of urlaubFalsch) { d = kopie(); d.urlaub = urlaub; faelle.push([`urlaub: ${name}`, d]); }
   faelle.push(['Liste statt Objekt', [1, 2]]);
   faelle.push(['Zahl', 5]);
   for (const [name, datei] of faelle) {
@@ -548,6 +561,50 @@ test('ältere Datei (fehlende Einstellung und Spalte), leere unbekannte Teile; f
     sA.anzahl.bereiche);
   assert.equal((await Z.db.query('select count(*)::int as n from pep.abwesenheitscodes where filiale_id = $1 and gutschrift',
     [Z.fil3])).rows[0].n, sA.anzahl.abwesenheitscodes);
+});
+
+test('nicht zugeordneter Wunsch wird markiert: gleiche Ids im neuen Projekt machen einen fremden Wunsch nicht genehmigt', async () => {
+  // Neues Projekt, in dem die Ids zufällig gleich sind: chef legt zuerst eine ANDERE Umfrage an (anderer Titel), mit
+  // Teilnehmern in derselben Reihenfolge – Umfrage- und Teilnehmer-Ids wie in A.
+  const db = await neueDatenbank();
+  await heuteSetzen(db, HEUTE);
+  const chef = await pepBenutzer(db, 'chef');
+  const fil = await filiale(db, chef, { name: 'Netto Neu', nummer: '7777' });
+  const umfrage = await umfrageAnlegen(db, chef, { titel: 'Ganz andere Umfrage', jahr: 2026 });
+  const anna = await umfrageMitarbeiter(db, umfrage, 'Test, Anna');
+  const ben = await umfrageMitarbeiter(db, umfrage, 'Muster, Ben');
+  assert.deepEqual([umfrage, anna.id, ben.id], [A.umfrage, A.tAnna.id, A.tBen.id], 'Voraussetzung: gleiche Ids');
+  const r = await einspielen(db, chef, sA, '2558');
+  assert.equal(r.ausgelassen.wunsch_nicht_zugeordnet, 1);
+  assert.equal(r.ausgelassen.urlaub_umfragen, 1);
+  const f = (await db.query('select wunsch, status from pep.urlaub_freigaben where filiale_id = $1', [fil])).rows;
+  assert.equal(f.length, 1);
+  assert.equal(f[0].status, 'genehmigt');
+  assert.equal(f[0].wunsch.nicht_zugeordnet, true);
+  // Die eigene Umfrage einschalten, Ben zuordnen, Ben wünscht dieselbe KW 48 wie in A
+  const json = async (sql, p = []) => (await als(db, 'authenticated', chef, sql, p))[0]?.r;
+  const ma = Object.fromEntries((await db.query('select name, id from pep.mitarbeiter where filiale_id = $1', [fil])).rows
+    .map((m) => [m.name, m.id]));
+  await json('select public.pep_urlaub_umfrage_schalten($1, true) as r', [umfrage]);
+  await json('select public.pep_urlaub_zuordnung_setzen($1, $2) as r', [ben.id, ma['Muster, Ben']]);
+  await abgeben(db, ben.code, { [await urlaubsfrageId(db, umfrage)]: [48] });
+  const wunsch = (await db.query("select pep.wunsch_json($1, $2, 'kw', 48, null) as w", [umfrage, ben.id])).rows[0].w;
+  // Ohne die Markierung wäre f[0].wunsch genau dieser Wunsch und er stünde als genehmigt da
+  assert.deepEqual({ ...f[0].wunsch, nicht_zugeordnet: undefined }, { ...wunsch, nicht_zugeordnet: undefined });
+  assert.equal((await db.query('select (pep.freigabe_zum_wunsch($1, $2)).id as id', [fil, wunsch])).rows[0].id, null);
+  assert.equal((await json('select public.pep_startseite() as r')).offene_wuensche, 1, 'Bens neuer Wunsch ist offen');
+  // Abwesenheiten: die Tage der Freigabe bleiben genehmigt, ohne Warnung „Wunsch geändert“, mit Hinweis wunsch_fehlt
+  const monat = await json('select public.pep_abwesenheiten(2026, 11) as r');
+  const tag = monat.mitarbeiter.find((m) => m.id === ma['Muster, Ben']).tage['2026-11-23'];
+  assert.equal(tag.code, 'U');
+  assert.equal(tag.wunsch_fehlt, true);
+  assert.equal(tag.wunsch_geaendert, false);
+  assert.equal((await db.query('select pep.wunsch_vorhanden($1) as v', [f[0].wunsch])).rows[0].v, false);
+  // Erneut sichern: der markierte Wunsch bleibt markiert und wird nie über den Abschnitt urlaub zugeordnet
+  assert.equal((await db.query(`select pep.sicherung_wunsch($1, '{"urlaub.umfragen": {"1": 5}, "urlaub.mitarbeiter": {"2": 6}}')
+    as w`, [JSON.stringify({ umfrage_id: 1, urlaub_mitarbeiter_id: 2, nicht_zugeordnet: true })])).rows[0].w, null);
+  const s = await sichern(db, chef);
+  assert.equal(s.tabellen.urlaub_freigaben[0].wunsch.nicht_zugeordnet, true);
 });
 
 // ------------------------------------------------------------ Größe
