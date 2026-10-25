@@ -144,3 +144,40 @@ test('benutzer.bestaetigt_am: beim ersten Schema-Lauf gelten vorhandene Benutzer
   await db.exec(SCHEMA);
   assert.equal(await am(neu), null);
 });
+
+// Katalog nach der Umstellung = Katalog einer Neuinstallation. Findet etwa eine vergessene alte Fassung einer Funktion
+// mit geänderten Parametern („create or replace“ legt eine zweite an), fehlende Rechte, Spalten mit anderem Standardwert,
+// Constraints oder Indizes, die nur einer der beiden Wege anlegt.
+test('Katalog: Neuinstallation und umgestellte Stufe-1-Datenbank sind gleich (Funktionen, Spalten, Constraints, Indizes, Trigger, RLS)', async () => {
+  const KATALOG = {
+    funktionen: `select n.nspname || '.' || p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ') vol=' || p.provolatile::text
+                   || ' secdef=' || p.prosecdef::text || ' cfg=' || coalesce(array_to_string(p.proconfig, ','), '')
+                   || ' acl=' || coalesce(p.proacl::text, '') as x
+                   from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname in ('pep', 'public')`,
+    spalten: `select table_name || '.' || column_name || ' ' || data_type || ' null=' || is_nullable
+                || ' def=' || coalesce(column_default, '') as x from information_schema.columns where table_schema = 'pep'`,
+    constraints: `select conrelid::regclass::text || ' ' || conname || ' ' || pg_get_constraintdef(oid) as x
+                    from pg_constraint where connamespace = 'pep'::regnamespace`,
+    indizes: `select indexdef as x from pg_indexes where schemaname = 'pep'`,
+    trigger: `select c.relname || '.' || t.tgname || ' ' || pg_get_triggerdef(t.oid) as x from pg_trigger t
+                join pg_class c on c.oid = t.tgrelid where c.relnamespace = 'pep'::regnamespace and not t.tgisinternal`,
+    relationen: `select c.relname || ' ' || c.relkind::text || ' rls=' || c.relrowsecurity::text || ' acl=' || coalesce(c.relacl::text, '') as x
+                   from pg_class c where c.relnamespace = 'pep'::regnamespace and c.relkind in ('r', 'v', 'S')`,
+  };
+  const katalog = async (db) => {
+    const k = {};
+    for (const [name, sql] of Object.entries(KATALOG)) k[name] = (await db.query(sql)).rows.map((r) => r.x).sort();
+    return k;
+  };
+  const frisch = await neueDatenbank();
+  const alt = await neueDatenbank({ schema: false });
+  await alt.exec(STUFE_1);
+  await heuteSetzen(alt, '2026-11-02');
+  await filiale(alt, await pepBenutzer(alt, 'chef')); // eine Filiale mit Daten der Stufe 1 vor der Umstellung
+  await alt.exec(SCHEMA);
+  await alt.exec(SCHEMA);
+  const a = await katalog(frisch);
+  const b = await katalog(alt);
+  for (const name of Object.keys(KATALOG)) assert.deepEqual(b[name], a[name], name);
+  assert.ok(a.funktionen.length > 100 && a.spalten.length > 100, 'Katalog gelesen');
+});

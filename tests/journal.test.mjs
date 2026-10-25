@@ -493,3 +493,17 @@ test('gebucht: Inaktiver ohne Austritt und nach dem Abschluss Angelegter → Dif
   assert.deepEqual(await werte(paul), [false, -37.5, 0]);
   assert.deepEqual(await D.zeilen(paul), []);
 });
+
+test('Abwesenheits-Teiler geändert: Korrektur mit Grund „Abwesenheits-Teiler geändert“ (nicht „Abwesenheit geändert“)', async () => {
+  // Eigene Datenbank: Urs mit U am Mo der abgeschlossenen KW 46 (6,25 h); Teiler 6 → 5 macht daraus 7,5 h.
+  const D = await aufbau(HEUTE, KW46);
+  const urs = await D.ma('Urlaub, Urs');
+  await D.abwesend(urs, 'U', KW46);
+  await D.wocheBestaetigen(KW46);
+  await D.abschluss(2026, 46);
+  await als(D.db, 'authenticated', D.leitung, `select public.pep_einstellung_setzen('abwesenheit_teiler', '5'::jsonb)`);
+  assert.deepEqual(await D.korrekturen(urs), [{ datum: KW46, stunden: 1.25, grund: 'KW 46/2026: Abwesenheits-Teiler geändert' }]);
+  // Der Grund gilt nur für diese Transaktion: eine spätere Änderung trägt wieder ihren eigenen Grund
+  await D.abwesend(urs, 'U', tag(KW46, 1));
+  assert.equal((await D.korrekturen(urs)).at(-1).grund, 'KW 46/2026: Abwesenheit geändert');
+});

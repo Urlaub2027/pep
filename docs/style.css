@@ -627,6 +627,7 @@ th { background: var(--hell); font-weight: 600; }
 .zeile .feld { width: 170px; margin-bottom: 0; }
 .zeile .feld.breit { width: 100%; }
 .codes .zeile .feld.haken { width: auto; }
+.codes .zeile .code-doppelt { width: 100%; margin: 0; }
 .zeile .zeilentitel { width: 100%; }
 .zeile .zeilentitel .hinweis { font-weight: normal; }
 .zeile .zeiten { display: flex; gap: var(--a3); }

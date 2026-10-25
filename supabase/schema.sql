@@ -13,6 +13,11 @@
 -- ihren Rechten aufrufbar. Dann vorher die alte Fassung ausdrücklich löschen:
 --   drop function if exists public.<name>(<alte Parametertypen>);
 --
+-- ACHTUNG bei Rechenfunktionen (pep.feiertag, pep.arbeitsstunden, pep.zeitkonto_tage, pep.zeitkonto_woche, …): Eine
+-- geänderte Rechnung verschiebt die Diff schon abgeschlossener Wochen, OHNE Korrektur im Journal (die Nachbuch-Trigger
+-- reagieren nur auf geänderte Daten, nicht auf geänderten Code). Eine spätere Stufe muss solche Korrekturen bewusst
+-- buchen (etwa pep.zeitkonto_abgleichen für die betroffenen Wochen mit einem Grund) oder die alte Rechnung behalten.
+--
 -- Sicherheitsprinzip: Alle Tabellen liegen im Schema "pep"; darauf haben die
 -- Rollen anon und authenticated keinen Zugriff, Row Level Security ist überall
 -- aktiv und es gibt keine Policies. Der Browser ruft nur Funktionen in "public"
@@ -1252,7 +1257,10 @@ begin
   perform pep.protokolliere(v_b.filiale_id, 'aendern', 'einstellungen', p_schluessel,
     to_jsonb(v_alt), to_jsonb(p_wert));
   if p_schluessel = 'abwesenheit_teiler' then
-    -- alle Teiler-Tage der Filiale mit dem neuen Teiler neu rechnen
+    -- alle Teiler-Tage der Filiale mit dem neuen Teiler neu rechnen. Die Korrekturen abgeschlossener Wochen (Nachbuchen
+    -- über die Abwesenheiten) tragen sonst den Standardgrund „Abwesenheit geändert“; pep.zeitkonto_vormerken liest
+    -- pep.grund (nur diese Transaktion).
+    perform set_config('pep.grund', 'Abwesenheits-Teiler geändert', true);
     perform pep.stunden_neu_berechnen(m.id, date '1900-01-01')
        from pep.mitarbeiter m where m.filiale_id = v_b.filiale_id;
   end if;
@@ -1261,7 +1269,8 @@ $$;
 
 -- p_id null = anlegen. Fehlende Schlüssel in p_daten lassen beim Ändern den
 -- bisherigen Wert stehen. Schlüssel: code, name, farbe, stundenregel, sperrt, aktiv, position, gutschrift (Stufe 2:
--- zählt im Zeitkonto als geleistete Zeit; beim Anlegen ohne Angabe true).
+-- zählt im Zeitkonto als geleistete Zeit; beim Anlegen ohne Angabe wie sperrt: Ein nicht sperrender Code lässt IST am
+-- selben Tag zu, mit Gutschrift zählte der Tag dann doppelt. Bestehende Codes ändert das nicht).
 create or replace function public.pep_code_speichern(p_id bigint, p_daten jsonb)
 returns bigint
 language plpgsql
@@ -1309,7 +1318,7 @@ begin
     insert into pep.abwesenheitscodes (filiale_id, code, name, farbe, stundenregel, sperrt, aktiv, gutschrift, position)
     values (v_b.filiale_id, v_code, v_name, v_farbe, v_regel,
             coalesce((p_daten ->> 'sperrt')::boolean, true), coalesce((p_daten ->> 'aktiv')::boolean, true),
-            coalesce((p_daten ->> 'gutschrift')::boolean, true),
+            coalesce((p_daten ->> 'gutschrift')::boolean, (p_daten ->> 'sperrt')::boolean, true),
             coalesce((p_daten ->> 'position')::int,
                      (select coalesce(max(c.position), 0) + 1 from pep.abwesenheitscodes c where c.filiale_id = v_b.filiale_id)))
     returning * into v_neu;

@@ -221,6 +221,8 @@ function zeichneBereiche() {
 // Korrekturen, pep.nachbuchen_codes). Der Hinweis steht über den Codes und, wenn sich einer der beiden Haken
 // tatsächlich geändert hat, noch einmal in der Bestätigung.
 const KORREKTUR_HINWEIS = 'Ändert die Wirkung in schon abgeschlossenen Wochen – das Zeitkonto bucht dann automatisch Korrekturen.';
+// Nicht sperrender Code mit Gutschrift: IST am selben Tag ist erlaubt und zählt, die Abwesenheit zählt dazu.
+const DOPPELT_HINWEIS = 'Achtung: Nicht sperrender Code mit Gutschrift – an Tagen mit IST zählt der Tag doppelt.';
 
 function zeichneCodes() {
   const zeile = (c) => {
@@ -232,6 +234,8 @@ function zeichneCodes() {
     const sperrt = eingabe('checkbox', neu ? true : c.sperrt);
     const aktiv = eingabe('checkbox', neu ? true : c.aktiv);
     const gutschrift = eingabe('checkbox', neu ? true : c.gutschrift);
+    // Neuer Code: Gutschrift folgt „sperrt“ (Vorgabe wie pep_code_speichern), danach frei wählbar.
+    if (neu) sperrt.addEventListener('change', () => { gutschrift.checked = sperrt.checked; });
     return zeilenformular(
       async () => {
         const wirkt = !neu && daten.abschluss_vorhanden
@@ -247,7 +251,8 @@ function zeichneCodes() {
       },
       feld('Code', code), feld('Name', name), feld('Farbe', f), feld('Stundenregel', regel),
       haken('sperrt', sperrt), haken('aktiv', aktiv), haken('Gutschrift im Zeitkonto', gutschrift),
-      knopfSpeichern(neu ? 'Anlegen' : 'Speichern'));
+      knopfSpeichern(neu ? 'Anlegen' : 'Speichern'),
+      !neu && !c.sperrt && c.gutschrift ? element('p', { class: 'hinweis-gelb code-doppelt' }, DOPPELT_HINWEIS) : null);
   };
   boxen.codes.replaceChildren(abschnitt('Abwesenheitscodes',
     element('p', { class: 'hinweis' }, '„Gutschrift im Zeitkonto“: Die Abwesenheit zählt im Zeitkonto als geleistete Zeit. ',
@@ -260,6 +265,9 @@ function zeichneCodes() {
 
 // ---------------------------------------------------------------- Regelparameter
 
+// Teiler, deren Änderung abgeschlossene Wochen nachbucht (Abwesenheitsstunden bzw. Feiertagsgutschrift neu gerechnet).
+const NACHBUCHENDE_PARAMETER = ['abwesenheit_teiler', 'feiertag_teiler'];
+
 function zeichneParameter() {
   const zeilen = Object.entries(PARAMETER).map(([schluessel, [beschriftung, art, erklaerung]]) => {
     const zeit = art === 'zeit';
@@ -267,15 +275,20 @@ function zeichneParameter() {
       : eingabe('number', daten.werte[schluessel], { step: String(art), min: '0' });
     e.addEventListener('change', async () => {
       const wert = zeit ? e.value : zahl(e.value);
+      const wirkt = daten.abschluss_vorhanden && NACHBUCHENDE_PARAMETER.includes(schluessel);
       const ok = await speichere(
         () => aufruf('pep_einstellung_setzen', { p_schluessel: schluessel, p_wert: wert }), 'parameter');
       // Bei Fehler bleibt der Abschnitt stehen: Feld zeigt wieder den gespeicherten Wert.
       if (ok === undefined && e.isConnected) e.value = daten.werte[schluessel] ?? '';
+      if (ok && wirkt) meldung(`Gespeichert. ${KORREKTUR_HINWEIS}`, 'ok');
     });
     return element('div', { class: 'zeile' }, feld(beschriftung, e),
       element('small', { class: 'hinweis erklaerung' }, erklaerung));
   });
-  boxen.parameter.replaceChildren(abschnitt('Regelparameter', ...zeilen));
+  boxen.parameter.replaceChildren(abschnitt('Regelparameter',
+    daten.abschluss_vorhanden
+      ? element('p', { class: 'hinweis-gelb' }, 'Abwesenheits- und Feiertags-Teiler: ', KORREKTUR_HINWEIS) : null,
+    ...zeilen));
 }
 
 // ---------------------------------------------------------------- IST-Erfassung (Stufe 2)

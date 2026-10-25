@@ -43,7 +43,10 @@ Bereiche KA und VP. `tests/umstellung.test.mjs` belegt das: Eine Stufe-0-Datenba
 mit Daten bekommt das aktuelle Schema zweimal, die Daten bleiben gleich.
 
 **Von Stufe 1 auf Stufe 2:** ebenfalls nur `supabase/schema.sql` im SQL-Editor
-**erneut** ausführen; die Datei ist idempotent und behält alle Daten. Neu sind die
+**erneut** ausführen; die Datei ist idempotent und behält alle Daten. **Reihenfolge:
+erst das Schema in Supabase, dann nach `main` mergen** (bzw. die Seiten aktualisieren).
+Die Seite der Stufe 1 läuft mit der Datenbank der Stufe 2 weiter, umgekehrt nicht; auch
+der Weckruf braucht `pep_lebenszeichen` aus dem neuen Schema. Neu sind die
 Tabellen für IST (`ist_bloecke`, `ist_tage`, `ist_leer`), Wochenabschlüsse und das
 Zeitkonto-Journal samt Nachbuch-Triggern, die Spalte „Gutschrift im Zeitkonto“ der
 Abwesenheitscodes (ZA aus) und die Einstellung `ist_ab`. **`ist_ab` steht danach auf
@@ -133,7 +136,7 @@ npm install
 npm test
 ```
 
-Stand Stufe 2: **361 Tests, alle grün** (rund 35 s). Die zwei Startbestand-Tests
+Stand Stufe 2: **384 Tests, alle grün** (rund 37 s). Die zwei Startbestand-Tests
 lesen `privat/stammdaten-aschaffenburg.sql` und werden ohne diese Datei
 übersprungen; alle anderen Tests laufen in jedem Checkout.
 
@@ -160,11 +163,13 @@ Die Oberfläche lässt sich ohne Supabase ansehen, mit erfundenen Daten.
 Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funktionen.
 
 - **Lauf:** `node tests/browser/szenarien.mjs [filter]` startet den Testserver und Chrome,
-  spielt **56 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 2,5 min) und
+  spielt **59 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 3 min) und
   prüft jeweils Oberfläche und Datenbankstand. Die Szenarien 1–44 decken Stufe 1 ab,
   45–54 IST-Erfassung, Zeitkonto, die neuen Kacheln und Ausdrucke von Stufe 2, 55 die
   Sicherung (herunterladen, in eine zweite, leere Filiale einspielen), 56 die
-  Urlaubstool-Umfrage einer zweiten Leitung samt Zuordnungsvorschlägen. Fotos,
+  Urlaubstool-Umfrage einer zweiten Leitung samt Zuordnungsvorschlägen, 57 die Hilfe,
+  58 eine nicht gebuchte Diff (Reiter und Ausdrucke), 59 die Hinweise zu Teiler und
+  Codes in den Einstellungen. Fotos,
   PDFs, die Excel-Dateien und `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
 - **Server:** `tests/browser/server.mjs` baut die Datenbank wie `tests/helfer.mjs` in
   PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026, Start der

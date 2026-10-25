@@ -265,6 +265,14 @@ test('Code-Gutschrift (Stufe 2): lesen, beim Anlegen Standard true, beim Ändern
   await codeSpeichern(ng, { gutschrift: false, sperrt: false });
   const ngNeu = (await alle()).codes.find((c) => c.id === ng);
   assert.deepEqual([ngNeu.gutschrift, ngNeu.sperrt, ngNeu.name], [false, false, 'Ohne Gutschrift neu']);
+  // Neuer nicht sperrender Code ohne Angabe: gutschrift false (sonst zählt der Tag mit IST doppelt); ausdrücklich true geht
+  const ns = await codeSpeichern(null, { code: 'NS', name: 'Nicht sperrend', farbe: '#123456', stundenregel: 'teiler', sperrt: false });
+  assert.equal(await gutschrift(ns), false);
+  const nsg = await codeSpeichern(null, { code: 'NSG', name: 'Nicht sperrend mit', farbe: '#123456', stundenregel: 'teiler',
+    sperrt: false, gutschrift: true });
+  assert.equal(await gutschrift(nsg), true);
+  await codeSpeichern(gs, { sperrt: false }); // bestehender Code: gutschrift bleibt
+  assert.equal(await gutschrift(gs), true);
   // Die Stellvertretung liest die Codes mit, darf aber nicht schreiben
   assert.equal((await json(stellv, 'select public.pep_einstellungen() as r')).codes.find((c) => c.id === ng).gutschrift, false);
   await wirft(json(stellv, 'select public.pep_code_speichern($1, $2::jsonb) as r', [ng, '{"gutschrift":true}']), 'NUR_LEITUNG');

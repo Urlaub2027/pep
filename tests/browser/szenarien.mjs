@@ -2380,17 +2380,20 @@ await szenario('Hilfe: „?“ auf jedem Reiter, Escape, Klick daneben, IST, Tab
   await pause(300);
 });
 
-await szenario('Zeitkonto: nach dem Abschluss angelegt → Diff grau „nicht gebucht“, nicht im Saldo und nicht in der Summe', async () => {
-  // Vorbereitung (auch im gefilterten Lauf): KW 45 und KW 46 abgeschlossen
-  if (!(await abschluesse()).includes(TAGE[0])) {
-    await bestaetigeTage([...K45, ...TAGE]);
-    for (const kw of [45, 46]) {
-      if (!(await abschluesse()).includes(kw === 45 ? K45[0] : TAGE[0])) {
-        const r = await s.rpc('pep_wochenabschluss', { p_jahr: 2026, p_kw: kw }, B.leitung);
-        if (r.status !== 200) throw new Error(`pep_wochenabschluss KW ${kw}: ${r.json?.message}`);
-      }
+// Vorbereitung der folgenden Szenarien (auch im gefilterten Lauf): KW 45 und KW 46 abgeschlossen.
+async function kw45und46Abschliessen() {
+  if ((await abschluesse()).includes(TAGE[0])) return;
+  await bestaetigeTage([...K45, ...TAGE]);
+  for (const kw of [45, 46]) {
+    if (!(await abschluesse()).includes(kw === 45 ? K45[0] : TAGE[0])) {
+      const r = await s.rpc('pep_wochenabschluss', { p_jahr: 2026, p_kw: kw }, B.leitung);
+      if (r.status !== 200) throw new Error(`pep_wochenabschluss KW ${kw}: ${r.json?.message}`);
     }
   }
+}
+
+await szenario('Zeitkonto: nach dem Abschluss angelegt → Diff grau „nicht gebucht“, nicht im Saldo und nicht in der Summe', async () => {
+  await kw45und46Abschliessen();
   const nils = (await s.rpc('pep_mitarbeiter_speichern', { p_id: null, p_daten: { name: 'Nachtrag, Nils' } }, B.leitung)).json;
   await s.rpc('pep_vertrag_speichern', { p_mitarbeiter_id: nils, p_daten:
     { vertragsart: 'vollzeit', wochenstunden: 37.5, gueltig_ab: '2026-01-01' } }, B.leitung);
@@ -2445,6 +2448,41 @@ await szenario('Zeitkonto: nach dem Abschluss angelegt → Diff grau „nicht ge
   });
   gleich(hinweis, [['KW 46/2026', 'nicht gebucht']], 'Stundenblatt: Woche „nicht gebucht“');
   await druckAufraeumen();
+});
+
+await szenario('Einstellungen: Korrektur-Hinweis beim Teiler, nicht sperrender Code ohne Gutschrift als Vorgabe, Warnung bei Gutschrift', async () => {
+  await kw45und46Abschliessen();
+  // Ein nicht sperrender Code mit Gutschrift (per RPC, wie ihn eine ältere Fassung angelegt hätte)
+  const id = (await s.rpc('pep_code_speichern', { p_id: null, p_daten: { code: 'NSG', name: 'Nicht sperrend mit Gutschrift',
+    farbe: '#123456', stundenregel: 'teiler', sperrt: false, gutschrift: true } }, B.leitung)).json;
+  await alsBenutzer('chef');
+  await reiter('einstellungen');
+  const box = (titel) => c.werte((t) => [...document.querySelectorAll('#ansicht-einstellungen .box')]
+    .find((b) => b.querySelector('h2')?.textContent === t)?.querySelector('.hinweis-gelb')?.textContent ?? null, titel);
+  gleich(await box('Regelparameter'), 'Abwesenheits- und Feiertags-Teiler: Ändert die Wirkung in schon abgeschlossenen Wochen – '
+    + 'das Zeitkonto bucht dann automatisch Korrekturen.', 'Regelparameter: Korrektur-Hinweis nach dem Abschluss');
+  const warnungen = await c.werte(() => [...document.querySelectorAll('#ansicht-einstellungen .code-doppelt')]
+    .map((p) => [p.closest('form').querySelector('input[type="text"]').value, p.textContent]));
+  gleich(warnungen, [['NSG', 'Achtung: Nicht sperrender Code mit Gutschrift – an Tagen mit IST zählt der Tag doppelt.']],
+    'Warnung nur beim nicht sperrenden Code mit Gutschrift');
+  // Neuer Code: „sperrt“ abhaken nimmt die Gutschrift mit, wieder anhaken setzt sie wieder
+  const klickNeu = (t) => c.werte((x) => {
+    const f = [...document.querySelectorAll('#ansicht-einstellungen .codes form.zeile')].at(-1);
+    [...f.querySelectorAll('label.haken')].find((l) => l.textContent.trim() === x).querySelector('input').click();
+  }, t);
+  const stand = () => c.werte(() => {
+    const f = [...document.querySelectorAll('#ansicht-einstellungen .codes form.zeile')].at(-1);
+    const h = (t) => [...f.querySelectorAll('label.haken')].find((l) => l.textContent.trim() === t).querySelector('input').checked;
+    return [h('sperrt'), h('Gutschrift im Zeitkonto')];
+  });
+  gleich(await stand(), [true, true], 'neuer Code: sperrt und Gutschrift vorbelegt');
+  await klickNeu('sperrt');
+  gleich(await stand(), [false, false], 'sperrt ab → Gutschrift ab');
+  await klickNeu('sperrt');
+  gleich(await stand(), [true, true], 'sperrt an → Gutschrift an');
+  gleich((await sql('select sperrt, gutschrift from pep.abwesenheitscodes where id = $1', [id]))[0], { sperrt: false, gutschrift: true },
+    'DB: bestehender Code unverändert');
+  await c.werte(() => document.querySelector('#ansicht-einstellungen .code-doppelt').scrollIntoView({ block: 'center' }));
 });
 
 // ================================================================ Ende

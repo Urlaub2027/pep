@@ -61,12 +61,20 @@ Danach die Seite im Browser neu laden (Strg+F5), damit die neuen Dateien kommen.
 
 ### Umstellung von Stufe 1 auf Stufe 2
 
-1. Im SQL-Editor den **aktuellen** Inhalt von `supabase/schema.sql` noch einmal
-   ausführen. Das Schema ist idempotent: Plan, Mitarbeiter, Verträge und
+**Reihenfolge: erst die Datenbank, dann die Seite.** Die Seite der Stufe 1 läuft
+mit der Datenbank der Stufe 2 weiter (alle ihre Funktionen gibt es dort unverändert),
+umgekehrt nicht: Die Seite der Stufe 2 ruft Funktionen auf, die eine Stufe-1-Datenbank
+nicht kennt. Auch der Weckruf (GitHub-Workflow) braucht `pep_lebenszeichen` aus dem
+neuen Schema.
+
+1. Im SQL-Editor den **aktuellen** Inhalt von `supabase/schema.sql` (Stand Stufe 2)
+   noch einmal ausführen. Das Schema ist idempotent: Plan, Mitarbeiter, Verträge und
    Abwesenheiten bleiben stehen; neu kommen die Tabellen für IST, Wochenabschlüsse
    und das Zeitkonto-Journal. Der Test `tests/umstellung.test.mjs` spielt das mit
    einer eingefrorenen Stufe-1-Datenbank durch.
-2. Die Seite im Browser neu laden (Strg+F5).
+2. **Erst danach** Stufe 2 nach `main` übernehmen (Merge), damit GitHub Pages die
+   neue Seite ausliefert.
+3. Die Seite im Browser neu laden (Strg+F5).
 
 **Start von IST und Zeitkonto (einmalig, wichtig):**
 
@@ -167,9 +175,11 @@ sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck
 - **Bereiche:** Kürzel, Name, Farbe, Art, ob eine Kompetenz nötig ist, aktiv.
 - **Codes:** Abwesenheitscodes (z. B. U, KM, BS) mit Stundenregel, sperren, neu anlegen.
   „Gutschrift im Zeitkonto“ heißt: Die Stunden zählen im Zeitkonto wie Arbeitszeit
-  (Standard: an; bei ZA aus, weil ZA das Zeitkonto abbaut). Wer den Haken oder
-  „sperrt“ ändert, nachdem schon Wochen abgeschlossen sind, bekommt für diese Wochen
-  automatisch Korrekturen.
+  (Standard: an; bei ZA aus, weil ZA das Zeitkonto abbaut). Ein neuer Code ohne
+  „sperrt“ bekommt die Gutschrift standardmäßig nicht: An so einem Tag darf auch IST
+  stehen, mit Gutschrift zählte der Tag doppelt (bestehende Codes mit dieser Kombination
+  sind gelb markiert). Wer den Haken oder „sperrt“ ändert, nachdem schon Wochen
+  abgeschlossen sind, bekommt für diese Wochen automatisch Korrekturen.
 - **Parameter:** Rechenwerte mit Erklärung (z. B. Teiler 6 für Urlaubsstunden je Tag,
   Feiertags-Teiler, Ruhezeit, Pausen, „Späte Schicht ab“ für die Spalte „Spät“,
   Zeitkonto-Warnfaktor, Stundenleistung in €/h für die Vorausplanung).
@@ -368,6 +378,10 @@ Montag bucht). Je Mitarbeiter:
 - ⚠ auf gelbem Grund: Der Saldo liegt über Warnfaktor × Wochenstunden (Plus oder
   Minus). In der laufenden Woche sind Diff und Saldo aktuell grau („vorläufig“), weil
   das Soll der ganzen Woche gegen das IST bis heute steht.
+- Diff grau mit **„nicht gebucht“**: Diese Diff bucht der Wochenabschluss nicht bzw. hat
+  sie nicht gebucht – der Mitarbeiter ist inaktiv oder war beim Abschluss noch nicht
+  angelegt (bzw. hatte da noch keinen Vertrag für die Woche). Sie zählt weder im Saldo noch in der Summe; wer
+  sie trotzdem im Zeitkonto haben will, bucht sie als „Korrektur von Hand“.
 
 **Jede Woche (Montag, nur Leitung):**
 1. Reiter Zeitkonto öffnen; er zeigt die Vorwoche.
@@ -380,7 +394,7 @@ Montag bucht). Je Mitarbeiter:
 
 **Korrekturen kommen automatisch.** Ändert sich nach dem Abschluss etwas, das die
 Woche betrifft (IST, Abwesenheit, Vertrag, Ein- oder Austritt, Öffnungstag, Gutschrift
-oder „sperrt“ eines Codes, Feiertags-Teiler), bucht PEP sofort für jeden Betroffenen
+oder „sperrt“ eines Codes, Abwesenheits- oder Feiertags-Teiler), bucht PEP sofort für jeden Betroffenen
 genau eine „Korrektur (automatisch)“ mit der Differenz. Der Grund im Journal beginnt
 mit der Woche, z. B. „KW 46/2026: Inventur länger“ (bei IST-Änderungen der
 eingegebene Grund, sonst z. B. „Abwesenheit geändert“).
