@@ -22,8 +22,10 @@ Ziele:
 - Zeitkonto je Mitarbeiter und Woche mit Saldo Vorwoche → Saldo aktuell, Warnung bei zu hohem Saldo.
 - Stunden-Journal: jede Buchung als neue Zeile, nie überschrieben, Korrekturen mit Grund und Name.
 - Ausdrucke: Wocheneinsatz-IST (wie tegut `report-generator.pdf`), Stundenblatt je Mitarbeiter, Journal als Excel.
-- Zwei Änderungen aus Stufe 1 **[dtn, 25.10.2026]**: Startseiten-Kachel „Abwesend“ zählt nur Urlaub (U) und Krank (KM);
-  die Ersatzsuche schließt nur Kandidaten aus, die durch die Übernahme einen **neuen** Ruhezeit- oder
+- Zwei Änderungen aus Stufe 1 **[dtn, 25.10.2026]**: Die Startseiten-Kachel „Abwesend“ zählt jeden, der wegen einer
+  Abwesenheit nicht eingeplant werden kann, also alle Codes mit `sperrt = true`, außer dem Feiertag (FT), weil der
+  alle betrifft. Damit erscheinen Urlaub, Krank, Berufsschule, andere Filiale, Schulung und selbst angelegte Codes wie
+  „Fortbildung“. Die Ersatzsuche schließt nur Kandidaten aus, die durch die Übernahme einen **neuen** Ruhezeit- oder
   Höchstarbeitszeit-Verstoß bekämen (bestehende Verstöße schließen nicht mehr aus).
 
 Nicht-Ziele (spätere Stufen): Bedarfsplanung Kasse/Lieferzeiten, halbautomatischer Vorschlag, Mitarbeiter-App,
