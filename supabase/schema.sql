@@ -308,6 +308,22 @@ begin
     on conflict (filiale_id, code) do nothing;
   end if;
 
+  -- Lieferung: Startgruppe und Wochenmuster nur bei einer Filiale ohne Warengruppen. Eine umbenannte oder
+  -- deaktivierte Gruppe zählt mit; ein vom Nutzer geleertes Muster kommt nicht zurück (siehe Bereiche).
+  if not exists (select 1 from pep.warengruppen where filiale_id = p_filiale_id) then
+    insert into pep.warengruppen (filiale_id, name, bereich_id, minuten, aktiv, position)
+    select p_filiale_id, 'Trockensortiment', b.id, 45, true, 1
+      from pep.bereiche b
+     where b.filiale_id = p_filiale_id and b.kuerzel = 'TS' and b.art = 'bereich'
+    on conflict (filiale_id, name) do nothing;
+    -- LKW Mo–Sa 07:00, Sonntag ohne Muster.
+    if not exists (select 1 from pep.liefer_muster where filiale_id = p_filiale_id) then
+      insert into pep.liefer_muster (filiale_id, wochentag, lkw_zeit)
+      select p_filiale_id, t, time '07:00' from generate_series(1, 6) t
+      on conflict (filiale_id, wochentag) do nothing;
+    end if;
+  end if;
+
   insert into pep.einstellungen (filiale_id, schluessel, wert)
   values
     (p_filiale_id, 'abwesenheit_teiler',         '6'),
@@ -1064,6 +1080,17 @@ begin
                             from pep.bereiche b where b.filiale_id = v_f), '[]'::jsonb),
     'schulferien', coalesce((select jsonb_agg(to_jsonb(s) - 'filiale_id' order by s.von, s.id)
                                from pep.schulferien s where s.filiale_id = v_f), '[]'::jsonb),
+    'warengruppen', coalesce((select jsonb_agg(jsonb_build_object('id', w.id, 'name', w.name,
+                                   'bereich_id', w.bereich_id, 'minuten', w.minuten, 'aktiv', w.aktiv,
+                                   'position', w.position) order by w.position, w.id)
+                                from pep.warengruppen w where w.filiale_id = v_f), '[]'::jsonb),
+    'liefer_muster', jsonb_build_object(
+      'lkw', coalesce((select jsonb_object_agg(m.wochentag::text, to_char(m.lkw_zeit, 'HH24:MI'))
+                         from pep.liefer_muster m where m.filiale_id = v_f), '{}'::jsonb),
+      'rollis', coalesce((select jsonb_agg(jsonb_build_object('warengruppe_id', r.warengruppe_id,
+                                   'wochentag', r.wochentag, 'rollis', r.rollis)
+                                 order by r.warengruppe_id, r.wochentag)
+                            from pep.liefer_muster_rollis r where r.filiale_id = v_f), '[]'::jsonb)),
     'benutzer', coalesce((select jsonb_agg(jsonb_build_object(
                                    'user_id', bn.user_id, 'benutzername', o.benutzername,
                                    'anzeigename', o.anzeigename, 'rolle', bn.rolle,
@@ -2597,6 +2624,55 @@ alter table pep.plan_bloecke    enable row level security;
 alter table pep.plan_kommentare enable row level security;
 alter table pep.wochen          enable row level security;
 alter table pep.vorlagen        enable row level security;
+
+-- Lieferung & Bedarf: Warengruppen und Wochenmuster (LKW-Zeit, Rollis). Alle Tabellen tragen filiale_id
+-- (pep.sicherung_bedingung). Die Tageswerte (liefer_tag*) überschreiben das Muster für ein Datum.
+create table if not exists pep.warengruppen (
+  id         bigint generated always as identity primary key,
+  filiale_id bigint not null references pep.filialen (id) on delete cascade,
+  name       text not null check (btrim(name) <> ''),
+  bereich_id bigint not null references pep.bereiche (id),
+  minuten    int not null check (minuten between 1 and 240),
+  aktiv      boolean not null default true,
+  position   int not null default 0,
+  unique (filiale_id, name)
+);
+
+create table if not exists pep.liefer_muster (
+  filiale_id bigint not null references pep.filialen (id) on delete cascade,
+  wochentag  int not null check (wochentag between 1 and 7),
+  lkw_zeit   time not null,
+  primary key (filiale_id, wochentag)
+);
+
+create table if not exists pep.liefer_muster_rollis (
+  filiale_id     bigint not null references pep.filialen (id) on delete cascade,
+  warengruppe_id bigint not null references pep.warengruppen (id) on delete cascade,
+  wochentag      int not null check (wochentag between 1 and 7),
+  rollis         int not null check (rollis between 0 and 99),
+  primary key (warengruppe_id, wochentag)
+);
+
+create table if not exists pep.liefer_tag (
+  filiale_id bigint not null references pep.filialen (id) on delete cascade,
+  datum      date not null,
+  lkw_zeit   time not null,
+  primary key (filiale_id, datum)
+);
+
+create table if not exists pep.liefer_tag_rollis (
+  filiale_id     bigint not null references pep.filialen (id) on delete cascade,
+  warengruppe_id bigint not null references pep.warengruppen (id) on delete cascade,
+  datum          date not null,
+  rollis         int not null check (rollis between 0 and 99),
+  primary key (warengruppe_id, datum)
+);
+
+alter table pep.warengruppen          enable row level security;
+alter table pep.liefer_muster         enable row level security;
+alter table pep.liefer_muster_rollis  enable row level security;
+alter table pep.liefer_tag            enable row level security;
+alter table pep.liefer_tag_rollis     enable row level security;
 
 create or replace function pep.bloecke_ohne_ueberlappung()
 returns trigger
@@ -4376,6 +4452,186 @@ begin
     raise exception 'VORLAGE_NICHT_GEFUNDEN';
   end if;
   perform pep.protokolliere(v_b.filiale_id, 'loeschen', 'vorlagen', v_v.id::text, to_jsonb(v_v), null);
+end;
+$$;
+
+-- Lieferung & Bedarf: Warengruppen und Wochenmuster. Nur Leitung.
+
+-- Ganzzahl aus einem JSON-Wert: null, wenn kein ganzzahliger JSON-Wert vom Typ number (oder absurd groß).
+create or replace function pep.json_ganzzahl(p jsonb)
+returns bigint
+language sql immutable
+set search_path = ''
+as $f$
+  select case when jsonb_typeof(p) = 'number' and abs((p #>> '{}')::numeric) < 1000000000000000
+               and (p #>> '{}')::numeric = trunc((p #>> '{}')::numeric) then (p #>> '{}')::bigint end
+$f$;
+
+-- p_id null = anlegen (name, bereich_id und minuten Pflicht). Schlüssel: name, bereich_id, minuten, aktiv, position.
+-- Der Bereich muss zur Filiale gehören, art 'bereich' und aktiv sein (nicht Pause, nicht VP).
+create or replace function public.pep_warengruppe_speichern(p_id bigint, p_daten jsonb)
+returns bigint
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b       pep.benutzer := pep.leitung();
+  v_alt     pep.warengruppen;
+  v_neu     pep.warengruppen;
+  v_name    text;
+  v_bereich bigint;
+  v_min     bigint;
+begin
+  if p_daten is null or jsonb_typeof(p_daten) <> 'object' then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  if p_id is not null then
+    select * into v_alt from pep.warengruppen where id = p_id and filiale_id = v_b.filiale_id;
+    if not found then
+      raise exception 'WARENGRUPPE_NICHT_GEFUNDEN';
+    end if;
+  end if;
+
+  v_name := case when p_daten ? 'name' then coalesce(urlaub.trim_alles(p_daten ->> 'name'), '') else v_alt.name end;
+  if v_name is null or v_name = '' then
+    raise exception 'NAME_LEER';
+  end if;
+  if exists (select 1 from pep.warengruppen
+              where filiale_id = v_b.filiale_id and name = v_name and id is distinct from p_id) then
+    raise exception 'WARENGRUPPE_DOPPELT';
+  end if;
+
+  if p_daten ? 'bereich_id' or p_id is null then
+    v_bereich := pep.json_ganzzahl(p_daten -> 'bereich_id');
+    if v_bereich is null or not exists (select 1 from pep.bereiche
+         where id = v_bereich and filiale_id = v_b.filiale_id and art = 'bereich' and aktiv) then
+      raise exception 'BEREICH_NICHT_GEFUNDEN';
+    end if;
+  else
+    v_bereich := v_alt.bereich_id;
+  end if;
+
+  if p_daten ? 'minuten' or p_id is null then
+    v_min := pep.json_ganzzahl(p_daten -> 'minuten');
+    if v_min is null or v_min not between 1 and 240 then
+      raise exception 'WERT_UNGUELTIG';
+    end if;
+  else
+    v_min := v_alt.minuten;
+  end if;
+  if p_daten ? 'aktiv' and jsonb_typeof(p_daten -> 'aktiv') <> 'boolean' then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  if p_daten ? 'position' and coalesce(abs(pep.json_ganzzahl(p_daten -> 'position')), 2000000) > 1000000 then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+
+  if p_id is null then
+    insert into pep.warengruppen (filiale_id, name, bereich_id, minuten, aktiv, position)
+    values (v_b.filiale_id, v_name, v_bereich, v_min, coalesce((p_daten ->> 'aktiv')::boolean, true),
+            coalesce(pep.json_ganzzahl(p_daten -> 'position'),
+                     (select coalesce(max(x.position), 0) + 1 from pep.warengruppen x where x.filiale_id = v_b.filiale_id)))
+    returning * into v_neu;
+    perform pep.protokolliere(v_b.filiale_id, 'anlegen', 'warengruppen', v_neu.id::text, null, to_jsonb(v_neu));
+  else
+    update pep.warengruppen set
+      name = v_name, bereich_id = v_bereich, minuten = v_min,
+      aktiv = coalesce((p_daten ->> 'aktiv')::boolean, aktiv),
+      position = coalesce(pep.json_ganzzahl(p_daten -> 'position'), position)
+     where id = p_id returning * into v_neu;
+    perform pep.protokolliere(v_b.filiale_id, 'aendern', 'warengruppen', v_neu.id::text, to_jsonb(v_alt), to_jsonb(v_neu));
+  end if;
+  return v_neu.id;
+end;
+$$;
+
+-- Wochenmuster eines ISO-Wochentags (1–7). Schlüssel (beide optional):
+--   lkw    'HH:MM' (nur :00/:30) setzt die LKW-Zeit, null löscht die Musterzeile;
+--   rollis {warengruppe_id: zahl 0–99 | null}: 0 oder null löscht die Zeile der Zelle.
+create or replace function public.pep_liefer_muster_setzen(p_wochentag int, p_daten jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b     pep.benutzer := pep.leitung();
+  v_zeit  time;
+  v_e     record;
+  v_wid   bigint;
+  v_n     int;
+  v_alt   pep.liefer_muster;
+  v_neu   pep.liefer_muster;
+  v_ra    pep.liefer_muster_rollis;
+  v_rn    pep.liefer_muster_rollis;
+begin
+  if p_wochentag is null or p_wochentag not between 1 and 7
+     or p_daten is null or jsonb_typeof(p_daten) <> 'object' then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+
+  -- Erst alles prüfen, dann schreiben.
+  if p_daten ? 'lkw' and jsonb_typeof(p_daten -> 'lkw') <> 'null' then
+    if jsonb_typeof(p_daten -> 'lkw') <> 'string' or (p_daten ->> 'lkw') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
+      raise exception 'WERT_UNGUELTIG';
+    end if;
+    v_zeit := (p_daten ->> 'lkw')::time;
+    if extract(minute from v_zeit) not in (0, 30) then
+      raise exception 'HALBE_STUNDE';
+    end if;
+  end if;
+  if p_daten ? 'rollis' then
+    if jsonb_typeof(p_daten -> 'rollis') <> 'object' then
+      raise exception 'WERT_UNGUELTIG';
+    end if;
+    for v_e in select * from jsonb_each(p_daten -> 'rollis') loop
+      if v_e.key !~ '^[0-9]{1,15}$' or not exists (select 1 from pep.warengruppen
+           where id = v_e.key::bigint and filiale_id = v_b.filiale_id) then
+        raise exception 'WARENGRUPPE_NICHT_GEFUNDEN';
+      end if;
+      if jsonb_typeof(v_e.value) <> 'null'
+         and (pep.json_ganzzahl(v_e.value) is null or pep.json_ganzzahl(v_e.value) not between 0 and 99) then
+        raise exception 'WERT_UNGUELTIG';
+      end if;
+    end loop;
+  end if;
+
+  if p_daten ? 'lkw' then
+    select * into v_alt from pep.liefer_muster where filiale_id = v_b.filiale_id and wochentag = p_wochentag;
+    if v_zeit is null then
+      delete from pep.liefer_muster where filiale_id = v_b.filiale_id and wochentag = p_wochentag;
+    else
+      insert into pep.liefer_muster (filiale_id, wochentag, lkw_zeit) values (v_b.filiale_id, p_wochentag, v_zeit)
+      on conflict (filiale_id, wochentag) do update set lkw_zeit = excluded.lkw_zeit
+      returning * into v_neu;
+    end if;
+    perform pep.protokolliere(v_b.filiale_id, 'aendern', 'liefer_muster', p_wochentag::text,
+                              case when v_alt.filiale_id is null then null else to_jsonb(v_alt) end,
+                              case when v_neu.filiale_id is null then null else to_jsonb(v_neu) end);
+  end if;
+
+  if p_daten ? 'rollis' then
+    for v_e in select * from jsonb_each(p_daten -> 'rollis') loop
+      v_wid := v_e.key::bigint;
+      v_n := coalesce(pep.json_ganzzahl(v_e.value), 0);
+      select * into v_ra from pep.liefer_muster_rollis where warengruppe_id = v_wid and wochentag = p_wochentag;
+      if v_n = 0 then
+        delete from pep.liefer_muster_rollis where warengruppe_id = v_wid and wochentag = p_wochentag;
+        v_rn := null;
+      else
+        insert into pep.liefer_muster_rollis (filiale_id, warengruppe_id, wochentag, rollis)
+        values (v_b.filiale_id, v_wid, p_wochentag, v_n)
+        on conflict (warengruppe_id, wochentag) do update set rollis = excluded.rollis
+        returning * into v_rn;
+      end if;
+      if v_ra.rollis is distinct from v_rn.rollis then
+        perform pep.protokolliere(v_b.filiale_id, 'aendern', 'liefer_muster_rollis', v_wid || '/' || p_wochentag,
+                                  case when v_ra.rollis is null then null else to_jsonb(v_ra) end,
+                                  case when v_rn.rollis is null then null else to_jsonb(v_rn) end);
+      end if;
+    end loop;
+  end if;
 end;
 $$;
 
@@ -6573,6 +6829,7 @@ set search_path = ''
 as $$
   select array[
     'bereiche', 'abwesenheitscodes', 'rahmen', 'einstellungen', 'tag_abweichungen', 'schulferien',
+    'warengruppen', 'liefer_muster', 'liefer_muster_rollis', 'liefer_tag', 'liefer_tag_rollis',
     'mitarbeiter', 'vertraege', 'urlaubsjahre', 'kompetenzen', 'wochenvorgaben', 'wiederholungen',
     'urlaub_umfragen', 'urlaub_zuordnung', 'urlaub_freigaben', 'abwesenheiten',
     'plan_bloecke', 'plan_kommentare', 'wochen', 'vorlagen',
@@ -7259,6 +7516,8 @@ revoke all on function public.pep_schulferien_speichern(bigint, date, date, text
 revoke all on function public.pep_schulferien_loeschen(bigint) from public, anon, authenticated;
 revoke all on function public.pep_benutzer_setzen(text, text) from public, anon, authenticated;
 revoke all on function public.pep_benutzer_entfernen(uuid) from public, anon, authenticated;
+revoke all on function public.pep_warengruppe_speichern(bigint, jsonb) from public, anon, authenticated;
+revoke all on function public.pep_liefer_muster_setzen(int, jsonb) from public, anon, authenticated;
 grant execute on function public.pep_einstellungen() to authenticated;
 grant execute on function public.pep_feiertage(int) to authenticated;
 grant execute on function public.pep_rahmen_speichern(int, jsonb) to authenticated;
@@ -7271,6 +7530,8 @@ grant execute on function public.pep_schulferien_speichern(bigint, date, date, t
 grant execute on function public.pep_schulferien_loeschen(bigint) to authenticated;
 grant execute on function public.pep_benutzer_setzen(text, text) to authenticated;
 grant execute on function public.pep_benutzer_entfernen(uuid) to authenticated;
+grant execute on function public.pep_warengruppe_speichern(bigint, jsonb) to authenticated;
+grant execute on function public.pep_liefer_muster_setzen(int, jsonb) to authenticated;
 
 -- Abwesenheiten
 revoke all on function public.pep_abwesenheit_setzen(bigint, bigint, date, date, numeric, time, time, text) from public, anon, authenticated;

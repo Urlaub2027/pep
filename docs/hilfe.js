@@ -100,6 +100,8 @@ const FEHLER = {
   VORLAGE_LEER: 'An diesem Tag bzw. in dieser Woche ist nichts geplant – eine leere Vorlage lässt sich nicht speichern.',
   VORLAGE_NICHT_GEFUNDEN: 'Diese Vorlage gibt es nicht (mehr).',
   VORWOCHE_OFFEN: 'Wochen lassen sich nur der Reihe nach abschließen: zuerst die Woche, in der die IST-Erfassung startet (Einstellungen), danach jeweils die folgende.',
+  WARENGRUPPE_DOPPELT: 'Eine Warengruppe mit diesem Namen gibt es schon.',
+  WARENGRUPPE_NICHT_GEFUNDEN: 'Diese Warengruppe gibt es nicht (mehr).',
   WERT_UNGUELTIG: 'Der Wert ist ungültig.',
   WIEDERHOLUNG_NICHT_GEFUNDEN: 'Diese Wiederholung gibt es nicht (mehr).',
   WOCHE_GEBUCHT: 'Diese Woche ist schon abgeschlossen.',

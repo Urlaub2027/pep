@@ -3,7 +3,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { neueDatenbank, als, pepBenutzer, filiale } from './helfer.mjs';
 
-let db, leitung, stellv, azubi, ohne, fil, ma, jo, vorlage, sicherung;
+let db, leitung, stellv, azubi, ohne, fil, ma, jo, vorlage, sicherung, wg;
 
 const aufruf = (nutzer, sql) => als(db, 'authenticated', nutzer, sql);
 
@@ -30,6 +30,7 @@ before(async () => {
     select $1, $2, '2027-05-03', '08:00', '12:00', id from pep.bereiche where filiale_id = $1 and kuerzel = 'KA'`, [fil, ma]);
   await db.query(`insert into pep.abwesenheiten (filiale_id, mitarbeiter_id, code_id, datum, stunden, quelle)
     select $1, $2, id, '2027-05-03', 6.25, 'manuell' from pep.abwesenheitscodes where filiale_id = $1 and code = 'KM'`, [fil, ma]);
+  wg = (await db.query('select id from pep.warengruppen where filiale_id = $1', [fil])).rows[0].id; // Startgruppe
   // Echte Sicherung dieser Filiale: ohne Rechtecheck scheiterte das Einspielen erst an FILIALE_NICHT_LEER (sichtbar).
   sicherung = (await aufruf(leitung, 'select public.pep_sicherung() as r'))[0].r;
 });
@@ -88,6 +89,9 @@ const aufrufe = () => ({
   pep_einstellung_setzen: `select public.pep_einstellung_setzen('x', '1')`,
   pep_code_speichern: `select public.pep_code_speichern(null, '{"code":"ZZ","name":"Test"}')`,
   pep_bereich_speichern: `select public.pep_bereich_speichern(null, '{"kuerzel":"ZZ","name":"Test"}')`,
+  // Nur Leitung. Echte Warengruppe: ohne Rechtecheck würde sie umbenannt, das Muster geändert (und protokolliert).
+  pep_warengruppe_speichern: `select public.pep_warengruppe_speichern(${wg}, '{"name":"Zzz"}')`,
+  pep_liefer_muster_setzen: `select public.pep_liefer_muster_setzen(2, '{"lkw":"08:30"}')`,
   pep_schulferien_speichern: `select public.pep_schulferien_speichern(null, '2027-04-05', '2027-04-16', 'Test')`,
   pep_schulferien_loeschen: `select public.pep_schulferien_loeschen(1)`,
   pep_benutzer_setzen: `select public.pep_benutzer_setzen('vize', 'leitung')`,
