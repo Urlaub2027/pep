@@ -229,7 +229,7 @@
   - Muster TS 12 per `sql()` setzen, danach Seite neu laden (`c.navigiere`, siehe vorhandenes VP-Szenario).
   - Der Kasten zeigt TS „9 h nötig“.
   - Rollis-Feld auf 8 setzen → gelb umrandet, nötig 6 h. Danach „↺ Muster“ → wieder 12.
-  - „Vorschlag“ öffnen, 1 Person wählen, ersten Kandidaten „eintragen“. Danach in der DB ein TS-Block ab 07:00 für diese Person, „fehlt“ im Kasten kleiner.
+  - „Vorschlag“ öffnen, 1 Person wählen, ersten Kandidaten „eintragen“. Danach in der DB ein TS-Block ab 07:00 für diese Person, „fehlt“ im Kasten sinkt.
   - Vergangener Tag: Felder `disabled`.
 - [ ] **Step 2: Run** `node tests/browser/szenarien.mjs "Lieferung"`. Expected: FAIL.
 - [ ] **Step 3: Implement**
