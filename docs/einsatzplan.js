@@ -7,7 +7,7 @@ import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE, textfarbe } from 
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum, montagDerKw } from './zeit.js';
 import {
-  zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel, rund, kurz,
+  zellen, strich, abdeckung, abdeckungsKlasse, vpGebunden, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel, rund, kurz,
 } from './plan-raster.js';
 import {
   istSpalten, istZellKlassen, zeilenStatus, istAbweichung, statusZelle, abweichungsZelle, istTagBox, offeneBox,
@@ -447,14 +447,20 @@ function zeile(m, sp, oeffnung) {
 }
 
 function abdeckungsZeilen(sp, oeffnung) {
-  const { kasse, vp, anwesend } = abdeckung(woche, datum, sp);
+  const { kasse, vp, anwesend, vpAnKasse } = abdeckung(woche, datum, sp);
+  const offen = sp.map((von) => von >= oeffnung.von && von < oeffnung.bis);
+  const gebunden = vpGebunden(vpAnKasse, offen);
+  const vpTitel = (i) => (!vp[i] || !offen[i] ? null
+    : anwesend[i] === 1 ? 'Nur eine Person anwesend' : gebunden[i] ? 'VP an der Kasse, keine Ablösung frei' : null);
   const reihe = (titel, art, werte) => element('tr', { class: `ep-deckung ep-deckung-${art}` },
     element('th', { class: 'ep-name' }, titel), element('td', {}),
     sp.map((von, i) => {
-      const offen = von >= oeffnung.von && von < oeffnung.bis;
-      const klasse = abdeckungsKlasse(art, werte[i], offen, anwesend[i]);
+      const klasse = abdeckungsKlasse(art, werte[i], offen[i], anwesend[i], gebunden[i]);
       const zeigen = werte[i] > 0 || klasse;
-      return element('td', { class: ['ep-dz', von.endsWith(':00') ? 'voll' : '', klasse].filter(Boolean).join(' '), 'data-von': von }, zeigen ? String(werte[i]) : '');
+      return element('td', {
+        class: ['ep-dz', von.endsWith(':00') ? 'voll' : '', klasse].filter(Boolean).join(' '), 'data-von': von,
+        title: art === 'vp' ? vpTitel(i) : null,
+      }, zeigen ? String(werte[i]) : '');
     }),
     element('td', {}));
   return element('tfoot', {}, reihe('Kasse', 'kasse', kasse), reihe('VP', 'vp', vp));
