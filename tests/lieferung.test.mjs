@@ -26,7 +26,10 @@ async function aufbau() {
       gruppe: (await db.query('select id from pep.warengruppen where filiale_id = $1', [f])).rows[0].id,
     };
   };
-  return { db, ...g, einst, gruppe, muster, protokoll, fremd };
+  const tag = (datum, d, nutzer = leitung) =>
+    json(nutzer, 'select public.pep_liefer_tag_setzen($1::date, $2::jsonb) as r', [datum, JSON.stringify(d)]);
+  const woche = () => json(leitung, 'select public.pep_einsatzplan_woche(2026, 46) as r');
+  return { db, ...g, einst, gruppe, muster, protokoll, fremd, tag, woche };
 }
 
 test('grundausstattung: Trockensortiment → TS 45 min, LKW Mo–Sa 07:00, keine Rollis', async () => {
@@ -132,4 +135,84 @@ test('Sicherung enthält die fünf Tabellen', async () => {
   }
   assert.equal(s.tabellen.warengruppen.length, 1);
   assert.equal(s.tabellen.liefer_muster.length, 6);
+});
+
+test('lieferung_tag: Muster, Tageswert schlägt Muster, 0 überschreibt, null zurück auf Muster', async () => {
+  const t = await aufbau();
+  const g1 = (await t.einst()).warengruppen[0].id;
+  await t.muster(2, { rollis: { [g1]: 12 } }); // Di, LKW 07:00 aus der Grundausstattung
+  let r = await t.tag('2026-11-10', {});
+  assert.equal(r.lkw, '07:00');
+  assert.equal(r.lkw_aus_muster, true);
+  assert.deepEqual(r.rollis, [{ warengruppe_id: g1, rollis: 12, aus_muster: true }]);
+  r = await t.tag('2026-11-10', { rollis: { [g1]: 0 } });
+  assert.deepEqual(r.rollis, [{ warengruppe_id: g1, rollis: 0, aus_muster: false }]);
+  r = await t.tag('2026-11-10', { rollis: { [g1]: null } });
+  assert.deepEqual(r.rollis, [{ warengruppe_id: g1, rollis: 12, aus_muster: true }]);
+  r = await t.tag('2026-11-10', { lkw: '08:30' });
+  assert.equal(r.lkw, '08:30');
+  assert.equal(r.lkw_aus_muster, false);
+  r = await t.tag('2026-11-10', { lkw: null });
+  assert.equal(r.lkw, '07:00');
+  assert.equal(r.lkw_aus_muster, true);
+});
+
+test('liefer_tag_setzen: Stellvertretung darf; Fehler; Protokoll', async () => {
+  const t = await aufbau();
+  const g1 = (await t.einst()).warengruppen[0].id;
+  const r = await t.tag('2026-11-10', { rollis: { [g1]: 5 }, lkw: '09:00' }, t.stellv);
+  assert.equal(r.rollis[0].rollis, 5);
+  assert.equal(r.lkw, '09:00');
+  assert.ok((await t.protokoll('aendern', 'liefer_tag')) >= 1);
+  assert.ok((await t.protokoll('aendern', 'liefer_tag_rollis')) >= 1);
+  await wirft(t.tag('2026-11-01', { lkw: '08:00' }), 'VERGANGEN');
+  await wirft(t.tag('2026-11-08', { lkw: '08:00' }), 'GESCHLOSSEN');
+  await wirft(t.tag(null, { lkw: '08:00' }), 'DATUM_UNGUELTIG');
+  await wirft(t.tag('2026-11-10', { lkw: '08:15' }), 'HALBE_STUNDE');
+  await wirft(t.tag('2026-11-10', { lkw: 'x' }), 'WERT_UNGUELTIG');
+  await wirft(t.tag('2026-11-10', { rollis: { [g1]: 100 } }), 'WERT_UNGUELTIG');
+  await wirft(t.tag('2026-11-10', { rollis: { [g1]: 1.5 } }), 'WERT_UNGUELTIG');
+  await wirft(t.tag('2026-11-10', null), 'WERT_UNGUELTIG');
+  await wirft(t.tag('2026-11-10', { rollis: { 999999: 1 } }), 'WARENGRUPPE_NICHT_GEFUNDEN');
+  const f = await t.fremd();
+  await wirft(t.tag('2026-11-10', { rollis: { [f.gruppe]: 1 } }), 'WARENGRUPPE_NICHT_GEFUNDEN');
+  await wirft(t.tag('2026-11-10', { rollis: { [g1]: 1 } }, t.stellv).then(() => t.tag('2026-11-10', { lkw: '08:15', rollis: { [g1]: 9 } })), 'HALBE_STUNDE');
+  // Fehler schreibt nichts: der Wert 9 ist nicht angekommen.
+  const e = await t.tag('2026-11-10', {});
+  assert.equal(e.rollis[0].rollis, 1);
+});
+
+test('geöffneter Sonntag ohne Muster: lkw null, Rollis 0, Tageswert setzbar', async () => {
+  const t = await aufbau();
+  const g1 = (await t.einst()).warengruppen[0].id;
+  await t.json(t.leitung, 'select public.pep_abweichung_speichern($1::date, $2::jsonb) as r', ['2026-11-15', JSON.stringify({
+    art: 'verkaufsoffen', geoeffnet: true, oeffnung_von: '13:00', oeffnung_bis: '18:00',
+    rahmen_von: '12:00', rahmen_bis: '18:30', name: 'Verkaufsoffener Sonntag' })]);
+  const w = await t.woche();
+  assert.equal(w.lieferung['2026-11-15'].lkw, null);
+  assert.deepEqual(w.lieferung['2026-11-15'].rollis, [{ warengruppe_id: g1, rollis: 0, aus_muster: true }]);
+  const r = await t.tag('2026-11-15', { rollis: { [g1]: 4 } });
+  assert.equal(r.rollis[0].rollis, 4);
+  assert.equal(r.lkw, null);
+});
+
+test('einsatzplan_woche: lieferung nur für geöffnete Tage; Gruppe mit inaktivem Bereich fehlt', async () => {
+  const t = await aufbau();
+  const g1 = (await t.einst()).warengruppen[0].id;
+  const g2 = await t.gruppe(null, { name: 'Getränke', bereich_id: t.bereich.OG, minuten: 30 });
+  let w = await t.woche();
+  assert.deepEqual(Object.keys(w.lieferung).sort(),
+    ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14']);
+  assert.deepEqual(w.warengruppen.map((x) => x.id), [g1, g2]);
+  assert.deepEqual(Object.keys(w.warengruppen[0]).sort(), ['bereich_id', 'id', 'minuten', 'name', 'position']);
+  assert.equal(w.lieferung['2026-11-09'].rollis.length, 2);
+  assert.equal(w.lieferung['2026-11-09'].lkw, '07:00');
+  await t.json(t.leitung, 'select public.pep_bereich_speichern($1, $2::jsonb) as r', [t.bereich.OG, JSON.stringify({ aktiv: false })]);
+  w = await t.woche();
+  assert.deepEqual(w.warengruppen.map((x) => x.id), [g1]);
+  assert.deepEqual(w.lieferung['2026-11-09'].rollis.map((x) => x.warengruppe_id), [g1]);
+  // IST-Modus bleibt unverändert.
+  const ist = await t.json(t.leitung, 'select public.pep_ist_woche(2026, 46) as r');
+  assert.equal(ist.lieferung, undefined);
+  assert.equal(ist.warengruppen, undefined);
 });

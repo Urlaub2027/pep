@@ -70,7 +70,8 @@ test('Stufe-1-Datenbank mit Planblöcken → neues Schema zweimal: Daten bleiben
   for (const t of Object.keys(vorher)) assert.deepEqual(await lesen(t), vorher[t], t);
   // Plan-Antwort unverändert (pep_einsatzplan_woche läuft jetzt über pep.woche_antwort), bis auf das neue Feld ist_ab:
   // die bestehende Filiale bekommt beim Einspielen den Montag der laufenden Woche als Start der IST-Erfassung.
-  const { ist_ab: istAb, ...wocheNachher } = await planWoche();
+  // Ebenso die Lieferung-Schlüssel warengruppen und lieferung (Lieferung & Bedarf), die der alte Stand nicht kennt.
+  const { ist_ab: istAb, warengruppen: _w, lieferung: _l, ...wocheNachher } = await planWoche();
   assert.deepEqual(wocheNachher, wocheVorher);
   assert.equal(istAb, '2026-11-02');
   const istAbWert = async () => (await db.query(

@@ -3323,6 +3323,21 @@ begin
                              from generate_series(0, 6) i) end,
     'kennzahlen', pep.woche_kennzahlen(v_f, p_jahr, p_kw));
 
+  -- Lieferung & Bedarf (nur Plan-Modus): zählende Warengruppen und die gültige Lieferung je geöffnetem Tag.
+  if not p_ist then
+    v_erg := v_erg || jsonb_build_object(
+      'warengruppen', coalesce((
+        select jsonb_agg(jsonb_build_object('id', w.id, 'name', w.name, 'bereich_id', w.bereich_id,
+                                            'minuten', w.minuten, 'position', w.position) order by w.position, w.id)
+          from pep.warengruppen w
+          join pep.bereiche b on b.id = w.bereich_id
+         where w.filiale_id = v_f and w.aktiv and b.aktiv and b.art = 'bereich'), '[]'::jsonb),
+      'lieferung', coalesce((
+        select jsonb_object_agg(to_char(d.tag, 'YYYY-MM-DD'), pep.lieferung_tag(v_f, d.tag))
+          from (select v_mo + i as tag from generate_series(0, 6) i) d
+         where (select s.geoeffnet from pep.tag_status(v_f, d.tag) s)), '{}'::jsonb));
+  end if;
+
   if p_ist then
     v_erg := v_erg || jsonb_build_object(
       'modus', 'ist',
@@ -4632,6 +4647,134 @@ begin
       end if;
     end loop;
   end if;
+end;
+$$;
+
+-- Gültige Lieferung eines Tages (L2): {lkw, lkw_aus_muster, rollis: [{warengruppe_id, rollis, aus_muster}]}.
+-- LKW: Tageswert, sonst Muster des ISO-Wochentags, sonst null. Rollis je zählende Warengruppe
+-- (aktiv, Bereich aktiv und art 'bereich'), nach position, id: Tageswert, sonst Musterwert, sonst 0.
+create or replace function pep.lieferung_tag(p_filiale_id bigint, p_datum date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $f$
+  select jsonb_build_object(
+    'lkw', to_char(coalesce(t.lkw_zeit, m.lkw_zeit), 'HH24:MI'),
+    'lkw_aus_muster', t.filiale_id is null,
+    'rollis', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'warengruppe_id', w.id,
+               'rollis', coalesce(tr.rollis, mr.rollis, 0),
+               'aus_muster', tr.warengruppe_id is null)
+             order by w.position, w.id)
+        from pep.warengruppen w
+        join pep.bereiche b on b.id = w.bereich_id
+        left join pep.liefer_tag_rollis tr on tr.warengruppe_id = w.id and tr.datum = p_datum
+        left join pep.liefer_muster_rollis mr on mr.warengruppe_id = w.id
+                                              and mr.wochentag = extract(isodow from p_datum)::int
+       where w.filiale_id = p_filiale_id and w.aktiv and b.aktiv and b.art = 'bereich'), '[]'::jsonb))
+    from (select 1) x
+    left join pep.liefer_tag t on t.filiale_id = p_filiale_id and t.datum = p_datum
+    left join pep.liefer_muster m on m.filiale_id = p_filiale_id and m.wochentag = extract(isodow from p_datum)::int
+$f$;
+
+-- Tageswerte der Lieferung. Leitung oder Stellvertretung. Schlüssel (beide optional, nur vorhandene ändern sich):
+--   lkw    'HH:MM' (nur :00/:30) setzt die LKW-Zeit des Tages, null = zurück auf das Muster (Zeile löschen);
+--   rollis {warengruppe_id: zahl 0–99 | null}: 0 ist ein Tageswert, null = zurück auf das Muster.
+-- Antwort: pep.lieferung_tag des Tages.
+create or replace function public.pep_liefer_tag_setzen(p_datum date, p_daten jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b    pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_zeit time;
+  v_e    record;
+  v_wid  bigint;
+  v_n    bigint;
+  v_alt  pep.liefer_tag;
+  v_neu  pep.liefer_tag;
+  v_ra   pep.liefer_tag_rollis;
+  v_rn   pep.liefer_tag_rollis;
+begin
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if p_datum < pep.heute() then
+    raise exception 'VERGANGEN';
+  end if;
+  if not (select s.geoeffnet from pep.tag_status(v_b.filiale_id, p_datum) s) then
+    raise exception 'GESCHLOSSEN';
+  end if;
+  if p_daten is null or jsonb_typeof(p_daten) <> 'object' then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+
+  -- Erst alles prüfen, dann schreiben.
+  if p_daten ? 'lkw' and jsonb_typeof(p_daten -> 'lkw') <> 'null' then
+    if jsonb_typeof(p_daten -> 'lkw') <> 'string' or (p_daten ->> 'lkw') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
+      raise exception 'WERT_UNGUELTIG';
+    end if;
+    v_zeit := (p_daten ->> 'lkw')::time;
+    if extract(minute from v_zeit) not in (0, 30) then
+      raise exception 'HALBE_STUNDE';
+    end if;
+  end if;
+  if p_daten ? 'rollis' then
+    if jsonb_typeof(p_daten -> 'rollis') <> 'object' then
+      raise exception 'WERT_UNGUELTIG';
+    end if;
+    for v_e in select * from jsonb_each(p_daten -> 'rollis') loop
+      if v_e.key !~ '^[0-9]{1,15}$' or not exists (select 1 from pep.warengruppen
+           where id = v_e.key::bigint and filiale_id = v_b.filiale_id) then
+        raise exception 'WARENGRUPPE_NICHT_GEFUNDEN';
+      end if;
+      if jsonb_typeof(v_e.value) <> 'null'
+         and (pep.json_ganzzahl(v_e.value) is null or pep.json_ganzzahl(v_e.value) not between 0 and 99) then
+        raise exception 'WERT_UNGUELTIG';
+      end if;
+    end loop;
+  end if;
+
+  if p_daten ? 'lkw' then
+    select * into v_alt from pep.liefer_tag where filiale_id = v_b.filiale_id and datum = p_datum;
+    if v_zeit is null then
+      delete from pep.liefer_tag where filiale_id = v_b.filiale_id and datum = p_datum;
+    else
+      insert into pep.liefer_tag (filiale_id, datum, lkw_zeit) values (v_b.filiale_id, p_datum, v_zeit)
+      on conflict (filiale_id, datum) do update set lkw_zeit = excluded.lkw_zeit
+      returning * into v_neu;
+    end if;
+    perform pep.protokolliere(v_b.filiale_id, 'aendern', 'liefer_tag', to_char(p_datum, 'YYYY-MM-DD'),
+                              case when v_alt.filiale_id is null then null else to_jsonb(v_alt) end,
+                              case when v_neu.filiale_id is null then null else to_jsonb(v_neu) end);
+  end if;
+
+  if p_daten ? 'rollis' then
+    for v_e in select * from jsonb_each(p_daten -> 'rollis') loop
+      v_wid := v_e.key::bigint;
+      v_n := pep.json_ganzzahl(v_e.value);
+      select * into v_ra from pep.liefer_tag_rollis where warengruppe_id = v_wid and datum = p_datum;
+      v_rn := null;
+      if v_n is null then
+        delete from pep.liefer_tag_rollis where warengruppe_id = v_wid and datum = p_datum;
+      else
+        insert into pep.liefer_tag_rollis (filiale_id, warengruppe_id, datum, rollis)
+        values (v_b.filiale_id, v_wid, p_datum, v_n)
+        on conflict (warengruppe_id, datum) do update set rollis = excluded.rollis
+        returning * into v_rn;
+      end if;
+      if v_ra.rollis is distinct from v_rn.rollis then
+        perform pep.protokolliere(v_b.filiale_id, 'aendern', 'liefer_tag_rollis',
+                                  v_wid || '/' || to_char(p_datum, 'YYYY-MM-DD'),
+                                  case when v_ra.rollis is null then null else to_jsonb(v_ra) end,
+                                  case when v_rn.rollis is null then null else to_jsonb(v_rn) end);
+      end if;
+    end loop;
+  end if;
+  return pep.lieferung_tag(v_b.filiale_id, p_datum);
 end;
 $$;
 
@@ -7518,6 +7661,7 @@ revoke all on function public.pep_benutzer_setzen(text, text) from public, anon,
 revoke all on function public.pep_benutzer_entfernen(uuid) from public, anon, authenticated;
 revoke all on function public.pep_warengruppe_speichern(bigint, jsonb) from public, anon, authenticated;
 revoke all on function public.pep_liefer_muster_setzen(int, jsonb) from public, anon, authenticated;
+revoke all on function public.pep_liefer_tag_setzen(date, jsonb) from public, anon, authenticated;
 grant execute on function public.pep_einstellungen() to authenticated;
 grant execute on function public.pep_feiertage(int) to authenticated;
 grant execute on function public.pep_rahmen_speichern(int, jsonb) to authenticated;
@@ -7532,6 +7676,7 @@ grant execute on function public.pep_benutzer_setzen(text, text) to authenticate
 grant execute on function public.pep_benutzer_entfernen(uuid) to authenticated;
 grant execute on function public.pep_warengruppe_speichern(bigint, jsonb) to authenticated;
 grant execute on function public.pep_liefer_muster_setzen(int, jsonb) to authenticated;
+grant execute on function public.pep_liefer_tag_setzen(date, jsonb) to authenticated;
 
 -- Abwesenheiten
 revoke all on function public.pep_abwesenheit_setzen(bigint, bigint, date, date, numeric, time, time, text) from public, anon, authenticated;
