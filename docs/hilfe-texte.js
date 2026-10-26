@@ -72,7 +72,7 @@ export const HILFE = {
     gut_zu_wissen: [
       'Geht ein Strich nicht (z. B. Kompetenz fehlt), steht der Grund kurz am Zeiger und oben als Meldung.',
       'Rot gestreift = unbesetzt, weil die Person abwesend ist. „Ersatz“ zeigt, wer einspringen kann.',
-      'Zeilen Kasse/VP: Rot heißt niemand da, VP gelb: allein oder ohne Ablösung an der Kasse.',
+      'Zeilen Kasse/VP: Rot heißt niemand da. VP an der Kasse ohne Ablösung zählt nicht.',
       'Klick auf einen Namen öffnet die Eckdaten der Person.',
       'Vergangene Tage sind schreibgeschützt. „IST erfassen“ wechselt in den Modus IST.',
       'Am Tablet: waagerecht ziehen malt, senkrecht wischen scrollt.',

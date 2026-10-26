@@ -7,7 +7,7 @@ import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE, textfarbe } from 
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum, montagDerKw } from './zeit.js';
 import {
-  zellen, strich, abdeckung, abdeckungsKlasse, vpGebunden, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel, rund, kurz,
+  zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel, rund, kurz,
 } from './plan-raster.js';
 import {
   istSpalten, istZellKlassen, zeilenStatus, istAbweichung, statusZelle, abweichungsZelle, istTagBox, offeneBox,
@@ -447,15 +447,14 @@ function zeile(m, sp, oeffnung) {
 }
 
 function abdeckungsZeilen(sp, oeffnung) {
-  const { kasse, vp, anwesend, vpAnKasse } = abdeckung(woche, datum, sp);
   const offen = sp.map((von) => von >= oeffnung.von && von < oeffnung.bis);
-  const gebunden = vpGebunden(vpAnKasse, offen);
-  const vpTitel = (i) => (!vp[i] || !offen[i] ? null
-    : anwesend[i] === 1 ? 'Nur eine Person anwesend' : gebunden[i] ? 'VP an der Kasse, keine Ablösung frei' : null);
+  const { kasse, vp, vpFrei, anwesend } = abdeckung(woche, datum, sp, offen);
+  const vpTitel = (i) => (vp[i] > 0 && vpFrei[i] === 0 ? 'VP an der Kasse, keine Ablösung frei'
+    : offen[i] && anwesend[i] === 1 && vpFrei[i] > 0 ? 'Nur eine Person anwesend' : null);
   const reihe = (titel, art, werte) => element('tr', { class: `ep-deckung ep-deckung-${art}` },
     element('th', { class: 'ep-name' }, titel), element('td', {}),
     sp.map((von, i) => {
-      const klasse = abdeckungsKlasse(art, werte[i], offen[i], anwesend[i], gebunden[i]);
+      const klasse = abdeckungsKlasse(art, werte[i], offen[i], anwesend[i]);
       const zeigen = werte[i] > 0 || klasse;
       return element('td', {
         class: ['ep-dz', von.endsWith(':00') ? 'voll' : '', klasse].filter(Boolean).join(' '), 'data-von': von,
@@ -463,7 +462,7 @@ function abdeckungsZeilen(sp, oeffnung) {
       }, zeigen ? String(werte[i]) : '');
     }),
     element('td', {}));
-  return element('tfoot', {}, reihe('Kasse', 'kasse', kasse), reihe('VP', 'vp', vp));
+  return element('tfoot', {}, reihe('Kasse', 'kasse', kasse), reihe('VP', 'vp', vpFrei));
 }
 
 function zeichneRaster() {

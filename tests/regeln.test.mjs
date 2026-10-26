@@ -157,7 +157,7 @@ test('vp_allein: zwei Personen 07–20 → kein Eintrag', async () => {
 });
 
 // ---------------------------------------------------------------------------
-// vp_gebunden
+// vp_gebunden: VPs da, aber keine frei (jede sitzt an der Kasse ohne Ablösung, länger als 30 min am Stück)
 
 test('vp_gebunden: VP an der Kasse, niemand mit Kassenkompetenz frei → Eintrag', async () => {
   const v = await ma('Test, Vera', { kompetenzen: ['KA', 'VP'] });
@@ -166,9 +166,10 @@ test('vp_gebunden: VP an der Kasse, niemand mit Kassenkompetenz frei → Eintrag
   await plan(o, '2027-01-22', '08:00-12:00 OG');
   const l = await pr('2027-01-22');
   assert.deepEqual(nur(l, 'vp_gebunden'), [
-    { von: '08:00', bis: '12:00', text: 'VP an der Kasse, keine Ablösung frei 08:00–12:00' }]);
+    { von: '08:00', bis: '12:00', text: 'Keine VP frei (an der Kasse) 08:00–12:00' }]);
   assert.equal(l.find((e) => e.art === 'vp_gebunden').mitarbeiter_id, null);
   assert.deepEqual(schwere(l, 'vp_gebunden'), ['warnung']);
+  assert.ok(nur(l, 'keine_vp').every((e) => e.bis <= '08:00' || e.von >= '12:00'), 'anwesend ist sie'); // nur außerhalb
 });
 
 test('vp_gebunden: Pausenablöse 30 min zu zweit → kein Eintrag; 60 min → Eintrag', async () => {
@@ -182,28 +183,33 @@ test('vp_gebunden: Pausenablöse 30 min zu zweit → kein Eintrag; 60 min → Ei
   await plan(v2, '2027-01-25', '08:00-12:00 OG, 12:00-13:00 KA, 13:00-16:00 OG');
   await plan(k2, '2027-01-25', '08:00-12:00 KA, 12:00-13:00 PA, 13:00-16:00 KA');
   assert.deepEqual(nur(await pr('2027-01-25'), 'vp_gebunden'), [
-    { von: '12:00', bis: '13:00', text: 'VP an der Kasse, keine Ablösung frei 12:00–13:00' }]);
+    { von: '12:00', bis: '13:00', text: 'Keine VP frei (an der Kasse) 12:00–13:00' }]);
 });
 
-test('vp_gebunden: Ablösung frei, zweite VP frei oder allein → kein Eintrag', async () => {
+test('vp_gebunden: Ablösung frei oder zweite VP frei → kein Eintrag', async () => {
   // Kollegin mit Kassenkompetenz räumt Obst ein: kann ablösen
   const v = await ma('Test, Viktor', { kompetenzen: ['KA', 'VP'] });
   const f = await ma('Test, Frieda', { kompetenzen: ['KA', 'OG'] });
   await plan(v, '2027-01-26', '08:00-12:00 KA');
   await plan(f, '2027-01-26', '08:00-12:00 OG');
   assert.deepEqual(nur(await pr('2027-01-26'), 'vp_gebunden'), []);
-  // zweite VP nicht an der Kasse
+  // zweite VP nicht an der Kasse: eine VP ist frei
   const v2 = await ma('Test, Vroni', { kompetenzen: ['KA', 'VP'] });
   const w2 = await ma('Test, Wilma', { kompetenzen: ['OG', 'VP'] });
   await plan(v2, '2027-01-27', '08:00-12:00 KA');
   await plan(w2, '2027-01-27', '08:00-12:00 OG');
   assert.deepEqual(nur(await pr('2027-01-27'), 'vp_gebunden'), []);
-  // allein: das meldet vp_allein, nicht vp_gebunden
+});
+
+test('vp_gebunden: allein an der Kasse → Eintrag, die eigene Pause und vor der Öffnung nicht', async () => {
   const a = await ma('Test, Anton', { kompetenzen: ['KA', 'VP'] });
-  await plan(a, '2027-01-28', '08:00-12:00 KA');
+  await plan(a, '2027-01-28', '06:00-10:00 KA, 10:00-10:30 PA, 10:30-12:00 KA');
   const l = await pr('2027-01-28');
-  assert.deepEqual(nur(l, 'vp_gebunden'), []);
-  assert.equal(nur(l, 'vp_allein').length, 1);
+  assert.deepEqual(nur(l, 'vp_gebunden'), [
+    { von: '07:00', bis: '10:00', text: 'Keine VP frei (an der Kasse) 07:00–10:00' },
+    { von: '10:30', bis: '12:00', text: 'Keine VP frei (an der Kasse) 10:30–12:00' }]);
+  assert.deepEqual(nur(l, 'vp_allein'), [{ von: '07:00', bis: '12:00', text: 'Nur eine Person anwesend 07:00–12:00' }]);
+  assert.ok(nur(l, 'keine_vp').every((e) => e.von >= '12:00'), 'bis 12 ist sie da');
 });
 
 // ---------------------------------------------------------------------------
