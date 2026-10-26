@@ -189,5 +189,5 @@ Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funk
 
 ## Ausblick
 
-Nächste Stufen: Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), eine Seite für die
-Rolle „Mitarbeiter“, Tausch und Fairness auf der Startseite.
+Nächste Stufen: Kassenplanung (Bedarf an der Kasse; Lieferung und Bedarf je Bereich gibt es
+schon), eine Seite für die Rolle „Mitarbeiter“, Tausch und Fairness auf der Startseite.

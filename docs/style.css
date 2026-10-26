@@ -1066,3 +1066,14 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-c-sb-abw { width: 24mm; }
   .dr-c-sb-kw { width: 20mm; }
 }
+
+/* Kasten „Lieferung & Bedarf“ (einsatzplan.js) */
+.ep-liefer-zeile { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--a1) var(--a2); margin-bottom: var(--a1); font-size: 0.85rem; }
+.ep-liefer-zeile input { width: 5.5rem; min-height: 32px; padding: 2px var(--a1); font: inherit; border: 1px solid var(--linie-stark); border-radius: 4px; }
+.ep-liefer-zeile input.abweichung { border: 2px solid var(--netto-gelb); background: var(--hinweis); }
+.ep-liefer-zeile input:disabled { opacity: 0.6; }
+.ep-muster { padding: 2px var(--a2); font: inherit; font-size: 0.8rem; color: var(--text); background: none; border: 0; text-decoration: underline; cursor: pointer; }
+.ep-liefer .ep-klein { margin-top: var(--a2); }
+.ep-vorschlag td { padding: 0 var(--a1) var(--a2); }
+.ep-vorschlag .knopf { min-height: 32px; padding: 0 var(--a3); font-size: 0.85rem; }
+.ep-link { color: var(--text); font-weight: 600; }

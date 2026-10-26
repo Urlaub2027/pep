@@ -312,7 +312,23 @@ eigenen Pause zählt sie). Gelb heißt: nur eine Person da.
   freie Samstage im Monat/Jahr, Urlaubswunsch offen.
 - *Woche:* je Mitarbeiter Soll (Vertrag − Abwesenheiten), geplant, Differenz; unten die
   Summe gegen die Stundenvorgabe aus der Vorausplanung.
-- *Abteilungen heute:* Stunden je Bereich.
+- *Lieferung & Bedarf:* zeigt, wie viele Stunden das Einräumen der Lieferung braucht und wie
+  viele davon im Plan stehen. Oben steht die LKW-Zeit, darunter je Warengruppe die Rollis
+  des Tages. Das sind die Werte aus Einstellungen → Lieferung; weicht der Tag davon ab,
+  ist das Feld gelb umrandet, und „↺ Muster“ setzt es zurück. Leitung und Stellvertretung
+  dürfen die Tageswerte ändern (z. B. verkaufsoffener Sonntag oder Lieferung verschoben),
+  vergangene Tage sind schreibgeschützt. Die Tabelle zeigt je Bereich *nötig*, *eingeplant*
+  (besetzte Stunden ab der LKW-Zeit, ohne Pause) und *fehlt* (rot) bzw. ✓. Bereiche ohne
+  Warengruppe zeigen nur die eingeplanten Stunden. Ist noch keine Warengruppe angelegt,
+  steht dort ein Hinweis; die Leitung kommt per Link in die Einstellungen.
+  **Vorschlag:** Wo Stunden fehlen, öffnet „Vorschlag“ ein Fenster. Man wählt, ob 1, 2
+  oder 3 Personen die fehlenden Stunden teilen (Standard: 1). Der Block beginnt zur
+  LKW-Zeit und endet im Zeitrahmen des Tages. Die Kandidaten sind sortiert wie beim
+  Ersatz (meiste offene Wochenstunden zuerst); nicht aufgeführt ist, wer im Block schon
+  eingeplant oder abwesend ist, die Kompetenz nicht hat oder gegen eine Regel verstoßen
+  würde. Ein Klick auf „… eintragen“ malt den Block; fehlt danach noch etwas, öffnet sich
+  das Fenster mit dem Rest. Ohne Kandidaten heißt es „Niemand frei, der den Bereich darf.
+  Von Hand malen.“
 
 **Eckdaten:** Klick auf den Namen öffnet ein Fenster mit Vertrag und Kompetenzen,
 Stunden der Woche, Wochenvorgaben, Abwesenheiten dieser und nächster Woche, Samstagen
@@ -750,7 +766,7 @@ Einspielen bucht PEP keine automatischen Korrekturen.
 
 ## 5. Bekannte Grenzen
 - Die Reihenfolge der Mitarbeiter wird mit ▲/▼ geändert, nicht per Ziehen.
-- Bedarfsplanung (Vorgaben je Bereich und Uhrzeit) folgt in einer späteren Stufe.
+- Der Bedarf an der Kasse (Kassenplanung) wird noch nicht gerechnet; die Kassierleistung in den Einstellungen wirkt erst damit.
 - Kopieren fügt Blöcke eines Mitarbeiters, der am Ziel abwesend ist, trotzdem ein
   (unbesetzt) und prüft dabei die Pflicht-Vorgaben gegen diese Zeit nicht. Wird die
   Abwesenheit später gelöscht, kann ein Block einer Pflicht-Vorgabe widersprechen,

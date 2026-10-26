@@ -132,6 +132,12 @@ export function oeffneSicherung() {
   zeigeAnsicht('einstellungen');
 }
 
+// Reiter öffnen und den Unterreiter „Lieferung“ zeigen (Einsatzplan, Kasten „Lieferung & Bedarf“).
+export function oeffneLieferung() {
+  waehleTeil('lieferung');
+  zeigeAnsicht('einstellungen');
+}
+
 // ---------------------------------------------------------------- Zeiten (Rahmen und Abweichungen)
 
 // Vier Zeitfelder; `lesen(geoeffnet)` liefert die Werte, bei geschlossen alle null.

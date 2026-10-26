@@ -66,7 +66,6 @@ export const HILFE = {
       'Oben links „Plan“ gewählt lassen. Woche mit ◀ ▶, Datumsfeld oder „Heute“ wählen, dann den Tag.',
       'Pinsel wählen (ein Bereich je Knopf) und in der Zeile des Mitarbeiters über die Zeit ziehen.',
       '„Radieren“ leert die gezogenen halben Stunden. „Rückgängig“ nimmt die letzten Striche zurück.',
-      'Notiz: in die Kommentarspalte klicken, tippen, Enter.',
       '„Kopieren“ und „Vorlagen“ übertragen einen Tag oder eine Woche. „Krank/ZA“ trägt Krankheit oder Zeitausgleich ein.',
     ],
     gut_zu_wissen: [
@@ -76,7 +75,8 @@ export const HILFE = {
       'Klick auf einen Namen öffnet die Eckdaten der Person.',
       'Vergangene Tage sind schreibgeschützt. „IST erfassen“ wechselt in den Modus IST.',
       'Am Tablet: waagerecht ziehen malt, senkrecht wischen scrollt.',
-      'Was ein Kürzel bedeutet, zeigt „Kürzel“ rechts neben den Knöpfen (aufklappen).',
+      'Was ein Kürzel bedeutet, zeigt „Kürzel“ (aufklappen).',
+      'Kasten „Lieferung & Bedarf“: Rollis eintragen, „Vorschlag“ nennt, wer fehlende Stunden übernehmen kann.',
     ],
   },
 

@@ -11,7 +11,7 @@ import { plusTage, montagDerKw, zeitspanne, isoWoche, heuteDatum } from './zeit.
 import { vorzeichen } from './zeitkonto-daten.js';
 import {
   gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText, vorgabeText, ersatzBloecke,
-  uebernahmeText,
+  uebernahmeText, lieferBedarf, aufteilung, vorschlagBlock,
 } from './plan-raster.js';
 
 const WOCHENTAG_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -352,6 +352,99 @@ export async function ersatzDialog(kontext, mitarbeiterId, datum) {
   d.classList.add('pd-breit');
   // showModal fokussiert den ersten Kandidaten; Enter würde ihn sofort einsetzen. Deshalb steht der Fokus auf „Abbrechen“.
   d.querySelector('.dialog-knoepfe .knopf')?.focus();
+}
+
+// ---------------------------------------------------------------- Bedarf: Vorschlag für einen Bereich
+
+const stundenKurz = (n) => String(Math.round(n * 2) / 2).replace('.', ',');
+// „1 × 3 h“ bei gleichen Anteilen, sonst „1,5 h + 1 h“.
+const varianteText = (anteile) => (anteile.every((a) => a === anteile[0])
+  ? `${anteile.length} × ${stundenKurz(anteile[0])} h` : anteile.map((a) => `${stundenKurz(a)} h`).join(' + '));
+
+// Was in einem Bereich an einem Tag fehlt (lieferBedarf): Aufteilung auf 1 bis 3 Personen, Block ab LKW-Zeit, Kandidaten
+// (pep_bedarf_kandidaten). Ein Klick auf „eintragen“ malt den Block (pep_plan_malen) und lädt die Woche neu; fehlt danach
+// noch etwas, öffnet sich der Dialog mit dem Rest. kontext.aktuell() liefert den Kontext der neu geladenen Woche.
+export async function bedarfDialog(kontext, bereichId) {
+  const { woche, datum } = kontext;
+  if (!woche || !datum) return;
+  const bedarf = lieferBedarf(woche, datum);
+  const zeile = bedarf.bereiche.find((b) => b.bereich_id === bereichId);
+  const bereich = woche.bereiche.find((b) => b.id === bereichId);
+  const tag = woche.tage.find((t) => t.datum === datum);
+  const varianten = aufteilung(zeile?.fehlt ?? 0);
+  if (!zeile || !varianten.length || !tag) return;
+  let gewaehlt = 0; // Index der Variante; Standard: 1 Person
+  let d = null;
+  const kopf = element('p', { class: 'pd-unbesetzt' });
+  const chips = element('div', { class: 'chip-gruppe', role: 'group', 'aria-label': 'Aufteilung' });
+  const liste = element('div', { class: 'pd-kandidaten' });
+  const hinweis = element('p', { class: 'hinweis' },
+    'Reihenfolge: die meisten offenen Wochenstunden zuerst, dann weniger Samstage und Spätschichten. Nicht aufgeführt ist, '
+    + 'wer in dem Block schon eingeplant oder abwesend ist, die Kompetenz nicht hat oder gegen eine Regel verstoßen würde.');
+  let lauf = 0; // verwirft veraltete Antworten beim schnellen Wechseln der Aufteilung
+
+  const eintragen = async (k, block, knopf) => {
+    const fehlerZeile = d.querySelector('[role="alert"]');
+    const alle = [...d.querySelectorAll('button')];
+    fehlerZeile.hidden = true;
+    alle.forEach((x) => { x.disabled = true; });
+    knopf.classList.add('laeuft');
+    try {
+      await aufruf('pep_plan_malen', { p_mitarbeiter_id: k.mitarbeiter_id, p_datum: datum, p_von: block.von, p_bis: block.bis, p_bereich_id: bereichId });
+    } catch (fehler) {
+      knopf.classList.remove('laeuft');
+      alle.forEach((x) => { x.disabled = false; });
+      if (fehler.behandelt) d.close();
+      else { fehlerZeile.textContent = fehlerText(fehler.message); fehlerZeile.hidden = false; }
+      return;
+    }
+    d.close();
+    await kontext.neuLaden();
+    meldung(`${k.name} ist ${bereich?.name ?? ''} ${zeitspanne(block.von, block.bis)} eingetragen (${tagKurz(datum)}).`, 'ok');
+    const neu = kontext.aktuell?.();
+    if (neu) await bedarfDialog(neu, bereichId); // zeigt nichts, wenn nichts mehr fehlt
+  };
+
+  const zeichne = async () => {
+    const nummer = ++lauf;
+    const anteile = varianten[gewaehlt];
+    const block = vorschlagBlock(bedarf.lkw, Math.max(...anteile), { von: tag.rahmen_von, bis: tag.rahmen_bis });
+    chips.replaceChildren(...varianten.map((v, i) => element('button', {
+      type: 'button', class: 'chip', 'aria-pressed': String(i === gewaehlt), onclick: () => { gewaehlt = i; zeichne(); },
+    }, varianteText(v))));
+    kopf.replaceChildren(element('strong', {}, `${stundenKurz(zeile.fehlt)} h fehlen:`),
+      block ? ` Block ${zeitspanne(block.von, block.bis)}` : ' kein Block im Zeitrahmen des Tages');
+    liste.replaceChildren();
+    if (!block) return;
+    let antwort;
+    try {
+      antwort = await aufruf('pep_bedarf_kandidaten', { p_datum: datum, p_bereich_id: bereichId, p_von: block.von, p_bis: block.bis });
+    } catch (fehler) {
+      if (!fehler.behandelt) liste.replaceChildren(element('p', { class: 'warnung' }, fehlerText(fehler.message)));
+      return;
+    }
+    if (nummer !== lauf || !antwort) return;
+    if (!antwort.kandidaten.length) {
+      liste.replaceChildren(element('p', { class: 'warnung' }, 'Niemand frei, der den Bereich darf. Von Hand malen.'));
+      return;
+    }
+    liste.replaceChildren(...antwort.kandidaten.map((k) => {
+      const knopf = element('button', { type: 'button', class: 'pd-kandidat', title: `${k.name} ${zeitspanne(block.von, block.bis)} eintragen` },
+        element('span', { class: 'pd-kandidat-kopf' }, element('strong', {}, k.name),
+          element('span', { class: `pd-luecke${Number(k.luecke) < 0 ? ' ueber' : ''}` }, lueckeText(k.luecke))),
+        element('span', { class: 'pd-uebernahme' }, `${zeitspanne(block.von, block.bis)} eintragen`),
+        element('small', {}, `${k.samstage_monat} ${k.samstage_monat === 1 ? 'Samstag' : 'Samstage'} im Monat · `
+          + `${k.spaet_woche} ${k.spaet_woche === 1 ? 'Spätschicht' : 'Spätschichten'} in der Woche`),
+        k.hinweise.map((h) => element('span', { class: 'pd-hinweis' }, h)));
+      knopf.addEventListener('click', () => eintragen(k, block, knopf));
+      return knopf;
+    }));
+  };
+
+  d = dialog(`Vorschlag ${bereich?.name ?? ''} · ${tagKurz(datum)}`, [kopf, chips, liste, hinweis], []);
+  d.classList.add('pd-breit');
+  d.querySelector('.dialog-knoepfe .knopf')?.focus();
+  await zeichne();
 }
 
 function farbfeld(farbe) {
