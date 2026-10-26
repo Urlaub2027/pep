@@ -1,6 +1,6 @@
 // Reiter „Einstellungen“ (nur Filialleitung): Zeiten, abweichende Tage, Bereiche, Codes, Regelparameter,
 // Schulferien, Urlaubstool, Benutzer, Sicherung. Jede Zeile speichert für sich und lädt danach ihren Abschnitt neu.
-// Die Abschnitte sind auf fünf Unterreiter verteilt (TEILE); alle bleiben im DOM, nur der gewählte Teil ist sichtbar.
+// Die Abschnitte sind auf sechs Unterreiter verteilt (TEILE); alle bleiben im DOM, nur der gewählte Teil ist sichtbar.
 import {
   $, meldung, fehlerText, element, datumDE, WOCHENTAGE,
   zahl, uhrzeit, feld, eingabe as eingabeBasis, auswahlfeld as auswahlBasis,
@@ -38,7 +38,7 @@ const PARAMETER = {
   wochen_toleranz_h: ['Wochen-Toleranz (h)', 0.5, 'So viele Stunden darf die Wochensumme von den Vertragsstunden abweichen, ohne dass gewarnt wird.'],
   zeitkonto_warnfaktor: ['Zeitkonto-Warnfaktor', 0.5, 'Warnung, sobald das Zeitkonto diesen Faktor der Zeitkonto-Grenze erreicht.'],
   stundenleistung_eur_h: ['Stundenleistung (€ pro h)', 0.5, 'Umsatz je Arbeitsstunde, Richtwert für die Bedarfsplanung.'],
-  kassierleistung_eur_halbe_h: ['Kassierleistung (€ je halbe Stunde)', 0.5, 'Umsatz, den eine Kasse in einer halben Stunde schafft.'],
+  kassierleistung_eur_halbe_h: ['Kassierleistung (€ je halbe Stunde)', 0.5, 'Wirkt erst mit der Kassenplanung (noch nicht gebaut).'],
 };
 
 let daten = null; // Antwort von pep_einstellungen
@@ -54,6 +54,7 @@ let zurSicherung = false; // nach dem Laden zum Abschnitt „Sicherung“ spring
 const TEILE = [
   ['zeiten', 'Filiale & Zeiten', ['rahmen', 'abweichungen', 'schulferien']],
   ['bereiche', 'Bereiche & Codes', ['bereiche', 'codes']],
+  ['lieferung', 'Lieferung', ['warengruppen', 'liefermuster']],
   ['regeln', 'Regeln & Zeitkonto', ['parameter', 'ist']],
   ['urlaub', 'Urlaubstool', ['urlaub']],
   ['benutzer', 'Benutzer & Sicherung', ['benutzer', 'sicherung']],
@@ -248,6 +249,67 @@ function zeichneBereiche() {
   };
   boxen.bereiche.replaceChildren(abschnitt('Abteilungen und Bereiche',
     daten.bereiche.map(zeile), darfSchreiben() ? zeile({}) : null));
+}
+
+// ---------------------------------------------------------------- Lieferung (Warengruppen und Liefermuster)
+
+function zeichneWarengruppen() {
+  const bereichAktiv = (id) => daten.bereiche.find((b) => b.id === id)?.aktiv;
+  const zeile = (g) => {
+    const neu = !g.id;
+    // Aktive Bereiche; der Bereich einer vorhandenen Gruppe bleibt auch dann wählbar, wenn er inzwischen inaktiv ist.
+    const optionen = daten.bereiche.filter((b) => b.art === 'bereich' && (b.aktiv || b.id === g.bereich_id))
+      .map((b) => [b.id, `${b.kuerzel} – ${b.name}`]);
+    const name = eingabe('text', g.name, { required: true });
+    const bereich = auswahlfeld(optionen, g.bereich_id ?? optionen[0]?.[0]);
+    const minuten = eingabe('number', g.minuten ?? 30, { min: '1', max: '240', step: '1' });
+    const aktiv = eingabe('checkbox', neu ? true : g.aktiv);
+    return zeilenformular(
+      () => speichere(() => aufruf('pep_warengruppe_speichern', {
+        p_id: g.id ?? null,
+        p_daten: { name: name.value, bereich_id: Number(bereich.value), minuten: zahl(minuten.value), aktiv: aktiv.checked },
+      }), 'warengruppen', 'liefermuster'),
+      feld('Name', name), feld('Bereich', bereich), feld('Minuten je Rolli', minuten), haken('aktiv', aktiv),
+      knopfSpeichern(neu ? 'Anlegen' : 'Speichern'),
+      !neu && bereichAktiv(g.bereich_id) === false ? element('small', { class: 'hinweis-gelb' }, 'Bereich inaktiv – zählt nicht') : null);
+  };
+  boxen.warengruppen.replaceChildren(abschnitt('Warengruppen',
+    element('p', { class: 'hinweis' }, 'Jede Warengruppe gehört zu einem Bereich; die Minuten gelten je Rolli.'),
+    daten.warengruppen.map(zeile), darfSchreiben() ? zeile({}) : null));
+}
+
+function zeichneLiefermuster() {
+  const tage = daten.rahmen.filter((r) => r.geoeffnet);
+  const gruppen = daten.warengruppen.filter((g) => g.aktiv);
+  const lkw = daten.liefer_muster?.lkw ?? {};
+  const rollis = new Map((daten.liefer_muster?.rollis ?? []).map((r) => [`${r.warengruppe_id}-${r.wochentag}`, r.rollis]));
+  // Speichert beim Verlassen des Feldes; bei Fehler zeigt das Feld wieder den gespeicherten Wert.
+  const zelle = (e, vorher, aktion) => {
+    e.addEventListener('change', async () => {
+      const ok = await speichere(aktion, 'liefermuster');
+      if (ok === undefined && e.isConnected) e.value = vorher ?? '';
+    });
+    return element('td', {}, e);
+  };
+  const kopf = element('tr', {}, element('th', {}, ''), ...tage.map((r) => element('th', {}, WOCHENTAGE[r.wochentag - 1])));
+  const lkwZeile = element('tr', {}, element('th', { scope: 'row' }, 'LKW-Zeit'),
+    ...tage.map((r) => {
+      const e = eingabe('time', lkw[r.wochentag], { step: '1800', 'aria-label': `LKW ${WOCHENTAGE[r.wochentag - 1]}` });
+      return zelle(e, lkw[r.wochentag], () => aufruf('pep_liefer_muster_setzen',
+        { p_wochentag: r.wochentag, p_daten: { lkw: e.value || null } }));
+    }));
+  const zeilen = gruppen.map((g) => element('tr', {}, element('th', { scope: 'row' }, g.name),
+    ...tage.map((r) => {
+      const wert = rollis.get(`${g.id}-${r.wochentag}`);
+      const e = eingabe('number', wert, { min: '0', max: '99', step: '1', placeholder: '0',
+        'aria-label': `Rollis ${g.name} ${WOCHENTAGE[r.wochentag - 1]}` });
+      return zelle(e, wert, () => aufruf('pep_liefer_muster_setzen',
+        { p_wochentag: r.wochentag, p_daten: { rollis: { [g.id]: e.value === '' ? 0 : zahl(e.value) } } }));
+    })));
+  boxen.liefermuster.replaceChildren(abschnitt('Liefermuster',
+    element('p', { class: 'hinweis' }, 'Rollis je Warengruppe und Wochentag; leer = 0. Einzelne Tage ändert man im Einsatzplan.'),
+    gruppen.length ? element('div', { class: 'tabelle-scroll' }, element('table', { class: 'liefermuster' }, kopf, lkwZeile, ...zeilen))
+      : element('p', { class: 'hinweis' }, 'Noch keine aktive Warengruppe.')));
 }
 
 // Nach dem ersten Wochenabschluss: gutschrift und sperrt ändern auch abgeschlossene Wochen (die Datenbank bucht
@@ -458,6 +520,7 @@ function zeichneSicherungAbschnitt() {
 // Alle Abschnitte; Reihenfolge und Zuordnung zu den Unterreitern stehen in TEILE.
 const ZEICHNER = {
   rahmen: zeichneRahmen, abweichungen: zeichneAbweichungen, bereiche: zeichneBereiche, codes: zeichneCodes,
+  warengruppen: zeichneWarengruppen, liefermuster: zeichneLiefermuster,
   parameter: zeichneParameter, ist: zeichneIst, schulferien: zeichneSchulferien, urlaub: zeichneUrlaub, benutzer: zeichneBenutzer,
   sicherung: zeichneSicherungAbschnitt,
 };

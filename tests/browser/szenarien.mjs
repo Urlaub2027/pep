@@ -1202,7 +1202,7 @@ await szenario('Einstellungen: Rahmen, Bereich, Code, Parameter, Schulferien, Ab
   const sichtbareTitel = () => c.werte(() => [...document.querySelectorAll('#ansicht-einstellungen [data-abschnitt]')]
     .filter((h) => !h.hidden && h.offsetParent !== null).map((h) => h.querySelector('h2')?.textContent));
   gleich(await texte('#ansicht-einstellungen .einst-teile button'),
-    ['Filiale & Zeiten', 'Bereiche & Codes', 'Regeln & Zeitkonto', 'Urlaubstool', 'Benutzer & Sicherung'], 'Unterreiter');
+    ['Filiale & Zeiten', 'Bereiche & Codes', 'Lieferung', 'Regeln & Zeitkonto', 'Urlaubstool', 'Benutzer & Sicherung'], 'Unterreiter');
   await c.klick('#ansicht-einstellungen .einst-teile [data-teil="regeln"]');
   gleich(await sichtbareTitel(), ['Regelparameter', 'IST-Erfassung'], 'Unterreiter „Regeln & Zeitkonto“ zeigt nur seine Abschnitte');
   gleich(await c.werte(() => document.querySelector('#ansicht-einstellungen .einst-teile [data-teil="regeln"]').getAttribute('aria-pressed')),
@@ -2580,6 +2580,36 @@ function halbeStundeWeiter(t) {
   const n = h * 60 + m + 30;
   return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 }
+
+await szenario('Einstellungen: Lieferung – Warengruppe anlegen, Muster setzen', async () => {
+  await reiter('einstellungen');
+  const gruppen = await einstellungsAbschnitt('Warengruppen');
+  const ts = (await sql("select id from pep.bereiche where kuerzel = 'TS'"))[0].id;
+  const neuForm = `${gruppen} form:last-of-type`;
+  await c.tippe(await feldUnter(neuForm, 'Name'), 'Aktionsware');
+  await c.setzeWert(await feldUnter(neuForm, 'Bereich'), String(ts));
+  await c.setzeWert(await feldUnter(neuForm, 'Minuten'), '30');
+  await c.klick(`${neuForm} button[type="submit"]`);
+  await ruhe();
+  gleich(await sql("select bereich_id = $1 as ts, minuten, aktiv from pep.warengruppen where name = 'Aktionsware'", [ts]),
+    [{ ts: true, minuten: 30, aktiv: true }], 'DB Warengruppe Aktionsware');
+  const muster = await einstellungsAbschnitt('Liefermuster');
+  await c.setzeWert(`${muster} input[aria-label="Rollis Aktionsware Di"]`, '5');
+  await ruhe();
+  await c.setzeWert(`${muster} input[aria-label="LKW Di"]`, '08:00');
+  await ruhe();
+  gleich(await sql(`select r.rollis from pep.liefer_muster_rollis r join pep.warengruppen w on w.id = r.warengruppe_id
+    where w.name = 'Aktionsware' and r.wochentag = 2`), [{ rollis: 5 }], 'DB Muster Rollis Di');
+  gleich(await sql("select to_char(lkw_zeit, 'HH24:MI') as z from pep.liefer_muster where wochentag = 2 and filiale_id = (select filiale_id from pep.warengruppen where name = 'Aktionsware')"), [{ z: '08:00' }], 'DB Muster LKW Di');
+  const param = await einstellungsAbschnitt('Regelparameter');
+  const erkl = await c.werte((sel) => [...document.querySelectorAll(`${sel} .zeile`)]
+    .find((z) => z.textContent.includes('Kassierleistung'))?.querySelector('.erklaerung')?.textContent, param);
+  gleich(erkl, 'Wirkt erst mit der Kassenplanung (noch nicht gebaut).', 'Kassierleistung: Erklärung');
+  await einstellungsAbschnitt('Liefermuster');
+  await c.foto(`${FOTOS}einstellungen-lieferung.png`);
+  const m = await meldungen();
+  pruefe(!m.fehler, 'keine Fehlermeldung', m.fehler);
+});
 
 // ================================================================ Ende
 

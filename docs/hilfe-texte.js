@@ -146,10 +146,10 @@ export const HILFE = {
   einstellungen: {
     titel: 'Einstellungen',
     wozu: 'Hier steht, wie die Filiale arbeitet; den Reiter sieht nur die Leitung. Oben den Teil wählen: „Filiale & Zeiten“, '
-      + '„Bereiche & Codes“, „Regeln & Zeitkonto“, „Urlaubstool“ oder „Benutzer & Sicherung“.',
+      + '„Bereiche & Codes“, „Lieferung“, „Regeln & Zeitkonto“, „Urlaubstool“ oder „Benutzer & Sicherung“.',
     schritte: [
-      'Wert ändern, dann in der Zeile „Speichern“ bzw. „Anlegen“. Sofort gespeichert werden die Regelparameter, '
-        + '„IST-Erfassung ab“ und der Haken „aktiv“ einer Umfrage.',
+      'Wert ändern, dann in der Zeile „Speichern“ bzw. „Anlegen“. Sofort gespeichert werden Regelparameter, '
+        + '„IST-Erfassung ab“, Liefermuster und der Haken „aktiv“ einer Umfrage.',
       'Feiertage stehen unter „Abweichende Tage“. „öffnen …“ macht einen Feiertag zum Öffnungstag.',
       'Urlaubstool: Umfrage mit „aktiv“ einschalten, dann unter „Teilnehmer zuordnen“ „Vorschläge übernehmen“ '
         + 'oder je Zeile wählen und „Speichern“.',

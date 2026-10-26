@@ -381,6 +381,8 @@ table { width: 100%; border-collapse: collapse; }
 th, td { padding: 6px var(--a2); text-align: left; border-bottom: 1px solid var(--linie); }
 th { background: var(--hell); font-weight: 600; }
 .tabelle-scroll { overflow-x: auto; }
+table.liefermuster td input { width: 100%; min-width: 5.5rem; }
+table.liefermuster th:not(:first-child) { text-align: center; }
 
 /* ---------------------------------------------------------------- Werkzeugleiste */
 

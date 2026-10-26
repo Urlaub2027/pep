@@ -169,18 +169,26 @@ Mitarbeiter in der Liste tauscht er den Platz mit dem Nachbarn. Jeder Klick wird
 sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck.
 
 ### Einstellungen (Leitung)
-Oben fünf Unterreiter; die PEP merkt sich im Browser, welcher zuletzt offen war:
+Oben sechs Unterreiter; die PEP merkt sich im Browser, welcher zuletzt offen war:
 
 | Unterreiter | Abschnitte |
 | --- | --- |
 | Filiale & Zeiten | Öffnungs- und Rahmenzeiten, Abweichende Tage, Schulferien |
 | Bereiche & Codes | Abteilungen und Bereiche, Abwesenheitscodes |
+| Lieferung | Warengruppen, Liefermuster |
 | Regeln & Zeitkonto | Regelparameter, IST-Erfassung |
 | Urlaubstool | Umfragen, Teilnehmer zuordnen |
 | Benutzer & Sicherung | Benutzer, Sicherung |
 
 „Einstellungen → Sicherung“ in dieser Anleitung heißt also: Unterreiter „Benutzer & Sicherung“,
 Abschnitt Sicherung. „Sicherung →“ auf der Startseite öffnet ihn direkt.
+
+**Lieferung.** Unter „Warengruppen“ legt die Leitung an, was geliefert wird (z. B. „Aktionsware“):
+Name, Bereich und Minuten je Rolli. Ist der Bereich einer Gruppe inaktiv, steht „Bereich inaktiv –
+zählt nicht“ dabei. Das „Liefermuster“ ist eine Tabelle: oben die LKW-Zeit je geöffnetem Wochentag
+(volle oder halbe Stunde), darunter die Rollis je Warengruppe; leer heißt 0. Jede Änderung wird beim
+Verlassen des Feldes gespeichert. Die
+„Kassierleistung“ unter Regelparameter wirkt erst mit der Kassenplanung, die noch nicht gebaut ist.
 
 - **Rahmen:** Öffnungszeiten je Wochentag.
 - **Abweichende Tage:** Feiertage erscheinen grau; „öffnen …“ macht daraus eine
