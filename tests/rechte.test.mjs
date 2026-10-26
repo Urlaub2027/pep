@@ -58,7 +58,7 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 // eigene erste Anmeldung (benutzer.bestaetigt_am) und ist für jede Rolle erlaubt, darum hier.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
-  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
+  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_bedarf_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
   'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche', 'pep_zeitkonto_journal', 'pep_stundenblatt',
   'pep_sicherung_pruefen'];
 // Auch für die Stellvertretung erlaubt.
@@ -171,10 +171,11 @@ test('schreibende Funktionen: Stellvertretung, Rolle mitarbeiter, Leitung ohne F
 });
 
 // Lesende Funktionen mit Mitarbeiterbezug werden oben nicht aufgerufen: Rolle mitarbeiter und Leitung ohne Filiale
-// dürfen auch die Eckdaten und die Ersatzliste eines Mitarbeiters nicht sehen.
+// dürfen auch die Eckdaten, die Ersatzliste und die Bedarfskandidaten nicht sehen.
 test('lesend mit Mitarbeiter: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
   for (const sql of [`select public.pep_eckdaten(${ma}, '2027-05-03')`,
-    `select public.pep_ersatz_kandidaten(${ma}, '2027-05-03')`]) {
+    `select public.pep_ersatz_kandidaten(${ma}, '2027-05-03')`,
+    `select public.pep_bedarf_kandidaten('2027-05-03', 1, '07:00', '10:00')`]) {
     await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/, `mitarbeiter: ${sql}`);
     await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/, `Leitung ohne Filiale: ${sql}`);
   }

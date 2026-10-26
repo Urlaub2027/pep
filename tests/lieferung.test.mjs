@@ -216,3 +216,57 @@ test('einsatzplan_woche: lieferung nur für geöffnete Tage; Gruppe mit inaktive
   assert.equal(ist.lieferung, undefined);
   assert.equal(ist.warengruppen, undefined);
 });
+
+// Task 3: Kandidaten für einen Bedarfsblock (pep_bedarf_kandidaten, Kern pep.kandidaten mit der Ersatzsuche geteilt).
+const bedarf = (t, datum, bereich, von, bis, nutzer = t.leitung) =>
+  t.json(nutzer, 'select public.pep_bedarf_kandidaten($1::date, $2::bigint, $3::time, $4::time) as r', [datum, bereich, von, bis]);
+
+test('bedarf_kandidaten: Kompetenz, Abwesenheit, schon geplant, Sortierung nach offenen Stunden', async () => {
+  const t = await aufbau();
+  const frei = await t.ma('Test, Frei', { stunden: 20, art: 'teilzeit' });
+  const viel = await t.ma('Test, Viel', { stunden: 37.5 });
+  const ohneKa = await t.ma('Test, Ohne', { kompetenzen: ['OG'] });
+  const urlaub = await t.ma('Test, Urlaub');
+  const belegt = await t.ma('Test, Belegt');
+  await t.json(t.leitung, 'select public.pep_abwesenheit_setzen($1, $2, $3::date, $3::date, null, null, null, null) as r',
+    [urlaub, t.code.U, '2026-11-10']);
+  await t.malen(t.leitung, belegt, '2026-11-10', '08:00', '09:00', 'KA');
+  const r = await bedarf(t, '2026-11-10', t.bereich.KA, '07:00', '10:00');
+  assert.deepEqual(r.block, { von: '07:00', bis: '10:00', bereich_id: t.bereich.KA });
+  assert.deepEqual(r.kandidaten.map((k) => k.mitarbeiter_id), [viel, frei]); // Viel hat mehr offene Wochenstunden
+  assert.ok(r.kandidaten[0].luecke > r.kandidaten[1].luecke);
+  assert.deepEqual(Object.keys(r.kandidaten[0]).sort(),
+    ['hinweise', 'luecke', 'mitarbeiter_id', 'name', 'samstage_monat', 'spaet_woche']);
+  assert.ok(![ohneKa, urlaub, belegt].some((x) => r.kandidaten.some((k) => k.mitarbeiter_id === x)));
+  // Die Probe ändert nichts.
+  assert.equal((await t.db.query('select count(*)::int as n from pep.plan_bloecke')).rows[0].n, 1);
+});
+
+test('bedarf_kandidaten: neue Höchstarbeitszeit schließt aus', async () => {
+  const t = await aufbau();
+  const lang = await t.ma('Test, Lang');
+  const normal = await t.ma('Test, Normal');
+  await t.malen(t.leitung, lang, '2026-11-10', '08:00', '18:00', 'KA');
+  const r = await bedarf(t, '2026-11-10', t.bereich.KA, '18:00', '21:00');
+  assert.deepEqual(r.kandidaten.map((k) => k.mitarbeiter_id), [normal]);
+});
+
+test('bedarf_kandidaten: Fehler', async () => {
+  const t = await aufbau();
+  const f = await t.fremd();
+  await t.db.query(`update pep.bereiche set art = 'funktion' where id = $1`, [t.bereich.TK]);
+  await t.db.query(`update pep.bereiche set aktiv = false where id = $1`, [t.bereich.MO]);
+  const KA = t.bereich.KA;
+  await wirft(bedarf(t, null, KA, '07:00', '10:00'), 'DATUM_UNGUELTIG');
+  await wirft(bedarf(t, '2026-11-01', KA, '07:00', '10:00'), 'VERGANGEN');
+  await wirft(bedarf(t, '2026-11-10', KA, '07:15', '10:00'), 'HALBE_STUNDE');
+  await wirft(bedarf(t, '2026-11-10', KA, '07:00', '10:10'), 'HALBE_STUNDE');
+  await wirft(bedarf(t, '2026-11-10', KA, '10:00', '10:00'), 'ZEITRAUM_UNGUELTIG');
+  await wirft(bedarf(t, '2026-11-10', KA, '11:00', '10:00'), 'ZEITRAUM_UNGUELTIG');
+  await wirft(bedarf(t, '2026-11-10', KA, null, '10:00'), 'ZEITRAUM_UNGUELTIG');
+  for (const id of [f.bereich, t.bereich.TK, t.bereich.MO, 999999, null]) {
+    await wirft(bedarf(t, '2026-11-10', id, '07:00', '10:00'), 'BEREICH_NICHT_GEFUNDEN');
+  }
+  // Heute selbst ist erlaubt; Stellvertretung darf; Leere Filiale: keine Kandidaten.
+  assert.deepEqual((await bedarf(t, '2026-11-02', KA, '07:00', '10:00', t.stellv)).kandidaten, []);
+});

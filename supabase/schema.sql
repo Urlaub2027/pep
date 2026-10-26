@@ -4807,13 +4807,15 @@ as $$
                     and b.von < (u ->> 'bis')::time and b.bis > (u ->> 'von')::time)
 $$;
 
--- Wer kann die unbesetzten Blöcke von p_mitarbeiter_id am Tag übernehmen?
--- Kandidat: jeder andere aktive Mitarbeiter der Filiale, der zu diesen Zeiten nichts geplant hat, für den
+-- Wer kann die Blöcke p_bloecke [{von, bis, bereich_id}] am Tag übernehmen? Gemeinsamer Kern der Ersatzsuche
+-- (pep.ersatz_kandidaten) und der Bedarfssuche (pep_bedarf_kandidaten). Antwort: Array der Kandidaten.
+-- p_ausser = Mitarbeiter, der nicht in Frage kommt (die kranke Person) oder null.
+-- Kandidat: jeder aktive Mitarbeiter (außer p_ausser) der Filiale, der zu diesen Zeiten nichts geplant hat, für den
 -- pep.zeile_pruefen (dieselben Sperren wie beim Malen: beschäftigt, Vertrag, Kompetenz, Abwesenheit,
--- Pflicht-Vorgabe …) mit seiner Zeile plus den unbesetzten Blöcken nicht wirft und dem die Übernahme keine
+-- Pflicht-Vorgabe …) mit seiner Zeile plus diesen Blöcken nicht wirft und dem die Übernahme keine
 -- neue oder verschärfte ruhezeit- oder hoechstarbeitszeit-Warnung bringt. Eine schon vorher bestehende
 -- Warnung mit unverändertem Text schließt nicht aus (Entscheidung nach Stufe 1).
--- Die Regeln rechnet pep.pruefung, keine Kopie davon: Die unbesetzten Blöcke werden in einem Unterblock für
+-- Die Regeln rechnet pep.pruefung, keine Kopie davon: Die Blöcke werden in einem Unterblock für
 -- alle Kandidaten zugleich eingefügt, pep.pruefung des Tages gelesen und der Unterblock mit einer absichtlichen
 -- Ausnahme (SQLSTATE PEP01) zurückgerollt. Gemeinsam geht das, weil ruhezeit, hoechstarbeitszeit,
 -- vorgabe_bevorzugt und schichtlage nur von der eigenen Zeile abhängen (die Ruhezeit zu Vor- und Folgetag
@@ -4821,13 +4823,12 @@ $$;
 -- luecke = Wochensoll (Vertrag − angerechnete Abwesenheit, F6) − geplant (F4), vor der Übernahme.
 -- samstage_monat = gearbeitete Samstage im Monat (F9), spaet_woche = Tage der ISO-Woche mit Lage spaet/lang (F8).
 -- hinweise = Texte der vorgabe_bevorzugt- und schichtlage-Hinweise, die mit der Übernahme neu entstünden.
-create or replace function pep.ersatz_kandidaten(p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date)
+create or replace function pep.kandidaten(p_filiale_id bigint, p_datum date, p_bloecke jsonb, p_ausser bigint)
 returns jsonb
 language plpgsql
 set search_path = ''
 as $$
 declare
-  v_unb     jsonb;
   v_mo      date := p_datum - (extract(isodow from p_datum)::int - 1);
   v_monat   date := date_trunc('month', p_datum)::date;
   v_id      bigint;
@@ -4836,32 +4837,21 @@ declare
   v_vorher  jsonb;
   v_nachher jsonb;
 begin
-  if p_datum is null then
-    raise exception 'DATUM_UNGUELTIG';
-  end if;
-  if p_datum < pep.heute() then
-    raise exception 'VERGANGEN';
-  end if;
-  v_unb := pep.zeile_teil(p_mitarbeiter_id, p_datum, true);
-  if jsonb_array_length(v_unb) = 0 then
-    raise exception 'NICHTS_UNBESETZT';
-  end if;
-
   -- Sperren wie beim Malen; wer zu diesen Zeiten schon geplant ist, fällt vorher heraus.
   for v_id in select m.id from pep.mitarbeiter m
-                where m.filiale_id = p_filiale_id and m.id <> p_mitarbeiter_id and m.aktiv
-                  and not pep.zeile_ueberschneidet(m.id, p_datum, v_unb)
+                where m.filiale_id = p_filiale_id and (p_ausser is null or m.id <> p_ausser) and m.aktiv
+                  and not pep.zeile_ueberschneidet(m.id, p_datum, p_bloecke)
                 order by m.id loop
     v_alt := pep.zeile_lesen(v_id, p_datum);
     begin
-      perform pep.zeile_pruefen(p_filiale_id, v_id, p_datum, v_alt, pep.bloecke_normalisieren(v_alt || v_unb));
+      perform pep.zeile_pruefen(p_filiale_id, v_id, p_datum, v_alt, pep.bloecke_normalisieren(v_alt || p_bloecke));
       v_ok := v_ok || v_id;
     exception when raise_exception then
       null; -- gesperrt (fachlicher Code): kein Kandidat; echte Fehler laufen weiter
     end;
   end loop;
   if cardinality(v_ok) = 0 then
-    return jsonb_build_object('unbesetzt', v_unb, 'kandidaten', '[]'::jsonb);
+    return '[]'::jsonb;
   end if;
 
   -- Prüfung vor und nach der gedachten Übernahme; der Unterblock wird immer zurückgerollt.
@@ -4870,14 +4860,14 @@ begin
     insert into pep.plan_bloecke (filiale_id, mitarbeiter_id, datum, von, bis, bereich_id)
     select p_filiale_id, k.id, p_datum, (u ->> 'von')::time, (u ->> 'bis')::time, (u ->> 'bereich_id')::bigint
       from unnest(v_ok) k (id)
-      cross join jsonb_array_elements(v_unb) u;
+      cross join jsonb_array_elements(p_bloecke) u;
     v_nachher := pep.pruefung(p_filiale_id, p_datum);
     raise sqlstate 'PEP01'; -- eigener Zustand nur für dieses Zurückrollen; alle anderen Fehler laufen weiter
   exception when sqlstate 'PEP01' then
     null;
   end;
 
-  return jsonb_build_object('unbesetzt', v_unb, 'kandidaten', coalesce((
+  return coalesce((
     select jsonb_agg(jsonb_build_object(
              'mitarbeiter_id', k.id, 'name', k.name, 'luecke', k.luecke, 'samstage_monat', k.samstage,
              'spaet_woche', k.spaet, 'hinweise', k.hinweise)
@@ -4908,7 +4898,32 @@ begin
                               and not exists (select 1 from jsonb_array_elements(v_vorher) v
                                                where (v ->> 'mitarbeiter_id')::bigint = m.id
                                                  and v ->> 'art' = e ->> 'art' and v ->> 'text' = e ->> 'text'))) k),
-    '[]'::jsonb));
+    '[]'::jsonb);
+end;
+$$;
+
+-- Wer kann die unbesetzten Blöcke von p_mitarbeiter_id am Tag übernehmen? Die Suche selbst (Regeln, Probe,
+-- Sortierung, hinweise) steht in pep.kandidaten.
+create or replace function pep.ersatz_kandidaten(p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date)
+returns jsonb
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_unb jsonb;
+begin
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if p_datum < pep.heute() then
+    raise exception 'VERGANGEN';
+  end if;
+  v_unb := pep.zeile_teil(p_mitarbeiter_id, p_datum, true);
+  if jsonb_array_length(v_unb) = 0 then
+    raise exception 'NICHTS_UNBESETZT';
+  end if;
+  return jsonb_build_object('unbesetzt', v_unb,
+                            'kandidaten', pep.kandidaten(p_filiale_id, p_datum, v_unb, p_mitarbeiter_id));
 end;
 $$;
 
@@ -4961,6 +4976,44 @@ declare
   v_m pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
 begin
   return pep.ersatz_kandidaten(v_b.filiale_id, v_m.id, p_datum);
+end;
+$$;
+
+-- Kandidaten für einen Bedarfsblock der Lieferung: {block: {von, bis, bereich_id}, kandidaten: [{mitarbeiter_id,
+-- name, luecke, samstage_monat, spaet_woche, hinweise}]}. Gleiche Regeln und Sortierung wie die Ersatzsuche
+-- (pep.kandidaten). Der Bereich muss zur Filiale gehören, aktiv sein und art = 'bereich' haben.
+-- Ändert nichts (die Probe wird zurückgerollt), ist aber deshalb nicht stable.
+create or replace function public.pep_bedarf_kandidaten(p_datum date, p_bereich_id bigint, p_von time, p_bis time)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b     pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_block jsonb;
+begin
+  if p_datum is null then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  if p_datum < pep.heute() then
+    raise exception 'VERGANGEN';
+  end if;
+  if extract(minute from p_von) not in (0, 30) or extract(second from p_von) <> 0
+     or extract(minute from p_bis) not in (0, 30) or extract(second from p_bis) <> 0 then
+    raise exception 'HALBE_STUNDE';
+  end if;
+  if p_von is null or p_bis is null or p_von >= p_bis then
+    raise exception 'ZEITRAUM_UNGUELTIG';
+  end if;
+  if p_bereich_id is null or not exists (select 1 from pep.bereiche
+                                          where id = p_bereich_id and filiale_id = v_b.filiale_id
+                                            and aktiv and art = 'bereich') then
+    raise exception 'BEREICH_NICHT_GEFUNDEN';
+  end if;
+  v_block := pep.block_json(p_von, p_bis, p_bereich_id);
+  return jsonb_build_object('block', v_block,
+    'kandidaten', pep.kandidaten(v_b.filiale_id, p_datum, jsonb_build_array(v_block), null));
 end;
 $$;
 
@@ -7739,9 +7792,11 @@ grant execute on function public.pep_vorlage_loeschen(bigint) to authenticated;
 -- Krank/ZA und Ersatz
 revoke all on function public.pep_schnell_abwesend(bigint, text, date, date) from public, anon, authenticated;
 revoke all on function public.pep_ersatz_kandidaten(bigint, date) from public, anon, authenticated;
+revoke all on function public.pep_bedarf_kandidaten(date, bigint, time, time) from public, anon, authenticated;
 revoke all on function public.pep_ersatz_uebernehmen(bigint, date, bigint) from public, anon, authenticated;
 grant execute on function public.pep_schnell_abwesend(bigint, text, date, date) to authenticated;
 grant execute on function public.pep_ersatz_kandidaten(bigint, date) to authenticated;
+grant execute on function public.pep_bedarf_kandidaten(date, bigint, time, time) to authenticated;
 grant execute on function public.pep_ersatz_uebernehmen(bigint, date, bigint) to authenticated;
 
 -- Eckdaten
