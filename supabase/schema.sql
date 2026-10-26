@@ -3635,13 +3635,38 @@ begin
         from generate_series(date '2000-01-01' + v_tag.rahmen_von,
                              date '2000-01-01' + v_tag.rahmen_bis - interval '30 minutes', interval '30 minutes') s
        where v_tag.geoeffnet
-    ), abdeckung as (
+    ), vp_kasse as (  -- VP an der Kasse in der Öffnungszeit, niemand mit Kassenkompetenz frei (nicht Kasse, nicht Pause)
+      select v.mitarbeiter_id, v.t
+        from da v
+        join slots s on s.t = v.t and s.offen
+       where v.zustand = 'kasse'
+         and exists (select 1 from pep.kompetenzen k where k.mitarbeiter_id = v.mitarbeiter_id and k.bereich_id = v_vp)
+         and not exists (select 1 from da f
+                          where f.t = v.t and f.zustand = 'arbeit'
+                            and (not v_kasse.kompetenz_noetig
+                                 or exists (select 1 from pep.kompetenzen k
+                                             where k.mitarbeiter_id = f.mitarbeiter_id
+                                               and k.bereich_id = v_kasse.id)))
+    ), gebunden as (  -- erst ab mehr als 30 min am Stück je VP gebunden (eine Pausenablöse ist überbrückbar)
+      select g.mitarbeiter_id, g.t
+        from (select x.mitarbeiter_id, x.t, count(*) over (partition by x.mitarbeiter_id, x.g) as n
+                from (select vk.*, extract(epoch from vk.t) / 1800
+                                   - row_number() over (partition by vk.mitarbeiter_id order by vk.t) as g
+                        from vp_kasse vk) x) g
+       where g.n > 1
+    ), abdeckung as (  -- vp = VPs anwesend, vp_frei = davon nicht an der Kasse gebunden
       select s.t, s.offen,
              count(da.mitarbeiter_id) as anwesend,
              count(da.mitarbeiter_id) filter (where da.zustand = 'kasse') as kasse,
              count(da.mitarbeiter_id) filter (where exists (select 1 from pep.kompetenzen k
                                                              where k.mitarbeiter_id = da.mitarbeiter_id
-                                                               and k.bereich_id = v_vp)) as vp
+                                                               and k.bereich_id = v_vp)) as vp,
+             count(da.mitarbeiter_id) filter (where exists (select 1 from pep.kompetenzen k
+                                                             where k.mitarbeiter_id = da.mitarbeiter_id
+                                                               and k.bereich_id = v_vp)
+                                                and not exists (select 1 from gebunden g
+                                                                 where g.mitarbeiter_id = da.mitarbeiter_id
+                                                                   and g.t = da.t)) as vp_frei
         from slots s
         left join da on da.t = s.t
        group by s.t, s.offen
@@ -3656,22 +3681,8 @@ begin
       union all
       select 'vp_allein', null, a.t, null from abdeckung a where a.offen and a.anwesend = 1
       union all
-      -- VP an der Kasse gebunden: alle anwesenden VPs sitzen an der Kasse und niemand mit Kassenkompetenz
-      -- ist frei (nicht Kasse, nicht Pause), der ablösen könnte. Allein meldet schon vp_allein.
-      -- Bis 30 min am Stück (z. B. Pausenablöse) gilt als überbrückbar, siehe eintraege.
-      select 'vp_gebunden', null, a.t, null
-        from abdeckung a
-       where a.offen and a.anwesend > 1 and a.vp > 0 and v_kasse.id is not null
-         and not exists (select 1 from da v
-                          where v.t = a.t and v.zustand <> 'kasse'
-                            and exists (select 1 from pep.kompetenzen k
-                                         where k.mitarbeiter_id = v.mitarbeiter_id and k.bereich_id = v_vp))
-         and not exists (select 1 from da f
-                          where f.t = a.t and f.zustand = 'arbeit'
-                            and (not v_kasse.kompetenz_noetig
-                                 or exists (select 1 from pep.kompetenzen k
-                                             where k.mitarbeiter_id = f.mitarbeiter_id
-                                               and k.bereich_id = v_kasse.id)))
+      -- VPs da, aber keine frei: jede sitzt an der Kasse ohne Ablösung (gebunden), auch allein
+      select 'vp_gebunden', null, a.t, null from abdeckung a where a.vp > 0 and a.vp_frei = 0
       union all
       -- Pause einer Kassenkraft in der Öffnungszeit: Kasse leer und niemand mit Kassenkompetenz frei
       -- (nicht Kasse, nicht Pause); außerhalb der Öffnung ist die Kasse zu, wie bei kasse_unbesetzt
@@ -3760,13 +3771,12 @@ begin
                when 'kasse_unbesetzt' then 'Kasse unbesetzt ' || pep.zeit_text(i.von, i.bis)
                when 'keine_vp'        then 'Keine VP anwesend ' || pep.zeit_text(i.von, i.bis)
                when 'vp_allein'       then 'Nur eine Person anwesend ' || pep.zeit_text(i.von, i.bis)
-               when 'vp_gebunden'     then 'VP an der Kasse, keine Ablösung frei ' || pep.zeit_text(i.von, i.bis)
+               when 'vp_gebunden'     then 'Keine VP frei (an der Kasse) ' || pep.zeit_text(i.von, i.bis)
                when 'pausenabloese'   then 'Pausenablöse fehlt ' || pep.zeit_text(i.von, i.bis)
                when 'jarbschg'        then 'Unter 18: nicht vor ' || pep.zeit_text(v_frueh_u18)
                                            || ' und nicht nach ' || pep.zeit_text(v_spaet_u18)
              end
         from inseln i
-       where not (i.art = 'vp_gebunden' and i.bis - i.von <= interval '30 minutes')
       union all
       -- § 4 ArbZG: Schwellen an der Arbeitszeit; Pause = Anwesenheit ohne Arbeit (Pausenblöcke und Lücken)
       select 'pause_fehlt', 'warnung', p.mitarbeiter_id, p.erster, p.ende,

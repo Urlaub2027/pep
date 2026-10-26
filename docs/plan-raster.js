@@ -27,10 +27,10 @@ export function strich(spalten, startIndex, endIndex) {
   return { von: spalten[a], bis: uhrzeit(minuten(spalten[z]) + 30) };
 }
 
-// Abdeckung je Halbstunde eines Tages (F2, F3, F5): nur besetzte Abschnitte.
-// vpAnKasse wie vp_gebunden in pep.pruefung, aber ohne Öffnungszeit und 30-min-Grenze (dafür vpGebunden):
-// mindestens zwei da, alle anwesenden VPs an der Kasse, niemand mit Kassenkompetenz frei (nicht Kasse, nicht Pause).
-export function abdeckung(woche, datum, spalten) {
+// Abdeckung je Halbstunde eines Tages (F2, F3, F5): nur besetzte Abschnitte. vp = VPs anwesend, vpFrei = davon nicht
+// an der Kasse gebunden: in der Öffnungszeit (offen je Spalte) an der Kasse, niemand mit Kassenkompetenz frei (nicht
+// Kasse, nicht Pause), erst ab mehr als 30 min am Stück. Fachregel-Duplikat von vp_kasse/gebunden in pep.pruefung.
+export function abdeckung(woche, datum, spalten, offen = spalten.map(() => true)) {
   const bereiche = new Map((woche.bereiche ?? []).map((b) => [b.id, b]));
   const vpIds = new Set((woche.mitarbeiter ?? []).filter((m) => m.vp === true).map((m) => m.id));
   const kassenBereich = (woche.bereiche ?? []).find((b) => b.bedeutung === 'kasse');
@@ -40,39 +40,34 @@ export function abdeckung(woche, datum, spalten) {
   const kasse = [];
   const vp = [];
   const anwesend = [];
-  const vpAnKasse = [];
-  for (const beginn of spalten) {
+  const anKasse = new Map(); // VP → je Halbstunde an der Kasse ohne Ablösung
+  spalten.forEach((beginn, i) => {
     const m = minuten(beginn);
     const da = tag.filter((b) => minuten(b.von) <= m && m < minuten(b.bis));
     const arbeit = da.filter((b) => bereiche.get(b.bereich_id)?.art !== 'pause');
     const anDerKasse = arbeit.filter((b) => bereiche.get(b.bereich_id)?.bedeutung === 'kasse');
-    const vpDa = da.filter((b) => vpIds.has(b.mitarbeiter_id));
     kasse.push(new Set(anDerKasse.map((b) => b.mitarbeiter_id)).size);
-    vp.push(new Set(vpDa.map((b) => b.mitarbeiter_id)).size);
+    vp.push(new Set(da.filter((b) => vpIds.has(b.mitarbeiter_id)).map((b) => b.mitarbeiter_id)).size);
     anwesend.push(new Set(da.map((b) => b.mitarbeiter_id)).size);
-    const frei = arbeit.filter((b) => !anDerKasse.includes(b));
-    vpAnKasse.push(!!kassenBereich && anwesend.at(-1) > 1 && vpDa.length > 0
-      && vpDa.every((b) => anDerKasse.includes(b))
-      && !frei.some((b) => kannKasse.has(b.mitarbeiter_id)));
-  }
-  return { kasse, vp, anwesend, vpAnKasse };
+    const abloese = arbeit.some((b) => !anDerKasse.includes(b) && kannKasse.has(b.mitarbeiter_id));
+    if (!offen[i] || abloese) return;
+    for (const b of anDerKasse.filter((x) => vpIds.has(x.mitarbeiter_id))) {
+      if (!anKasse.has(b.mitarbeiter_id)) anKasse.set(b.mitarbeiter_id, []);
+      anKasse.get(b.mitarbeiter_id)[i] = true;
+    }
+  });
+  const vpFrei = vp.map((n, i) => n - [...anKasse.values()].filter((x) => x[i] && (x[i - 1] || x[i + 1])).length);
+  return { kasse, vp, vpFrei, anwesend };
 }
 
-// VP gebunden je Halbstunde: vpAnKasse in der Öffnungszeit, erst ab mehr als 30 min am Stück
-// (eine halbe Stunde, etwa eine Pausenablöse, gilt als überbrückbar; wie vp_gebunden in pep.pruefung).
-export function vpGebunden(vpAnKasse, offen) {
-  const roh = vpAnKasse.map((x, i) => x && offen[i]);
-  return roh.map((x, i) => x && (roh[i - 1] === true || roh[i + 1] === true));
-}
-
-// Ampelklasse einer Abdeckungszelle. art: 'kasse' | 'vp'. VP gelb: allein in der Öffnungszeit oder gebunden (vpGebunden).
-export function abdeckungsKlasse(art, anzahl, inOeffnung, anwesend, gebunden = false) {
+// Ampelklasse einer Abdeckungszelle. art: 'kasse' | 'vp' (anzahl = freie VPs). VP gelb: allein in der Öffnungszeit.
+export function abdeckungsKlasse(art, anzahl, inOeffnung, anwesend) {
   if (art === 'kasse') {
     if (!inOeffnung) return '';
     return anzahl === 0 ? 'rot' : anzahl === 1 ? 'gelb' : '';
   }
   if (art === 'vp') {
-    if (anzahl > 0) return inOeffnung && (anwesend === 1 || gebunden) ? 'gelb' : '';
+    if (anzahl > 0) return inOeffnung && anwesend === 1 ? 'gelb' : '';
     return inOeffnung || anwesend > 0 ? 'rot' : '';
   }
   return '';

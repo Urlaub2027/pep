@@ -2526,10 +2526,10 @@ await szenario('Einsatzplan: Kürzel-Legende aufklappen, Tooltip mit Name und Uh
   gleich(await offen(), false, 'wieder zugeklappt');
 });
 
-// VP-Zeile: gelb, wo die Regelprüfung „Nur eine Person anwesend“ oder „VP an der Kasse, keine Ablösung frei“ meldet
-// (dieselbe Regel steht in plan-raster.js und pep.pruefung). Damit beide Fälle vorkommen, setzt der Test am Samstag
-// eine VP 08–10 an die Kasse und eine Kraft ohne Kassenkompetenz daneben, ab 10 ist die VP allein.
-await szenario('Einsatzplan: VP-Zeile gelb wie die Regelprüfung (allein, an der Kasse gebunden)', async () => {
+// VP-Zeile zählt freie VPs: 0 und rot, wo die Regelprüfung „Keine VP frei (an der Kasse)“ meldet, gelb bei „Nur eine
+// Person anwesend“ (dieselbe Regel steht in plan-raster.js und pep.pruefung). Damit beide Fälle vorkommen, setzt der
+// Test am Samstag eine VP 08–12 an die Kasse und 08–10 eine Kraft ohne Kassenkompetenz daneben, ab 10 ist die VP allein.
+await szenario('Einsatzplan: VP-Zeile wie die Regelprüfung (keine VP frei an der Kasse, allein)', async () => {
   const vp = (await sql(`select m.id from pep.mitarbeiter m join pep.kompetenzen k on k.mitarbeiter_id = m.id
       join pep.bereiche b on b.id = k.bereich_id where m.filiale_id = $1 and b.bedeutung = 'vp' and m.aktiv
       and not exists (select 1 from pep.abwesenheiten a where a.mitarbeiter_id = m.id and a.datum = $2::date)
@@ -2552,20 +2552,24 @@ await szenario('Einsatzplan: VP-Zeile gelb wie die Regelprüfung (allein, an der
   for (const tag of [MO, DI, MI, DO, FR, SA]) {
     await epTag(tag);
     const zellen = await c.werte(() => [...document.querySelectorAll('#ansicht-einsatzplan .ep-deckung-vp td[data-von]')]
-      .map((td) => ({ von: td.dataset.von, zahl: Number(td.textContent) || 0, gelb: td.classList.contains('gelb'), titel: td.title })));
-    const ui = zellen.filter((z) => z.gelb).map((z) => `${z.von} ${z.titel}`);
+      .map((td) => ({ von: td.dataset.von, zahl: Number(td.textContent) || 0, rot: td.classList.contains('rot'), titel: td.title })));
+    const ui = zellen.filter((z) => z.titel).map((z) => `${z.von} ${z.titel}`);
     const mitVp = new Set(zellen.filter((z) => z.zahl > 0).map((z) => z.von)); // allein ohne VP ist rot (keine VP)
     const liste = (await s.rpc('pep_pruefung_zeitraum', { p_von: tag, p_bis: tag }, B.leitung)).json[tag] ?? [];
     const texte = { vp_allein: 'Nur eine Person anwesend', vp_gebunden: 'VP an der Kasse, keine Ablösung frei' };
     const db = [];
     for (const e of liste.filter((x) => texte[x.art])) {
-      for (let t = e.von; t < e.bis; t = halbeStundeWeiter(t)) if (mitVp.has(t)) db.push(`${t} ${texte[e.art]}`);
+      for (let t = e.von; t < e.bis; t = halbeStundeWeiter(t)) {
+        if (e.art === 'vp_gebunden' || mitVp.has(t)) db.push(`${t} ${texte[e.art]}`);
+      }
     }
-    gleich(ui.sort(), db.sort(), `${tag}: gelbe VP-Zellen = Regelprüfung`);
+    gleich(ui.sort(), db.sort(), `${tag}: markierte VP-Zellen = Regelprüfung`);
+    const gebunden = zellen.filter((z) => z.titel === texte.vp_gebunden);
+    pruefe(gebunden.every((z) => z.zahl === 0 && z.rot), `${tag}: gebunden = 0 und rot`, gebunden);
     gefunden.push(...liste.filter((x) => texte[x.art]).map((x) => `${tag} ${x.text}`));
   }
   notiz(`VP-Warnungen KW 46: ${gefunden.join(' | ')}`);
-  pruefe(gefunden.includes(`${SA} VP an der Kasse, keine Ablösung frei 08:00–10:00`), 'Samstag: gebunden 08–10', gefunden);
+  pruefe(gefunden.includes(`${SA} Keine VP frei (an der Kasse) 08:00–12:00`), 'Samstag: keine VP frei 08–12', gefunden);
   pruefe(gefunden.includes(`${SA} Nur eine Person anwesend 10:00–12:00`), 'Samstag: allein 10–12', gefunden);
   await epTag(SA);
   await c.foto(`${FOTOS}vp-gebunden.png`);

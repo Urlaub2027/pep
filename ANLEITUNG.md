@@ -269,9 +269,10 @@ Woche (◀ ▶, Datumsfeld, „Heute“) und die Tage Mo–So mit Öffnungszeit.
 Darunter die Pinsel (ein Bereich je Knopf, dazu „Radieren“) und die Knöpfe
 Rückgängig, Kopieren, Vorlagen, Krank/ZA und Drucken. Das Raster zeigt je
 Mitarbeiter eine Zeile in halben Stunden, rechts die Kommentarspalte. Unter dem
-Raster stehen die Abdeckungszeilen Kasse und VP: Rot heißt „niemand da“. VP wird
-gelb, wenn nur eine Person da ist oder die VP länger als 30 Minuten an der Kasse
-sitzt, ohne dass jemand mit Kassenkompetenz sie ablösen könnte.
+Raster stehen die Abdeckungszeilen Kasse und VP: Rot heißt „niemand da“. Die VP-Zeile
+zählt nur freie VPs: Sitzt eine VP länger als 30 Minuten am Stück an der Kasse und
+niemand mit Kassenkompetenz könnte sie ablösen, zählt sie nicht (auch allein; in der
+eigenen Pause zählt sie). Gelb heißt: nur eine Person da.
 
 - **Malen:** Pinsel wählen, in der Zeile des Mitarbeiters über die Zeit ziehen.
   Nach dem Loslassen steht der Block mit Kürzel und Farbe da. Malen mitten in einen
@@ -295,8 +296,8 @@ sitzt, ohne dass jemand mit Kassenkompetenz sie ablösen könnte.
 **Seitenleiste:**
 - *Regelprüfung* des gewählten Tags: Warnungen rot, Hinweise gelb. Ein Klick markiert
   Zeile und Zeit im Raster, ein zweiter Klick hebt die Markierung auf.
-  Warnungen: unbesetzt, Kasse unbesetzt, keine VP, nur eine Person da, VP an der
-  Kasse ohne Ablösung (erst ab mehr als 30 Minuten am Stück), Pausenablöse
+  Warnungen: unbesetzt, Kasse unbesetzt, keine VP, nur eine Person da, keine VP
+  frei (an der Kasse ohne Ablösung, erst ab mehr als 30 Minuten am Stück), Pausenablöse
   fehlt, Pause fehlt oder zu kurz, Ruhezeit, Höchstarbeitszeit, unter 18 (Uhrzeit und
   Stunden), Wochenstunden über dem Vertrag. Hinweise: Woche nicht voll verplant,
   bevorzugte Vorgabe verletzt, Schichtlage wie letzte Woche, zweiter Samstag spät,

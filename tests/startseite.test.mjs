@@ -97,8 +97,8 @@ test('verstoesse: Kassenlücke morgen; offene Tage ohne Block stehen getrennt al
   await heuteSetzen(db, '2026-11-02');
   const s = await startseite();
   const tag = (d) => s.verstoesse.find((v) => v.datum === d);
-  // Di 03.11.: Kasse unbesetzt 13–20, keine VP 13–20, nur eine Person 07–13
-  assert.deepEqual(tag('2026-11-03'), { datum: '2026-11-03', warnungen: 3, hinweise: 0, ungeplant: false });
+  // Di 03.11.: Kasse unbesetzt 13–20, keine VP 13–20, nur eine Person 07–13, keine VP frei (Ben an der Kasse) 07–13
+  assert.deepEqual(tag('2026-11-03'), { datum: '2026-11-03', warnungen: 4, hinweise: 0, ungeplant: false });
   for (const d of ['2026-11-02', '2026-11-04', '2026-11-05', '2026-11-06', '2026-11-07']) {
     assert.deepEqual(tag(d), { datum: d, warnungen: 0, hinweise: 0, ungeplant: true }, d);
   }
