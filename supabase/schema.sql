@@ -3656,6 +3656,23 @@ begin
       union all
       select 'vp_allein', null, a.t, null from abdeckung a where a.offen and a.anwesend = 1
       union all
+      -- VP an der Kasse gebunden: alle anwesenden VPs sitzen an der Kasse und niemand mit Kassenkompetenz
+      -- ist frei (nicht Kasse, nicht Pause), der ablösen könnte. Allein meldet schon vp_allein.
+      -- Bis 30 min am Stück (z. B. Pausenablöse) gilt als überbrückbar, siehe eintraege.
+      select 'vp_gebunden', null, a.t, null
+        from abdeckung a
+       where a.offen and a.anwesend > 1 and a.vp > 0 and v_kasse.id is not null
+         and not exists (select 1 from da v
+                          where v.t = a.t and v.zustand <> 'kasse'
+                            and exists (select 1 from pep.kompetenzen k
+                                         where k.mitarbeiter_id = v.mitarbeiter_id and k.bereich_id = v_vp))
+         and not exists (select 1 from da f
+                          where f.t = a.t and f.zustand = 'arbeit'
+                            and (not v_kasse.kompetenz_noetig
+                                 or exists (select 1 from pep.kompetenzen k
+                                             where k.mitarbeiter_id = f.mitarbeiter_id
+                                               and k.bereich_id = v_kasse.id)))
+      union all
       -- Pause einer Kassenkraft in der Öffnungszeit: Kasse leer und niemand mit Kassenkompetenz frei
       -- (nicht Kasse, nicht Pause); außerhalb der Öffnung ist die Kasse zu, wie bei kasse_unbesetzt
       select 'pausenabloese', p.mitarbeiter_id, p.t, null
@@ -3743,11 +3760,13 @@ begin
                when 'kasse_unbesetzt' then 'Kasse unbesetzt ' || pep.zeit_text(i.von, i.bis)
                when 'keine_vp'        then 'Keine VP anwesend ' || pep.zeit_text(i.von, i.bis)
                when 'vp_allein'       then 'Nur eine Person anwesend ' || pep.zeit_text(i.von, i.bis)
+               when 'vp_gebunden'     then 'VP an der Kasse, keine Ablösung frei ' || pep.zeit_text(i.von, i.bis)
                when 'pausenabloese'   then 'Pausenablöse fehlt ' || pep.zeit_text(i.von, i.bis)
                when 'jarbschg'        then 'Unter 18: nicht vor ' || pep.zeit_text(v_frueh_u18)
                                            || ' und nicht nach ' || pep.zeit_text(v_spaet_u18)
              end
         from inseln i
+       where not (i.art = 'vp_gebunden' and i.bis - i.von <= interval '30 minutes')
       union all
       -- § 4 ArbZG: Schwellen an der Arbeitszeit; Pause = Anwesenheit ohne Arbeit (Pausenblöcke und Lücken)
       select 'pause_fehlt', 'warnung', p.mitarbeiter_id, p.erster, p.ende,

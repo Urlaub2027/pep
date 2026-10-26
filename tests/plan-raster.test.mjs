@@ -5,7 +5,7 @@ import {
   zeitspanne, stundenText, heuteDatum,
 } from '../docs/zeit.js';
 import {
-  zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
+  zellen, strich, abdeckung, abdeckungsKlasse, vpGebunden, tagesStunden, wochenSummen, bereichsStunden,
   rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
   vorgabeText, ersatzBloecke, uebernahmeText,
 } from '../docs/plan-raster.js';
@@ -136,11 +136,60 @@ test('abdeckungsKlasse', () => {
   assert.equal(abdeckungsKlasse('kasse', 2, true, 2), '');
   assert.equal(abdeckungsKlasse('kasse', 0, false, 3), '');
   assert.equal(abdeckungsKlasse('vp', 0, true, 0), 'rot');
-  assert.equal(abdeckungsKlasse('vp', 1, true, 1), '');
+  assert.equal(abdeckungsKlasse('vp', 1, true, 2), ''); // zwei da, nicht gebunden
   assert.equal(abdeckungsKlasse('vp', 0, false, 0), '');
   assert.equal(abdeckungsKlasse('vp', 0, false, 2), 'rot');
   assert.equal(abdeckungsKlasse('vp', 1, false, 2), '');
-  assert.equal(abdeckungsKlasse('vp', 1, true, 1), '');
+  assert.equal(abdeckungsKlasse('vp', 1, true, 1), 'gelb'); // allein in der Öffnungszeit
+  assert.equal(abdeckungsKlasse('vp', 1, false, 1), '');
+  assert.equal(abdeckungsKlasse('vp', 1, true, 2, true), 'gelb'); // an der Kasse gebunden
+  assert.equal(abdeckungsKlasse('vp', 0, true, 2, true), 'rot');
+});
+
+// VP an der Kasse gebunden: alle anwesenden VPs an der Kasse, niemand mit Kassenkompetenz frei, nicht allein.
+const wocheVp = (bloecke, { kompetenzNoetig = true } = {}) => ({
+  bereiche: [
+    { id: 1, kuerzel: 'KA', art: 'bereich', bedeutung: 'kasse', kompetenz_noetig: kompetenzNoetig },
+    { id: 2, kuerzel: 'OG', art: 'bereich', bedeutung: null, kompetenz_noetig: false },
+    { id: 3, kuerzel: 'P', art: 'pause', bedeutung: null, kompetenz_noetig: false },
+  ],
+  mitarbeiter: [
+    { id: 1, vp: true, kompetenzen: [1] },
+    { id: 2, vp: false, kompetenzen: [] },
+    { id: 3, vp: false, kompetenzen: [1] },
+    { id: 4, vp: true, kompetenzen: [1] },
+  ],
+  bloecke: bloecke.map(([ma, von, bis, bereich], i) => ({
+    id: i + 1, mitarbeiter_id: ma, datum: 'd', von, bis, bereich_id: bereich, unbesetzt: false })),
+  abwesenheiten: [],
+});
+const SP8 = halbstunden('08:00', '10:00'); // 08:00 08:30 09:00 09:30
+
+test('abdeckung.vpAnKasse: je Halbstunde', () => {
+  // VP an der Kasse, Kollege ohne Kassenkompetenz → gebunden
+  assert.deepEqual(abdeckung(wocheVp([[1, '08:00', '10:00', 1], [2, '08:00', '10:00', 2]]), 'd', SP8).vpAnKasse,
+    [true, true, true, true]);
+  // Kollegin mit Kassenkompetenz frei (OG) → nicht gebunden; in Pause → gebunden
+  assert.deepEqual(abdeckung(wocheVp([[1, '08:00', '10:00', 1], [3, '08:00', '09:00', 2], [3, '09:00', '10:00', 3]]), 'd', SP8).vpAnKasse,
+    [false, false, true, true]);
+  // ohne Kassenkompetenz-Pflicht kann jeder ablösen
+  assert.deepEqual(abdeckung(wocheVp([[1, '08:00', '10:00', 1], [2, '08:00', '10:00', 2]], { kompetenzNoetig: false }), 'd', SP8).vpAnKasse,
+    [false, false, false, false]);
+  // zweite VP nicht an der Kasse → nicht gebunden; allein → nicht (das ist „allein“)
+  assert.deepEqual(abdeckung(wocheVp([[1, '08:00', '10:00', 1], [4, '08:00', '10:00', 2]]), 'd', SP8).vpAnKasse,
+    [false, false, false, false]);
+  assert.deepEqual(abdeckung(wocheVp([[1, '08:00', '10:00', 1]]), 'd', SP8).vpAnKasse, [false, false, false, false]);
+  // VP in Pause, andere an der Kasse → nicht gebunden
+  assert.deepEqual(abdeckung(wocheVp([[1, '08:00', '10:00', 3], [3, '08:00', '10:00', 1]]), 'd', SP8).vpAnKasse,
+    [false, false, false, false]);
+});
+
+test('vpGebunden: erst ab mehr als 30 min am Stück und nur in der Öffnungszeit', () => {
+  const offen = [true, true, true, true, true];
+  assert.deepEqual(vpGebunden([false, true, false, true, true], offen), [false, false, false, true, true]);
+  assert.deepEqual(vpGebunden([true, true, true, false, false], [false, true, true, true, true]), [false, true, true, false, false]);
+  assert.deepEqual(vpGebunden([true, true, false, false, false], [true, false, true, true, true]), [false, false, false, false, false]);
+  assert.deepEqual(vpGebunden([], []), []);
 });
 
 test('tagesStunden: ohne Pause und ohne unbesetzt', () => {

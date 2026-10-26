@@ -28,32 +28,51 @@ export function strich(spalten, startIndex, endIndex) {
 }
 
 // Abdeckung je Halbstunde eines Tages (F2, F3, F5): nur besetzte Abschnitte.
+// vpAnKasse wie vp_gebunden in pep.pruefung, aber ohne Öffnungszeit und 30-min-Grenze (dafür vpGebunden):
+// mindestens zwei da, alle anwesenden VPs an der Kasse, niemand mit Kassenkompetenz frei (nicht Kasse, nicht Pause).
 export function abdeckung(woche, datum, spalten) {
   const bereiche = new Map((woche.bereiche ?? []).map((b) => [b.id, b]));
   const vpIds = new Set((woche.mitarbeiter ?? []).filter((m) => m.vp === true).map((m) => m.id));
+  const kassenBereich = (woche.bereiche ?? []).find((b) => b.bedeutung === 'kasse');
+  const kannKasse = new Set((woche.mitarbeiter ?? [])
+    .filter((m) => !kassenBereich?.kompetenz_noetig || (m.kompetenzen ?? []).includes(kassenBereich.id)).map((m) => m.id));
   const tag = (woche.bloecke ?? []).filter((b) => b.datum === datum && !b.unbesetzt);
   const kasse = [];
   const vp = [];
   const anwesend = [];
+  const vpAnKasse = [];
   for (const beginn of spalten) {
     const m = minuten(beginn);
     const da = tag.filter((b) => minuten(b.von) <= m && m < minuten(b.bis));
     const arbeit = da.filter((b) => bereiche.get(b.bereich_id)?.art !== 'pause');
-    kasse.push(new Set(arbeit.filter((b) => bereiche.get(b.bereich_id)?.bedeutung === 'kasse').map((b) => b.mitarbeiter_id)).size);
-    vp.push(new Set(da.filter((b) => vpIds.has(b.mitarbeiter_id)).map((b) => b.mitarbeiter_id)).size);
+    const anDerKasse = arbeit.filter((b) => bereiche.get(b.bereich_id)?.bedeutung === 'kasse');
+    const vpDa = da.filter((b) => vpIds.has(b.mitarbeiter_id));
+    kasse.push(new Set(anDerKasse.map((b) => b.mitarbeiter_id)).size);
+    vp.push(new Set(vpDa.map((b) => b.mitarbeiter_id)).size);
     anwesend.push(new Set(da.map((b) => b.mitarbeiter_id)).size);
+    const frei = arbeit.filter((b) => !anDerKasse.includes(b));
+    vpAnKasse.push(!!kassenBereich && anwesend.at(-1) > 1 && vpDa.length > 0
+      && vpDa.every((b) => anDerKasse.includes(b))
+      && !frei.some((b) => kannKasse.has(b.mitarbeiter_id)));
   }
-  return { kasse, vp, anwesend };
+  return { kasse, vp, anwesend, vpAnKasse };
 }
 
-// Ampelklasse einer Abdeckungszelle. art: 'kasse' | 'vp'.
-export function abdeckungsKlasse(art, anzahl, inOeffnung, anwesend) {
+// VP gebunden je Halbstunde: vpAnKasse in der Öffnungszeit, erst ab mehr als 30 min am Stück
+// (eine halbe Stunde, etwa eine Pausenablöse, gilt als überbrückbar; wie vp_gebunden in pep.pruefung).
+export function vpGebunden(vpAnKasse, offen) {
+  const roh = vpAnKasse.map((x, i) => x && offen[i]);
+  return roh.map((x, i) => x && (roh[i - 1] === true || roh[i + 1] === true));
+}
+
+// Ampelklasse einer Abdeckungszelle. art: 'kasse' | 'vp'. VP gelb: allein in der Öffnungszeit oder gebunden (vpGebunden).
+export function abdeckungsKlasse(art, anzahl, inOeffnung, anwesend, gebunden = false) {
   if (art === 'kasse') {
     if (!inOeffnung) return '';
     return anzahl === 0 ? 'rot' : anzahl === 1 ? 'gelb' : '';
   }
   if (art === 'vp') {
-    if (anzahl > 0) return '';
+    if (anzahl > 0) return inOeffnung && (anwesend === 1 || gebunden) ? 'gelb' : '';
     return inOeffnung || anwesend > 0 ? 'rot' : '';
   }
   return '';
