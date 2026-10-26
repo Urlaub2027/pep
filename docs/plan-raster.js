@@ -110,6 +110,53 @@ export function bereichsStunden(woche, datum) {
   return ergebnis;
 }
 
+// Lieferung (L3): je Bereich mit zählender Warengruppe nötig (Rollis × Minuten, auf halbe Stunden aufgerundet),
+// geplant (besetzt, ohne Pause, ab LKW-Zeit; ohne LKW der ganze Tag) und fehlt. Ohne Eintrag für den Tag: leer.
+export function lieferBedarf(woche, datum) {
+  const tag = woche.lieferung?.[datum];
+  if (!tag) return { lkw: null, lkwAusMuster: true, gruppen: [], bereiche: [] };
+  const rollis = new Map((tag.rollis ?? []).map((r) => [r.warengruppe_id, r]));
+  const gruppen = (woche.warengruppen ?? []).map((g) => ({
+    id: g.id, name: g.name, bereich_id: g.bereich_id, minuten: g.minuten,
+    rollis: rollis.get(g.id)?.rollis ?? 0, ausMuster: rollis.get(g.id)?.aus_muster ?? true,
+  }));
+  const ab = tag.lkw ? minuten(tag.lkw) : 0;
+  const pausen = pauseIdsDerWoche(woche);
+  const bereiche = (woche.bereiche ?? [])
+    .filter((b) => gruppen.some((g) => g.bereich_id === b.id))
+    .map((b) => {
+      const summe = gruppen.filter((g) => g.bereich_id === b.id).reduce((s, g) => s + g.rollis * g.minuten, 0);
+      const noetig = Math.ceil(summe / 30) / 2;
+      const geplant = (woche.bloecke ?? [])
+        .filter((x) => x.datum === datum && !x.unbesetzt && !pausen.has(x.bereich_id) && x.bereich_id === b.id)
+        .reduce((s, x) => s + Math.max(0, minuten(x.bis) - Math.max(minuten(x.von), ab)) / 60, 0);
+      return { bereich_id: b.id, noetig, geplant, fehlt: Math.max(0, noetig - geplant) };
+    });
+  return { lkw: tag.lkw ?? null, lkwAusMuster: tag.lkw_aus_muster ?? true, gruppen, bereiche };
+}
+
+// Lieferung (L4): Varianten für 1 bis 3 Personen; Anteile in halben Stunden, die größeren zuerst. Mehr als eine
+// Person nur, wenn der kleinste Anteil mindestens 1 h hat. fehlt <= 0 gibt keine Variante.
+export function aufteilung(fehlt) {
+  if (!(fehlt > 0)) return [];
+  const halbe = Math.round(fehlt * 2);
+  const varianten = [];
+  for (const n of [1, 2, 3]) {
+    const basis = Math.floor(halbe / n);
+    const rest = halbe % n;
+    if (n > 1 && basis < 2) continue;
+    varianten.push(Array.from({ length: n }, (_, i) => (basis + (i < rest ? 1 : 0)) / 2));
+  }
+  return varianten;
+}
+
+// Lieferung (L5): Vorschlagsblock ab LKW-Zeit (ohne LKW ab Rahmenbeginn), auf den Rahmen gekürzt; null, wenn nichts bleibt.
+export function vorschlagBlock(lkw, anteil, rahmen) {
+  const von = Math.max(lkw ? minuten(lkw) : minuten(rahmen.von), minuten(rahmen.von));
+  const bis = Math.min(von + Math.round(anteil * 60), minuten(rahmen.bis));
+  return von < bis ? { von: uhrzeit(von), bis: uhrzeit(bis) } : null;
+}
+
 // Rückgängig-Stapel (F10): der älteste Eintrag fällt heraus, wenn mehr als `max` gemerkt sind.
 export function rueckgaengigStapel(max = 20) {
   const eintraege = [];

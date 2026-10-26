@@ -7,7 +7,7 @@ import {
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
   rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
-  vorgabeText, ersatzBloecke, uebernahmeText,
+  vorgabeText, ersatzBloecke, uebernahmeText, lieferBedarf, aufteilung, vorschlagBlock,
 } from '../docs/plan-raster.js';
 
 test('heuteDatum: lokales Datum zum Aufrufzeitpunkt; ?heute= ersetzt es nur bei gültigem Datum', () => {
@@ -311,4 +311,75 @@ test('vorgabeText: Wochenvorgabe als Zeile im Eckdaten-Fenster', () => {
   assert.equal(vorgabeText({ ...v, wochentag: 7, von: '18:00' }), 'So: nicht 18:00–24:00');
   assert.equal(vorgabeText({ ...v, wochentag: 1, art: 'nur_zwischen', von: '08:00', bis: '13:30', max_stunden_tag: 5.5,
     max_stunden_woche: '20.00' }), 'Mo: nur 08:00–13:30, höchstens 5,5 h am Tag, höchstens 20 h in der Woche');
+});
+
+test('aufteilung: Varianten mit 1 bis 3 Personen, kleinster Anteil mindestens 1 h', () => {
+  assert.deepEqual(aufteilung(3), [[3], [1.5, 1.5], [1, 1, 1]]);
+  assert.deepEqual(aufteilung(2.5), [[2.5], [1.5, 1]]);
+  assert.deepEqual(aufteilung(1.5), [[1.5]]);
+  assert.deepEqual(aufteilung(0.5), [[0.5]]);
+  assert.deepEqual(aufteilung(0), []);
+});
+
+test('vorschlagBlock: ab LKW-Zeit, gekürzt auf den Rahmen, sonst null', () => {
+  const rahmen = { von: '06:00', bis: '21:30' };
+  assert.deepEqual(vorschlagBlock('07:00', 3, rahmen), { von: '07:00', bis: '10:00' });
+  assert.deepEqual(vorschlagBlock('20:00', 3, rahmen), { von: '20:00', bis: '21:30' });
+  assert.equal(vorschlagBlock('21:30', 1, rahmen), null);
+  assert.deepEqual(vorschlagBlock(null, 2, rahmen), { von: '06:00', bis: '08:00' });
+  assert.deepEqual(vorschlagBlock('05:00', 2, rahmen), { von: '06:00', bis: '08:00' });
+});
+
+function lieferWoche(extra = {}) {
+  return {
+    bereiche: [
+      { id: 1, kuerzel: 'KA', name: 'Kasse', art: 'bereich', bedeutung: 'kasse' },
+      { id: 2, kuerzel: 'TS', name: 'Trockensortiment', art: 'bereich', bedeutung: null },
+      { id: 9, kuerzel: 'P', name: 'Pause', art: 'pause', bedeutung: null },
+    ],
+    warengruppen: [
+      { id: 10, name: 'Trockensortiment', bereich_id: 2, minuten: 45, position: 1 },
+      { id: 11, name: 'Aktion', bereich_id: 2, minuten: 30, position: 2 },
+    ],
+    lieferung: {
+      '2026-11-09': {
+        lkw: '07:00', lkw_aus_muster: true,
+        rollis: [
+          { warengruppe_id: 10, rollis: 12, aus_muster: true },
+          { warengruppe_id: 11, rollis: 1, aus_muster: false },
+        ],
+      },
+    },
+    bloecke: [
+      { id: 1, mitarbeiter_id: 1, datum: '2026-11-09', von: '06:00', bis: '10:00', bereich_id: 2, unbesetzt: false },
+      { id: 2, mitarbeiter_id: 2, datum: '2026-11-09', von: '12:00', bis: '14:00', bereich_id: 2, unbesetzt: false },
+      { id: 3, mitarbeiter_id: 1, datum: '2026-11-09', von: '08:00', bis: '08:30', bereich_id: 9, unbesetzt: false },
+    ],
+    ...extra,
+  };
+}
+
+test('lieferBedarf: nötig aus Rollis × Minuten, geplant ab LKW ohne Pause, fehlt', () => {
+  const b = lieferBedarf(lieferWoche(), '2026-11-09');
+  assert.equal(b.lkw, '07:00');
+  assert.equal(b.lkwAusMuster, true);
+  assert.deepEqual(b.gruppen, [
+    { id: 10, name: 'Trockensortiment', bereich_id: 2, minuten: 45, rollis: 12, ausMuster: true },
+    { id: 11, name: 'Aktion', bereich_id: 2, minuten: 30, rollis: 1, ausMuster: false },
+  ]);
+  assert.deepEqual(b.bereiche, [{ bereich_id: 2, noetig: 9.5, geplant: 5, fehlt: 4.5 }]);
+});
+
+test('lieferBedarf: aufgerundet auf halbe Stunden', () => {
+  const w = lieferWoche();
+  w.warengruppen = [{ id: 10, name: 'Obst', bereich_id: 2, minuten: 25, position: 1 }];
+  w.lieferung['2026-11-09'].rollis = [{ warengruppe_id: 10, rollis: 7, aus_muster: false }];
+  assert.equal(lieferBedarf(w, '2026-11-09').bereiche[0].noetig, 3);
+});
+
+test('lieferBedarf: ohne LKW zählt der ganze Tag; ohne Eintrag leer', () => {
+  const w = lieferWoche();
+  w.lieferung['2026-11-09'].lkw = null;
+  assert.equal(lieferBedarf(w, '2026-11-09').bereiche[0].geplant, 6);
+  assert.deepEqual(lieferBedarf(w, '2026-11-10'), { lkw: null, lkwAusMuster: true, gruppen: [], bereiche: [] });
 });
