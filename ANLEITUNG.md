@@ -316,13 +316,21 @@ eigenen Pause zählt sie). Gelb heißt: nur eine Person da.
   viele davon im Plan stehen. Oben steht die LKW-Zeit, darunter je Warengruppe die Rollis
   des Tages. Das sind die Werte aus Einstellungen → Lieferung; weicht der Tag davon ab,
   ist das Feld gelb umrandet, und „↺ Muster“ setzt es zurück. Leitung und Stellvertretung
-  dürfen die Tageswerte ändern (z. B. verkaufsoffener Sonntag oder Lieferung verschoben),
+  dürfen die Tageswerte ändern (leere Felder gelten als „Wert aus dem Wochenmuster“; z. B. verkaufsoffener Sonntag oder Lieferung verschoben),
   vergangene Tage sind schreibgeschützt. Die Tabelle zeigt je Bereich *nötig*, *eingeplant*
-  (besetzte Stunden ab der LKW-Zeit, ohne Pause) und *fehlt* (rot) bzw. ✓. Bereiche ohne
+  (bei Bereichen mit Warengruppe die besetzten Stunden ab der LKW-Zeit, sonst der ganze
+  Tag; ohne Pause) und *fehlt* (rot) bzw. ✓. Bereiche ohne
   Warengruppe zeigen nur die eingeplanten Stunden. Ist noch keine Warengruppe angelegt,
   steht dort ein Hinweis; die Leitung kommt per Link in die Einstellungen.
+  *Beim Einführen:* erst `supabase/schema.sql` in Supabase einspielen, dann die neue Seite
+  mergen, dann Strg+F5 (siehe README, „Einrichtung und Umstellung“).
   **Vorschlag:** Wo Stunden fehlen, öffnet „Vorschlag“ ein Fenster. Man wählt, ob 1, 2
-  oder 3 Personen die fehlenden Stunden teilen (Standard: 1). Der Block beginnt zur
+  oder 3 Personen die fehlenden Stunden teilen. Vorausgewählt ist die Aufteilung mit den
+  wenigsten Personen, bei der niemand mehr als 6 h am Stück hat (fehlen 9 h: „2 × 4,5 h“;
+  fehlen 3 h: „1 × 3 h“); geht das auch mit drei Personen nicht, die mit dem kleinsten
+  Anteil. Nach „eintragen“ ist im Fenster mit dem Rest eine Person weniger vorgewählt.
+  Ist der Block länger als 6 h, steht dort der Hinweis, die Pause (mind. 30 min) dazu zu
+  malen, sonst warnt die Regelprüfung. Der Block beginnt zur
   LKW-Zeit und endet im Zeitrahmen des Tages. Die Kandidaten sind sortiert wie beim
   Ersatz (meiste offene Wochenstunden zuerst); nicht aufgeführt ist, wer im Block schon
   eingeplant oder abwesend ist, die Kompetenz nicht hat oder gegen eine Regel verstoßen

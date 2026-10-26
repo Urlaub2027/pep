@@ -7,7 +7,7 @@ import {
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
   rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
-  vorgabeText, ersatzBloecke, uebernahmeText, lieferBedarf, aufteilung, vorschlagBlock,
+  vorgabeText, ersatzBloecke, uebernahmeText, lieferBedarf, aufteilung, standardVariante, vorschlagBlock,
 } from '../docs/plan-raster.js';
 
 test('heuteDatum: lokales Datum zum Aufrufzeitpunkt; ?heute= ersetzt es nur bei gültigem Datum', () => {
@@ -382,4 +382,13 @@ test('lieferBedarf: ohne LKW zählt der ganze Tag; ohne Eintrag leer', () => {
   w.lieferung['2026-11-09'].lkw = null;
   assert.equal(lieferBedarf(w, '2026-11-09').bereiche[0].geplant, 6);
   assert.deepEqual(lieferBedarf(w, '2026-11-10'), { lkw: null, lkwAusMuster: true, gruppen: [], bereiche: [] });
+});
+
+test('standardVariante: wenigste Personen mit größtem Anteil höchstens 6 h, sonst kleinster größter Anteil', () => {
+  assert.equal(standardVariante(aufteilung(3)), 0); // 1 × 3 h
+  assert.equal(standardVariante(aufteilung(6)), 0); // 1 × 6 h
+  assert.equal(standardVariante(aufteilung(9)), 1); // 2 × 4,5 h
+  assert.deepEqual(aufteilung(9)[1], [4.5, 4.5]);
+  assert.equal(standardVariante(aufteilung(20)), 2); // 3 Personen, auch wenn der Anteil über 6 h bleibt
+  assert.equal(standardVariante([]), -1); // nichts fehlt: keine Variante
 });

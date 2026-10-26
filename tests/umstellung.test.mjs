@@ -71,9 +71,16 @@ test('Stufe-1-Datenbank mit Planblöcken → neues Schema zweimal: Daten bleiben
   // Plan-Antwort unverändert (pep_einsatzplan_woche läuft jetzt über pep.woche_antwort), bis auf das neue Feld ist_ab:
   // die bestehende Filiale bekommt beim Einspielen den Montag der laufenden Woche als Start der IST-Erfassung.
   // Ebenso die Lieferung-Schlüssel warengruppen und lieferung (Lieferung & Bedarf), die der alte Stand nicht kennt.
-  const { ist_ab: istAb, warengruppen: _w, lieferung: _l, ...wocheNachher } = await planWoche();
+  const { ist_ab: istAb, warengruppen, lieferung, ...wocheNachher } = await planWoche();
   assert.deepEqual(wocheNachher, wocheVorher);
   assert.equal(istAb, '2026-11-02');
+  // Lieferung & Bedarf: die bestehende Filiale bekommt die Startausstattung (Trockensortiment → Bereich TS, 45 min)
+  // und die Lieferung hat Schlüssel für die geöffneten Tage der Woche.
+  assert.equal(warengruppen.length, 1);
+  assert.deepEqual([warengruppen[0].name, warengruppen[0].minuten], ['Trockensortiment', 45]);
+  assert.equal((await db.query('select kuerzel from pep.bereiche where id = $1', [warengruppen[0].bereich_id])).rows[0].kuerzel, 'TS');
+  assert.deepEqual(Object.keys(lieferung).sort(),
+    ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14']);
   const istAbWert = async () => (await db.query(
     "select wert #>> '{}' as w from pep.einstellungen where filiale_id = $1 and schluessel = 'ist_ab'", [fil])).rows[0].w;
   // Ein von der Leitung geänderter Start übersteht weitere Schema-Läufe, auch in einer späteren Woche.

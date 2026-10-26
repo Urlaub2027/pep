@@ -281,12 +281,12 @@ function zeichneWarengruppen() {
   };
   boxen.warengruppen.replaceChildren(abschnitt('Warengruppen',
     element('p', { class: 'hinweis' }, 'Jede Warengruppe gehört zu einem Bereich; die Minuten gelten je Rolli.'),
-    daten.warengruppen.map(zeile), darfSchreiben() ? zeile({}) : null));
+    (daten.warengruppen ?? []).map(zeile), darfSchreiben() ? zeile({}) : null));
 }
 
 function zeichneLiefermuster() {
   const tage = daten.rahmen.filter((r) => r.geoeffnet);
-  const gruppen = daten.warengruppen.filter((g) => g.aktiv);
+  const gruppen = (daten.warengruppen ?? []).filter((g) => g.aktiv);
   const lkw = daten.liefer_muster?.lkw ?? {};
   const rollis = new Map((daten.liefer_muster?.rollis ?? []).map((r) => [`${r.warengruppe_id}-${r.wochentag}`, r.rollis]));
   // Speichert beim Verlassen des Feldes; bei Fehler zeigt das Feld wieder den gespeicherten Wert.

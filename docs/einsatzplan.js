@@ -943,6 +943,7 @@ function lieferBox() {
     : element('button', { type: 'button', class: 'ep-muster', onclick: () => speichereLieferung(tagDatum, daten) }, '↺ Muster'));
   const lkw = element('input', {
     type: 'time', step: '1800', value: bedarf.lkw ?? '', 'aria-label': 'LKW', disabled: sperre,
+    title: 'Leer = Wert aus dem Wochenmuster',
     class: bedarf.lkwAusMuster ? '' : 'abweichung',
     onchange: (e) => speichereLieferung(tagDatum, { lkw: e.target.value || null }),
   });
@@ -951,6 +952,7 @@ function lieferBox() {
   const gruppen = bedarf.gruppen.map((g) => element('div', { class: 'ep-liefer-zeile' },
     element('label', {}, `${g.name} `, element('input', {
       type: 'number', min: '0', max: '99', step: '1', value: String(g.rollis), 'aria-label': `Rollis ${g.name}`, disabled: sperre,
+      title: 'Leer = Wert aus dem Wochenmuster',
       class: g.ausMuster ? '' : 'abweichung',
       onchange: (e) => speichereLieferung(tagDatum, { rollis: { [g.id]: e.target.value === '' ? null : Number(e.target.value) } }),
     }), ' Rollis'),
@@ -987,7 +989,7 @@ function lieferBox() {
         element('th', { class: 'zahl' }, 'eingeplant'), element('th', { class: 'zahl' }, 'fehlt'))),
       element('tbody', {}, zeilen))
       : element('p', { class: 'hinweis' }, 'Noch nichts geplant.'),
-    element('p', { class: 'hinweis ep-fuss' }, 'Alle Zahlen in Stunden. Eingeplant zählt ab der LKW-Zeit.'));
+    element('p', { class: 'hinweis ep-fuss' }, 'Alle Zahlen in Stunden. Eingeplant zählt bei Bereichen mit Warengruppe ab der LKW-Zeit, sonst den ganzen Tag.'));
 }
 
 function zeichneSeite() {

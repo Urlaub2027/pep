@@ -270,3 +270,20 @@ test('bedarf_kandidaten: Fehler', async () => {
   // Heute selbst ist erlaubt; Stellvertretung darf; Leere Filiale: keine Kandidaten.
   assert.deepEqual((await bedarf(t, '2026-11-02', KA, '07:00', '10:00', t.stellv)).kandidaten, []);
 });
+
+test('warengruppe_speichern: inaktiver Bereich blockiert nur eine Neuwahl, nicht das Speichern oder Deaktivieren', async () => {
+  const t = await aufbau();
+  const g1 = (await t.einst()).warengruppen[0];
+  const bereichAus = (id) => t.json(t.leitung, 'select public.pep_bereich_speichern($1, $2::jsonb) as r', [id, JSON.stringify({ aktiv: false })]);
+  await bereichAus(g1.bereich_id);
+  // Gleicher (inzwischen inaktiver) Bereich, wie ihn die Oberfläche immer mitschickt: Deaktivieren klappt.
+  await t.gruppe(g1.id, { name: g1.name, bereich_id: g1.bereich_id, minuten: g1.minuten, aktiv: false });
+  const danach = (await t.einst()).warengruppen.find((x) => x.id === g1.id);
+  assert.equal(danach.aktiv, false);
+  assert.equal(danach.bereich_id, g1.bereich_id);
+  // Umhängen auf einen anderen inaktiven Bereich: weiterhin abgelehnt.
+  await bereichAus(t.bereich.OG);
+  await wirft(t.gruppe(g1.id, { bereich_id: t.bereich.OG }), 'BEREICH_NICHT_GEFUNDEN');
+  // Neu anlegen in inaktivem Bereich: abgelehnt.
+  await wirft(t.gruppe(null, { name: 'Neu', bereich_id: g1.bereich_id, minuten: 30 }), 'BEREICH_NICHT_GEFUNDEN');
+});

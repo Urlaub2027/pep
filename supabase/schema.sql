@@ -4519,8 +4519,10 @@ begin
 
   if p_daten ? 'bereich_id' or p_id is null then
     v_bereich := pep.json_ganzzahl(p_daten -> 'bereich_id');
+    -- Aktiv nur prüfen, wenn der Bereich neu gewählt wird: eine Gruppe mit inzwischen inaktivem Bereich bleibt speicherbar.
     if v_bereich is null or not exists (select 1 from pep.bereiche
-         where id = v_bereich and filiale_id = v_b.filiale_id and art = 'bereich' and aktiv) then
+         where id = v_bereich and filiale_id = v_b.filiale_id and art = 'bereich'
+           and (aktiv or v_bereich is not distinct from v_alt.bereich_id)) then
       raise exception 'BEREICH_NICHT_GEFUNDEN';
     end if;
   else

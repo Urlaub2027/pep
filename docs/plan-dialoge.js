@@ -7,11 +7,11 @@ import { element, feld, eingabe, meldung, datumDE, fehlerText, stundenDE } from 
 import { aufruf, zeigeAnsicht } from './app.js';
 import { dialog } from './dialog.js';
 import { waehleMitarbeiter, VERTRAGSARTEN } from './mitarbeiter.js';
-import { plusTage, montagDerKw, zeitspanne, isoWoche, heuteDatum } from './zeit.js';
+import { plusTage, montagDerKw, zeitspanne, isoWoche, heuteDatum, minuten as minutenVon } from './zeit.js';
 import { vorzeichen } from './zeitkonto-daten.js';
 import {
   gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText, vorgabeText, ersatzBloecke,
-  uebernahmeText, lieferBedarf, aufteilung, vorschlagBlock,
+  uebernahmeText, lieferBedarf, aufteilung, standardVariante, vorschlagBlock,
 } from './plan-raster.js';
 
 const WOCHENTAG_LANG = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -364,7 +364,7 @@ const varianteText = (anteile) => (anteile.every((a) => a === anteile[0])
 // Was in einem Bereich an einem Tag fehlt (lieferBedarf): Aufteilung auf 1 bis 3 Personen, Block ab LKW-Zeit, Kandidaten
 // (pep_bedarf_kandidaten). Ein Klick auf „eintragen“ malt den Block (pep_plan_malen) und lädt die Woche neu; fehlt danach
 // noch etwas, öffnet sich der Dialog mit dem Rest. kontext.aktuell() liefert den Kontext der neu geladenen Woche.
-export async function bedarfDialog(kontext, bereichId) {
+export async function bedarfDialog(kontext, bereichId, vorherigePersonen = 0) {
   const { woche, datum } = kontext;
   if (!woche || !datum) return;
   const bedarf = lieferBedarf(woche, datum);
@@ -373,7 +373,9 @@ export async function bedarfDialog(kontext, bereichId) {
   const tag = woche.tage.find((t) => t.datum === datum);
   const varianten = aufteilung(zeile?.fehlt ?? 0);
   if (!zeile || !varianten.length || !tag) return;
-  let gewaehlt = 0; // Index der Variante; Standard: 1 Person
+  // Vorauswahl: nach „eintragen“ eine Person weniger als zuletzt (falls vorhanden), sonst die Regel standardVariante.
+  const weniger = vorherigePersonen > 1 ? varianten.findIndex((v) => v.length === vorherigePersonen - 1) : -1;
+  let gewaehlt = weniger >= 0 ? weniger : standardVariante(varianten);
   let d = null;
   const kopf = element('p', { class: 'pd-unbesetzt' });
   const chips = element('div', { class: 'chip-gruppe', role: 'group', 'aria-label': 'Aufteilung' });
@@ -402,7 +404,7 @@ export async function bedarfDialog(kontext, bereichId) {
     await kontext.neuLaden();
     meldung(`${k.name} ist ${bereich?.name ?? ''} ${zeitspanne(block.von, block.bis)} eingetragen (${tagKurz(datum)}).`, 'ok');
     const neu = kontext.aktuell?.();
-    if (neu) await bedarfDialog(neu, bereichId); // zeigt nichts, wenn nichts mehr fehlt
+    if (neu) await bedarfDialog(neu, bereichId, varianten[gewaehlt].length); // zeigt nichts, wenn nichts mehr fehlt
   };
 
   const zeichne = async () => {
@@ -414,12 +416,17 @@ export async function bedarfDialog(kontext, bereichId) {
     }, varianteText(v))));
     kopf.replaceChildren(element('strong', {}, `${stundenKurz(zeile.fehlt)} h fehlen:`),
       block ? ` Block ${zeitspanne(block.von, block.bis)}` : ' kein Block im Zeitrahmen des Tages');
+    if (block && minutenVon(block.bis) - minutenVon(block.von) > 360) {
+      kopf.append(element('br'), element('small', { class: 'hinweis-gelb' },
+        'Über 6 h: Pause (mind. 30 min) dazu malen, sonst warnt die Regelprüfung.'));
+    }
     liste.replaceChildren();
     if (!block) return;
     let antwort;
     try {
       antwort = await aufruf('pep_bedarf_kandidaten', { p_datum: datum, p_bereich_id: bereichId, p_von: block.von, p_bis: block.bis });
     } catch (fehler) {
+      if (nummer !== lauf) return;
       if (!fehler.behandelt) liste.replaceChildren(element('p', { class: 'warnung' }, fehlerText(fehler.message)));
       return;
     }

@@ -2650,10 +2650,16 @@ await szenario('Einsatzplan: Lieferung & Bedarf – Tag überschreiben, Vorschla
   gleich(await wertUndRand(), { wert: '12', abweichung: false }, 'zurück auf Muster');
   gleich((await zeile())[0], '9', 'TS nötig wieder 9 h');
   gleich((await sql('select count(*)::int as n from pep.liefer_tag_rollis where warengruppe_id = $1', [gruppe]))[0].n, 0, 'DB Tageswert gelöscht');
-  // Vorschlag: eine Person, erster Kandidat
+  // Vorschlag: fehlen 9 h → vorausgewählt „2 × 4,5 h“ (wenigste Personen mit höchstens 6 h); hier eine Person mit 9 h wählen
   await c.klick({ text: 'Vorschlag', in: box, sel: 'button', genau: true });
   await warteDialog('Vorschlag');
   await ruhe();
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] .chip[aria-pressed="true"]')].map((e) => e.textContent)),
+    ['2 × 4,5 h'], 'Vorauswahl bei 9 h');
+  await c.klick({ text: '1 × 9 h', in: 'dialog[open]', sel: '.chip', genau: true });
+  await ruhe();
+  pruefe((await text('dialog[open] .pd-unbesetzt')).includes('Über 6 h: Pause (mind. 30 min) dazu malen, sonst warnt die Regelprüfung.'),
+    'Hinweis bei Block über 6 h', await text('dialog[open] .pd-unbesetzt'));
   const kandidat = await c.werte(() => { const k = document.querySelector('dialog[open] .pd-kandidat'); return k ? { name: k.querySelector('strong').textContent, text: k.textContent } : null; });
   pruefe(kandidat, 'Kandidat vorhanden', await c.werte(() => document.querySelector('dialog[open]')?.textContent));
   await c.foto(`${FOTOS}einsatzplan-vorschlag.png`);
@@ -2675,12 +2681,16 @@ await szenario('Einsatzplan: Lieferung & Bedarf – Tag überschreiben, Vorschla
   await warteDialog('Vorschlag');
   await ruhe();
   gleich(await texte('dialog[open] .chip'), ['1 × 3 h', '2 × 1,5 h', '3 × 1 h'], 'Aufteilung 3 h');
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] .chip[aria-pressed="true"]')].map((e) => e.textContent)),
+    ['1 × 3 h'], 'Vorauswahl bei 3 h');
   await c.klick({ text: '2 × 1,5 h', in: 'dialog[open]', sel: '.chip', genau: true });
   await ruhe();
   gleich(await text('dialog[open] .pd-unbesetzt'), '3 h fehlen: Block 07:00–08:30', 'Block für 1,5 h');
   await c.klick('dialog[open] .pd-kandidat');
   await ruhe();
   await c.warteAuf(() => document.querySelector('dialog[open] .pd-unbesetzt')?.textContent.startsWith('1,5 h fehlen'), { text: 'Dialog mit Rest' });
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] .chip[aria-pressed="true"]')].map((e) => e.textContent)),
+    ['1 × 1,5 h'], 'Rest: eine Person weniger vorgewählt');
   await dialogZu();
   gleich((await zeile())[2], '1,5', 'fehlt 1,5 h');
   await c.foto(`${FOTOS}einsatzplan-lieferung-nach-eintrag.png`);

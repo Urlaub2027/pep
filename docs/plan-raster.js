@@ -150,6 +150,16 @@ export function aufteilung(fehlt) {
   return varianten;
 }
 
+// Lieferung (L4): vorausgewählte Variante. Die mit den wenigsten Personen, deren größter Anteil höchstens 6 h hat;
+// gibt es keine, die mit dem kleinsten größten Anteil (also die mit den meisten Personen). Leere Liste: -1.
+export function standardVariante(varianten) {
+  if (!varianten.length) return -1;
+  const groesste = varianten.map((v) => Math.max(...v));
+  const passend = groesste.findIndex((g) => g <= 6);
+  if (passend >= 0) return passend;
+  return groesste.indexOf(Math.min(...groesste));
+}
+
 // Lieferung (L5): Vorschlagsblock ab LKW-Zeit (ohne LKW ab Rahmenbeginn), auf den Rahmen gekürzt; null, wenn nichts bleibt.
 export function vorschlagBlock(lkw, anteil, rahmen) {
   const von = Math.max(lkw ? minuten(lkw) : minuten(rahmen.von), minuten(rahmen.von));
