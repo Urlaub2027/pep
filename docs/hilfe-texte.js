@@ -66,7 +66,6 @@ export const HILFE = {
       'Oben links „Plan“ gewählt lassen. Woche mit ◀ ▶, Datumsfeld oder „Heute“ wählen, dann den Tag.',
       'Pinsel wählen (ein Bereich je Knopf) und in der Zeile des Mitarbeiters über die Zeit ziehen.',
       '„Radieren“ leert die gezogenen halben Stunden. „Rückgängig“ nimmt die letzten Striche zurück.',
-      'Notiz: in die Kommentarspalte klicken, tippen, Enter.',
       '„Kopieren“ und „Vorlagen“ übertragen einen Tag oder eine Woche. „Krank/ZA“ trägt Krankheit oder Zeitausgleich ein.',
     ],
     gut_zu_wissen: [
@@ -76,7 +75,8 @@ export const HILFE = {
       'Klick auf einen Namen öffnet die Eckdaten der Person.',
       'Vergangene Tage sind schreibgeschützt. „IST erfassen“ wechselt in den Modus IST.',
       'Am Tablet: waagerecht ziehen malt, senkrecht wischen scrollt.',
-      'Was ein Kürzel bedeutet, zeigt „Kürzel“ rechts neben den Knöpfen (aufklappen).',
+      'Was ein Kürzel bedeutet, zeigt „Kürzel“ (aufklappen).',
+      'Kasten „Lieferung & Bedarf“: Rollis eintragen, „Vorschlag“ nennt, wer fehlende Stunden übernehmen kann.',
     ],
   },
 
@@ -146,10 +146,10 @@ export const HILFE = {
   einstellungen: {
     titel: 'Einstellungen',
     wozu: 'Hier steht, wie die Filiale arbeitet; den Reiter sieht nur die Leitung. Oben den Teil wählen: „Filiale & Zeiten“, '
-      + '„Bereiche & Codes“, „Regeln & Zeitkonto“, „Urlaubstool“ oder „Benutzer & Sicherung“.',
+      + '„Bereiche & Codes“, „Lieferung“, „Regeln & Zeitkonto“, „Urlaubstool“ oder „Benutzer & Sicherung“.',
     schritte: [
-      'Wert ändern, dann in der Zeile „Speichern“ bzw. „Anlegen“. Sofort gespeichert werden die Regelparameter, '
-        + '„IST-Erfassung ab“ und der Haken „aktiv“ einer Umfrage.',
+      'Wert ändern, dann in der Zeile „Speichern“ bzw. „Anlegen“. Sofort gespeichert werden Regelparameter, '
+        + '„IST-Erfassung ab“, Liefermuster und der Haken „aktiv“ einer Umfrage.',
       'Feiertage stehen unter „Abweichende Tage“. „öffnen …“ macht einen Feiertag zum Öffnungstag.',
       'Urlaubstool: Umfrage mit „aktiv“ einschalten, dann unter „Teilnehmer zuordnen“ „Vorschläge übernehmen“ '
         + 'oder je Zeile wählen und „Speichern“.',

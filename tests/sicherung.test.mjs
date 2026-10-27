@@ -49,7 +49,7 @@ const saldi = async (db, fil) => (await db.query(`select m.name, sum(k.stunden):
 // sortiert, das Einspielen vergibt neue Ids in derselben Reihenfolge), Verweise → Position im Ziel, user_id →
 // Benutzername, filiale_id → F. Das Protokoll behält vorher/nachher/schluessel als Schnappschuss und verliert die id.
 const VERWEIS = { mitarbeiter_id: 'mitarbeiter', bereich_id: 'bereiche', code_id: 'abwesenheitscodes',
-  wiederholung_id: 'wiederholungen', freigabe_id: 'urlaub_freigaben' };
+  wiederholung_id: 'wiederholungen', freigabe_id: 'urlaub_freigaben', warengruppe_id: 'warengruppen' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 function kanonisch(s) {
   const umfrage = (id) => (s.urlaub.umfragen[id] ? `U:${s.urlaub.umfragen[id].titel}/${s.urlaub.umfragen[id].jahr}` : `U?${id}`);
@@ -129,6 +129,10 @@ before(async () => {
   await q('select public.pep_kommentar_setzen($1, $2::date, $3)', [anna, tag(HEUTE, 1), 'Lieferung annehmen']);
   await q(`select public.pep_vorlage_speichern('Standardwoche', 'woche', $1::date) as r`, [HEUTE]);
   await q(`select public.pep_woche_speichern(2026, 48, '{"planumsatz":61000.5,"stundenvorgabe_manuell":240}') as r`);
+  // Lieferung: Muster-Rollis, ein Tageswert mit LKW-Zeit und Tages-Rollis (deckt die Umschlüsselung warengruppe_id ab)
+  const warengruppe = (await db.query('select id from pep.warengruppen where filiale_id = $1 order by id', [g.fil])).rows[0].id;
+  await q(`select public.pep_liefer_muster_setzen(1, $1::jsonb) as r`, [JSON.stringify({ rollis: { [warengruppe]: 4 } })]);
+  await q(`select public.pep_liefer_tag_setzen('2026-11-24'::date, $1::jsonb) as r`, [JSON.stringify({ lkw: '08:30', rollis: { [warengruppe]: 7 } })]);
   await heuteSetzen(db, HEUTE);
   // Urlaubstool: Umfrage, zwei Teilnehmer zugeordnet, ein Wunsch freigegeben (→ Abwesenheiten mit freigabe_id)
   const umfrage = await umfrageAnlegen(db, leitung, { titel: 'Urlaub 2026', jahr: 2026 });
@@ -437,6 +441,15 @@ test('Rundlauf: in leere Filiale eines neuen Projekts einspielen, erneut sichern
   for (const t of ['urlaub_umfragen', 'urlaub_zuordnung']) { ist[t] = sortiert(ist[t]); soll[t] = sortiert(soll[t]); }
   for (const t of Object.keys(soll)) assert.deepEqual(ist[t], soll[t], t);
   assert.notEqual(sZ.pruefsumme, sA.pruefsumme);
+  // Lieferung: die Zeilen sind da und zeigen im Ziel auf die dortige Warengruppe (nicht auf die Id der Quelle)
+  const zielGruppe = (await Z.db.query('select id from pep.warengruppen where filiale_id = $1', [Z.fil])).rows.map((r) => r.id);
+  assert.equal(zielGruppe.length, sA.tabellen.warengruppen.length);
+  for (const t of ['liefer_muster_rollis', 'liefer_tag_rollis']) {
+    assert.ok(sZ.tabellen[t].length >= 1 && sZ.tabellen[t].length === sA.tabellen[t].length, t);
+    assert.ok(sZ.tabellen[t].every((x) => zielGruppe.includes(x.warengruppe_id)), `${t}: warengruppe_id im Ziel`);
+  }
+  assert.equal(sZ.tabellen.liefer_tag.length, 1);
+  assert.deepEqual(sZ.tabellen.liefer_tag_rollis.map((x) => [x.datum, x.rollis]), [['2026-11-24', 7]]);
 
   // Saldo je Mitarbeiter gleich, keine neue Korrektur, keine Vormerkung; die Wochenrechnung stimmt mit dem Journal
   assert.deepEqual(await saldi(Z.db, Z.fil), await saldi(A.db, A.fil));

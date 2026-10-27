@@ -3,7 +3,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { neueDatenbank, als, pepBenutzer, filiale } from './helfer.mjs';
 
-let db, leitung, stellv, azubi, ohne, fil, ma, jo, vorlage, sicherung;
+let db, leitung, stellv, azubi, ohne, fil, ma, jo, vorlage, sicherung, wg;
 
 const aufruf = (nutzer, sql) => als(db, 'authenticated', nutzer, sql);
 
@@ -30,6 +30,7 @@ before(async () => {
     select $1, $2, '2027-05-03', '08:00', '12:00', id from pep.bereiche where filiale_id = $1 and kuerzel = 'KA'`, [fil, ma]);
   await db.query(`insert into pep.abwesenheiten (filiale_id, mitarbeiter_id, code_id, datum, stunden, quelle)
     select $1, $2, id, '2027-05-03', 6.25, 'manuell' from pep.abwesenheitscodes where filiale_id = $1 and code = 'KM'`, [fil, ma]);
+  wg = (await db.query('select id from pep.warengruppen where filiale_id = $1', [fil])).rows[0].id; // Startgruppe
   // Echte Sicherung dieser Filiale: ohne Rechtecheck scheiterte das Einspielen erst an FILIALE_NICHT_LEER (sichtbar).
   sicherung = (await aufruf(leitung, 'select public.pep_sicherung() as r'))[0].r;
 });
@@ -57,7 +58,7 @@ test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, a
 // eigene erste Anmeldung (benutzer.bestaetigt_am) und ist für jede Rolle erlaubt, darum hier.
 const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mitarbeiter', 'pep_einstellungen',
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
-  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
+  'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_bedarf_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
   'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche', 'pep_zeitkonto_journal', 'pep_stundenblatt',
   'pep_sicherung_pruefen'];
 // Auch für die Stellvertretung erlaubt.
@@ -66,7 +67,7 @@ const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loesche
   'pep_plan_malen', 'pep_plan_zeile_setzen', 'pep_kommentar_setzen',
   'pep_tag_kopieren', 'pep_woche_kopieren', 'pep_vorlage_speichern', 'pep_vorlage_laden', 'pep_vorlage_loeschen',
   'pep_schnell_abwesend', 'pep_ersatz_uebernehmen', 'pep_woche_speichern',
-  'pep_ist_malen', 'pep_ist_zeile_setzen', 'pep_ist_bestaetigen'];
+  'pep_ist_malen', 'pep_ist_zeile_setzen', 'pep_ist_bestaetigen', 'pep_liefer_tag_setzen'];
 // Legt für die Leitung ohne Filiale die Filiale an – das ist gewollt und in basis.test.mjs geprüft.
 // Weckruf: ohne Anmeldung aufrufbar, ohne Rollenprüfung, ohne Daten; eigener Test am Dateiende.
 const OHNE_ANMELDUNG = ['pep_lebenszeichen'];
@@ -88,6 +89,11 @@ const aufrufe = () => ({
   pep_einstellung_setzen: `select public.pep_einstellung_setzen('x', '1')`,
   pep_code_speichern: `select public.pep_code_speichern(null, '{"code":"ZZ","name":"Test"}')`,
   pep_bereich_speichern: `select public.pep_bereich_speichern(null, '{"kuerzel":"ZZ","name":"Test"}')`,
+  // Nur Leitung. Echte Warengruppe: ohne Rechtecheck würde sie umbenannt, das Muster geändert (und protokolliert).
+  pep_warengruppe_speichern: `select public.pep_warengruppe_speichern(${wg}, '{"name":"Zzz"}')`,
+  pep_liefer_muster_setzen: `select public.pep_liefer_muster_setzen(2, '{"lkw":"08:30"}')`,
+  // Leitung oder Stellvertretung; geöffneter Tag (Mo 03.05.2027): ohne Rechtecheck entstünde ein Tageswert.
+  pep_liefer_tag_setzen: `select public.pep_liefer_tag_setzen('2027-05-03', '{"lkw":"08:30"}')`,
   pep_schulferien_speichern: `select public.pep_schulferien_speichern(null, '2027-04-05', '2027-04-16', 'Test')`,
   pep_schulferien_loeschen: `select public.pep_schulferien_loeschen(1)`,
   pep_benutzer_setzen: `select public.pep_benutzer_setzen('vize', 'leitung')`,
@@ -165,10 +171,11 @@ test('schreibende Funktionen: Stellvertretung, Rolle mitarbeiter, Leitung ohne F
 });
 
 // Lesende Funktionen mit Mitarbeiterbezug werden oben nicht aufgerufen: Rolle mitarbeiter und Leitung ohne Filiale
-// dürfen auch die Eckdaten und die Ersatzliste eines Mitarbeiters nicht sehen.
+// dürfen auch die Eckdaten, die Ersatzliste und die Bedarfskandidaten nicht sehen.
 test('lesend mit Mitarbeiter: Rolle mitarbeiter → NUR_LEITUNG, Leitung ohne Filiale → KEINE_FILIALE', async () => {
   for (const sql of [`select public.pep_eckdaten(${ma}, '2027-05-03')`,
-    `select public.pep_ersatz_kandidaten(${ma}, '2027-05-03')`]) {
+    `select public.pep_ersatz_kandidaten(${ma}, '2027-05-03')`,
+    `select public.pep_bedarf_kandidaten('2027-05-03', 1, '07:00', '10:00')`]) {
     await assert.rejects(aufruf(azubi, sql), /NUR_LEITUNG/, `mitarbeiter: ${sql}`);
     await assert.rejects(aufruf(ohne, sql), /KEINE_FILIALE/, `Leitung ohne Filiale: ${sql}`);
   }

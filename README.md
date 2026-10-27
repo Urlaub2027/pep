@@ -57,6 +57,13 @@ Abschluss eintragen (ANLEITUNG, Abschnitt 1). `tests/umstellung.test.mjs` spielt
 aktuelle Schema auch auf eine eingefrorene Stufe-1-Datenbank
 (`tests/fixtures/pep-schema-stufe-1.sql`).
 
+**Lieferung & Bedarf:** ebenfalls nur `supabase/schema.sql` im SQL-Editor **erneut**
+ausführen. **Reihenfolge: erst das Schema in Supabase einspielen, dann mergen, dann in
+der Seite Strg+F5.** Mit der neuen Seite und dem alten Schema fehlen die Lieferung-Felder
+der Antworten; die Seite fängt das ab (Einstellungen und Sicherung bleiben nutzbar), nur
+der Kasten „Lieferung & Bedarf“ bleibt leer. Die bestehende Filiale bekommt beim
+Einspielen die Warengruppe „Trockensortiment“ (Bereich TS, 45 min) und LKW-Zeit 07:00.
+
 ## Sicherheitsprinzip
 
 Das Repository ist öffentlich, die Daten sind es nicht. Alle Tabellen liegen im
@@ -189,5 +196,5 @@ Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funk
 
 ## Ausblick
 
-Nächste Stufen: Bedarfsplanung (Vorgaben je Bereich und Uhrzeit), eine Seite für die
-Rolle „Mitarbeiter“, Tausch und Fairness auf der Startseite.
+Nächste Stufen: Kassenplanung (Bedarf an der Kasse; Lieferung und Bedarf je Bereich gibt es
+schon), eine Seite für die Rolle „Mitarbeiter“, Tausch und Fairness auf der Startseite.

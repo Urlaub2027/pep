@@ -169,18 +169,26 @@ Mitarbeiter in der Liste tauscht er den Platz mit dem Nachbarn. Jeder Klick wird
 sofort gespeichert. So steht die Reihenfolge auch im Einsatzplan und im Ausdruck.
 
 ### Einstellungen (Leitung)
-Oben fünf Unterreiter; die PEP merkt sich im Browser, welcher zuletzt offen war:
+Oben sechs Unterreiter; die PEP merkt sich im Browser, welcher zuletzt offen war:
 
 | Unterreiter | Abschnitte |
 | --- | --- |
 | Filiale & Zeiten | Öffnungs- und Rahmenzeiten, Abweichende Tage, Schulferien |
 | Bereiche & Codes | Abteilungen und Bereiche, Abwesenheitscodes |
+| Lieferung | Warengruppen, Liefermuster |
 | Regeln & Zeitkonto | Regelparameter, IST-Erfassung |
 | Urlaubstool | Umfragen, Teilnehmer zuordnen |
 | Benutzer & Sicherung | Benutzer, Sicherung |
 
 „Einstellungen → Sicherung“ in dieser Anleitung heißt also: Unterreiter „Benutzer & Sicherung“,
 Abschnitt Sicherung. „Sicherung →“ auf der Startseite öffnet ihn direkt.
+
+**Lieferung.** Unter „Warengruppen“ legt die Leitung an, was geliefert wird (z. B. „Aktionsware“):
+Name, Bereich und Minuten je Rolli. Ist der Bereich einer Gruppe inaktiv, steht „Bereich inaktiv –
+zählt nicht“ dabei. Das „Liefermuster“ ist eine Tabelle: oben die LKW-Zeit je geöffnetem Wochentag
+(volle oder halbe Stunde), darunter die Rollis je Warengruppe; leer heißt 0. Jede Änderung wird beim
+Verlassen des Feldes gespeichert. Die
+„Kassierleistung“ unter Regelparameter wirkt erst mit der Kassenplanung, die noch nicht gebaut ist.
 
 - **Rahmen:** Öffnungszeiten je Wochentag.
 - **Abweichende Tage:** Feiertage erscheinen grau; „öffnen …“ macht daraus eine
@@ -304,7 +312,31 @@ eigenen Pause zählt sie). Gelb heißt: nur eine Person da.
   freie Samstage im Monat/Jahr, Urlaubswunsch offen.
 - *Woche:* je Mitarbeiter Soll (Vertrag − Abwesenheiten), geplant, Differenz; unten die
   Summe gegen die Stundenvorgabe aus der Vorausplanung.
-- *Abteilungen heute:* Stunden je Bereich.
+- *Lieferung & Bedarf:* zeigt, wie viele Stunden das Einräumen der Lieferung braucht und wie
+  viele davon im Plan stehen. Oben steht die LKW-Zeit, darunter je Warengruppe die Rollis
+  des Tages. Das sind die Werte aus Einstellungen → Lieferung; weicht der Tag davon ab,
+  ist das Feld gelb umrandet, und „↺ Muster“ setzt es zurück. Leitung und Stellvertretung
+  dürfen die Tageswerte ändern (leere Felder gelten als „Wert aus dem Wochenmuster“; z. B. verkaufsoffener Sonntag oder Lieferung verschoben),
+  vergangene Tage sind schreibgeschützt. Die Tabelle zeigt je Bereich *nötig*, *eingeplant*
+  (bei Bereichen mit Warengruppe die besetzten Stunden ab der LKW-Zeit, sonst der ganze
+  Tag; ohne Pause) und *fehlt* (rot) bzw. ✓. Bereiche ohne
+  Warengruppe zeigen nur die eingeplanten Stunden. Ist noch keine Warengruppe angelegt,
+  steht dort ein Hinweis; die Leitung kommt per Link in die Einstellungen.
+  *Beim Einführen:* erst `supabase/schema.sql` in Supabase einspielen, dann die neue Seite
+  mergen, dann Strg+F5 (siehe README, „Einrichtung und Umstellung“).
+  **Vorschlag:** Wo Stunden fehlen, öffnet „Vorschlag“ ein Fenster. Man wählt, ob 1, 2
+  oder 3 Personen die fehlenden Stunden teilen. Vorausgewählt ist die Aufteilung mit den
+  wenigsten Personen, bei der niemand mehr als 6 h am Stück hat (fehlen 9 h: „2 × 4,5 h“;
+  fehlen 3 h: „1 × 3 h“); geht das auch mit drei Personen nicht, die mit dem kleinsten
+  Anteil. Nach „eintragen“ ist im Fenster mit dem Rest eine Person weniger vorgewählt.
+  Ist der Block länger als 6 h, steht dort der Hinweis, die Pause (mind. 30 min) dazu zu
+  malen, sonst warnt die Regelprüfung. Der Block beginnt zur
+  LKW-Zeit und endet im Zeitrahmen des Tages. Die Kandidaten sind sortiert wie beim
+  Ersatz (meiste offene Wochenstunden zuerst); nicht aufgeführt ist, wer im Block schon
+  eingeplant oder abwesend ist, die Kompetenz nicht hat oder gegen eine Regel verstoßen
+  würde. Ein Klick auf „… eintragen“ malt den Block; fehlt danach noch etwas, öffnet sich
+  das Fenster mit dem Rest. Ohne Kandidaten heißt es „Niemand frei, der den Bereich darf.
+  Von Hand malen.“
 
 **Eckdaten:** Klick auf den Namen öffnet ein Fenster mit Vertrag und Kompetenzen,
 Stunden der Woche, Wochenvorgaben, Abwesenheiten dieser und nächster Woche, Samstagen
@@ -742,7 +774,7 @@ Einspielen bucht PEP keine automatischen Korrekturen.
 
 ## 5. Bekannte Grenzen
 - Die Reihenfolge der Mitarbeiter wird mit ▲/▼ geändert, nicht per Ziehen.
-- Bedarfsplanung (Vorgaben je Bereich und Uhrzeit) folgt in einer späteren Stufe.
+- Der Bedarf an der Kasse (Kassenplanung) wird noch nicht gerechnet; die Kassierleistung in den Einstellungen wirkt erst damit.
 - Kopieren fügt Blöcke eines Mitarbeiters, der am Ziel abwesend ist, trotzdem ein
   (unbesetzt) und prüft dabei die Pflicht-Vorgaben gegen diese Zeit nicht. Wird die
   Abwesenheit später gelöscht, kann ein Block einer Pflicht-Vorgabe widersprechen,

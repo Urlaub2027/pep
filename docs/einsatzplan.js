@@ -1,5 +1,5 @@
 // Reiter „Einsatzplan“: Tagesraster in halben Stunden, Malen per Ziehen (Pointer-Events), Rückgängig,
-// Abdeckung Kasse/VP, Seitenleiste mit Regelprüfung, Wochenstunden und Abteilungen.
+// Abdeckung Kasse/VP, Seitenleiste mit Regelprüfung, Wochenstunden und Lieferung & Bedarf.
 // Blöcke kommen als Abschnitte (F2): dieselbe id kann mehrfach vorkommen, je Abschnitt eigenes `unbesetzt`.
 // Modus „IST“ (G8, ?modus=ist): dieselbe Mal-, Warteschlangen- und Rückgängig-Logik mit pep_ist_* statt pep_plan_*;
 // was nur der IST-Modus zeigt, liegt in ist-ansicht.js. Gezeichnet wird nach dem Modus der geladenen Woche (woche.modus).
@@ -8,23 +8,26 @@ import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum, montagDerKw } from './zeit.js';
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel, rund, kurz,
+  lieferBedarf, vorschlagBlock,
 } from './plan-raster.js';
+import { oeffneLieferung } from './einstellungen.js';
 import {
   istSpalten, istZellKlassen, zeilenStatus, istAbweichung, statusZelle, abweichungsZelle, istTagBox, offeneBox,
   tagesReiterText, grundDialog, istKnopfLeiste, zukunftKarte, tagBestaetigenDialog, GRUND_ABGESCHLOSSEN,
 } from './ist-ansicht.js';
-import { kopierenDialog, vorlagenDialog, krankDialog, ersatzDialog, eckdatenDialog } from './plan-dialoge.js';
+import { kopierenDialog, vorlagenDialog, krankDialog, ersatzDialog, eckdatenDialog, bedarfDialog } from './plan-dialoge.js';
 import { druckAuswahlPlan, druckeWochenIst } from './druck.js';
 
 // Dialoge späterer Tasks tragen sich hier ein; ein Knopf erscheint erst, wenn sein Eintrag gesetzt ist.
 // ersatz(mitarbeiterId, datum), eckdaten(mitarbeiterId, datum), die übrigen ohne Argumente.
-export const aktionen = { kopieren: null, vorlagen: null, krank: null, ersatz: null, eckdaten: null, drucken: null };
+export const aktionen = { kopieren: null, vorlagen: null, krank: null, ersatz: null, eckdaten: null, drucken: null, bedarf: null };
 aktionen.kopieren = () => kopierenDialog(planKontext());
 aktionen.vorlagen = () => vorlagenDialog(planKontext());
 aktionen.krank = (mitarbeiterId, tag) => krankDialog(planKontext(), mitarbeiterId, tag);
 aktionen.ersatz = (mitarbeiterId, tag) => ersatzDialog(planKontext(), mitarbeiterId, tag);
 aktionen.eckdaten = (mitarbeiterId, tag) => eckdatenDialog(planKontext(), mitarbeiterId, tag);
 aktionen.drucken = () => druckAuswahlPlan(planKontext());
+aktionen.bedarf = (bereichId) => bedarfDialog(planKontext(), bereichId);
 
 const VERTRAG_KURZ = { vollzeit: 'VZ', teilzeit: 'TZ', minijob: 'MJ', azubi: 'AZ', fuehrung: 'F' };
 const VERGANGEN_TEXT = 'Vergangene Tage sind schreibgeschützt. Die tatsächlichen Zeiten stehen im Modus „IST“.';
@@ -125,7 +128,7 @@ async function lade() {
 export const planNeuLaden = () => lade().catch(zeigeFehler);
 
 // Was die Dialoge über den aktuellen Stand wissen müssen.
-export const planKontext = () => ({ woche, datum, neuLaden: planNeuLaden });
+export const planKontext = () => ({ woche, datum, neuLaden: planNeuLaden, aktuell: planKontext });
 
 // Sprungziel für Startseite und Vorausplanung: öffnet den Reiter mit dieser Woche (und diesem Tag) im Plan.
 export function oeffneWoche(j, k, d = null) {
@@ -915,17 +918,78 @@ function wochenBox() {
       k.vorgabe_quelle === 'verfuegbar' ? ' Vorgabe ohne Planumsatz (verfügbare Stunden).' : ''));
 }
 
-function abteilungsBox() {
+// Tageswerte der Lieferung speichern (Leitung und Stellvertretung). Die Antwort ersetzt woche.lieferung[tag]; neu
+// gezeichnet wird nur die Seitenleiste, denn Rollis ändern keine Blöcke. Speichern läuft nacheinander (eine Kette).
+let lieferKette = Promise.resolve();
+function speichereLieferung(tagDatum, daten) {
+  lieferKette = lieferKette.then(async () => {
+    try {
+      const antwort = await aufruf('pep_liefer_tag_setzen', { p_datum: tagDatum, p_daten: daten });
+      if (antwort && inWoche(tagDatum) && woche.lieferung) woche.lieferung[tagDatum] = antwort;
+    } catch (fehler) { zeigeFehler(fehler); }
+    if (!istAnsicht()) zeichneSeite(); // auch bei einem Fehler: zurück auf den gültigen Wert
+  });
+  return lieferKette;
+}
+
+// Kasten „Lieferung & Bedarf“: LKW-Zeit und Rollis je Warengruppe (gültiger Wert, gelb bei Abweichung vom Muster), je Bereich
+// nötig / eingeplant / fehlt. Bereiche ohne Warengruppe zeigen nur „eingeplant“. Vergangene Tage sind schreibgeschützt.
+function lieferBox() {
   const stunden = bereichsStunden(woche, datum);
-  const zeilen = woche.bereiche.filter((b) => stunden.has(b.id)).map((b) => element('tr', {},
-    element('th', {}, farbfeld(b.farbe), ` ${b.name}`), element('td', { class: 'zahl' }, kurz(stunden.get(b.id)))));
-  const summe = [...stunden.values()].reduce((a, b) => a + b, 0);
-  return element('section', { class: 'karte ep-box' },
-    element('h3', {}, 'Abteilungen heute'),
-    zeilen.length ? element('table', { class: 'ep-klein' }, element('tbody', {}, zeilen),
-      element('tfoot', {}, element('tr', {}, element('th', {}, 'Summe'), element('td', { class: 'zahl' }, kurz(summe)))))
+  const bedarf = lieferBedarf(woche, datum);
+  const sperre = !darfZeichnen() || tag().vergangen;
+  const tagDatum = datum;
+  const musterKnopf = (daten) => (sperre ? null
+    : element('button', { type: 'button', class: 'ep-muster', onclick: () => speichereLieferung(tagDatum, daten) }, '↺ Muster'));
+  const lkw = element('input', {
+    type: 'time', step: '1800', value: bedarf.lkw ?? '', 'aria-label': 'LKW', disabled: sperre,
+    title: 'Leer = Wert aus dem Wochenmuster',
+    class: bedarf.lkwAusMuster ? '' : 'abweichung',
+    onchange: (e) => speichereLieferung(tagDatum, { lkw: e.target.value || null }),
+  });
+  const lkwZeile = element('div', { class: 'ep-liefer-zeile' }, element('label', {}, 'LKW ', lkw),
+    bedarf.lkwAusMuster ? null : musterKnopf({ lkw: null }));
+  const gruppen = bedarf.gruppen.map((g) => element('div', { class: 'ep-liefer-zeile' },
+    element('label', {}, `${g.name} `, element('input', {
+      type: 'number', min: '0', max: '99', step: '1', value: String(g.rollis), 'aria-label': `Rollis ${g.name}`, disabled: sperre,
+      title: 'Leer = Wert aus dem Wochenmuster',
+      class: g.ausMuster ? '' : 'abweichung',
+      onchange: (e) => speichereLieferung(tagDatum, { rollis: { [g.id]: e.target.value === '' ? null : Number(e.target.value) } }),
+    }), ' Rollis'),
+    g.ausMuster ? null : musterKnopf({ rollis: { [g.id]: null } })));
+  const mitBedarf = new Map(bedarf.bereiche.map((b) => [b.bereich_id, b]));
+  const zeilen = woche.bereiche.filter((b) => mitBedarf.has(b.id) || stunden.has(b.id)).flatMap((b) => {
+    const z = mitBedarf.get(b.id);
+    const name = element('th', {}, farbfeld(b.farbe), ` ${b.name}`);
+    if (!z) {
+      return [element('tr', { 'data-bereich': b.id }, name, element('td', { class: 'zahl' }, '–'),
+        element('td', { class: 'zahl' }, kurz(stunden.get(b.id))), element('td', { class: 'zahl' }, '–'))];
+    }
+    const offen = z.fehlt > 0;
+    // Knopf nur, wenn der Block nicht leer ist (LKW-Zeit nach dem Rahmenende) und der Tag nicht gesperrt ist.
+    const block = offen && !sperre ? vorschlagBlock(bedarf.lkw, z.fehlt, { von: tag().rahmen_von, bis: tag().rahmen_bis }) : null;
+    return [
+      element('tr', { 'data-bereich': b.id }, name, element('td', { class: 'zahl' }, kurz(z.noetig)),
+        element('td', { class: 'zahl' }, kurz(z.geplant)),
+        element('td', { class: `zahl ${offen ? 'minus' : 'plus'}` }, offen ? kurz(z.fehlt) : '✓')),
+      block ? element('tr', { class: 'ep-vorschlag' }, element('td', { colspan: '4' },
+        element('button', { type: 'button', class: 'knopf', 'aria-label': `Vorschlag ${b.name}`, onclick: () => aktionen.bedarf(b.id) }, 'Vorschlag'))) : null,
+    ];
+  }).filter(Boolean);
+  const hinweis = bedarf.gruppen.length ? null : element('p', { class: 'hinweis' }, 'Keine Warengruppe angelegt. ',
+    ich?.rolle === 'leitung'
+      ? element('a', { href: '#', class: 'ep-link', onclick: (e) => { e.preventDefault(); oeffneLieferung(); } },
+        'Warengruppen unter Einstellungen → Lieferung anlegen.')
+      : 'Warengruppen legt die Leitung unter Einstellungen → Lieferung an.');
+  return element('section', { class: 'karte ep-box ep-liefer' },
+    element('h3', {}, 'Lieferung & Bedarf'),
+    lkwZeile, gruppen, hinweis,
+    zeilen.length ? element('table', { class: 'ep-klein' },
+      element('thead', {}, element('tr', {}, element('th', {}, 'Bereich'), element('th', { class: 'zahl' }, 'nötig'),
+        element('th', { class: 'zahl' }, 'eingeplant'), element('th', { class: 'zahl' }, 'fehlt'))),
+      element('tbody', {}, zeilen))
       : element('p', { class: 'hinweis' }, 'Noch nichts geplant.'),
-    element('p', { class: 'hinweis ep-fuss' }, 'Vorgaben je Bereich kommen mit der Bedarfsplanung.'));
+    element('p', { class: 'hinweis ep-fuss' }, 'Alle Zahlen in Stunden. Eingeplant zählt bei Bereichen mit Warengruppe ab der LKW-Zeit, sonst den ganzen Tag.'));
 }
 
 function zeichneSeite() {
@@ -934,7 +998,7 @@ function zeichneSeite() {
     rahmen.seite.replaceChildren(...[tag()?.ist_erlaubt ? istTagBox(woche, datum) : null, offeneBox(woche, datum, waehleTag)].filter(Boolean));
     return;
   }
-  rahmen.seite.replaceChildren(...(tag()?.geoeffnet ? [regelBox(), wochenBox(), abteilungsBox()] : [wochenBox()]));
+  rahmen.seite.replaceChildren(...(tag()?.geoeffnet ? [regelBox(), wochenBox(), lieferBox()] : [wochenBox()]));
 }
 
 // Hilfe („?“): im Modus IST eigene Texte. Es zählt der gewünschte Modus (sofort nach dem Klick, auch während die Woche

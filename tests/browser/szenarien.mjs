@@ -1202,7 +1202,7 @@ await szenario('Einstellungen: Rahmen, Bereich, Code, Parameter, Schulferien, Ab
   const sichtbareTitel = () => c.werte(() => [...document.querySelectorAll('#ansicht-einstellungen [data-abschnitt]')]
     .filter((h) => !h.hidden && h.offsetParent !== null).map((h) => h.querySelector('h2')?.textContent));
   gleich(await texte('#ansicht-einstellungen .einst-teile button'),
-    ['Filiale & Zeiten', 'Bereiche & Codes', 'Regeln & Zeitkonto', 'Urlaubstool', 'Benutzer & Sicherung'], 'Unterreiter');
+    ['Filiale & Zeiten', 'Bereiche & Codes', 'Lieferung', 'Regeln & Zeitkonto', 'Urlaubstool', 'Benutzer & Sicherung'], 'Unterreiter');
   await c.klick('#ansicht-einstellungen .einst-teile [data-teil="regeln"]');
   gleich(await sichtbareTitel(), ['Regelparameter', 'IST-Erfassung'], 'Unterreiter „Regeln & Zeitkonto“ zeigt nur seine Abschnitte');
   gleich(await c.werte(() => document.querySelector('#ansicht-einstellungen .einst-teile [data-teil="regeln"]').getAttribute('aria-pressed')),
@@ -2580,6 +2580,128 @@ function halbeStundeWeiter(t) {
   const n = h * 60 + m + 30;
   return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 }
+
+await szenario('Einstellungen: Lieferung – Warengruppe anlegen, Muster setzen', async () => {
+  await reiter('einstellungen');
+  const gruppen = await einstellungsAbschnitt('Warengruppen');
+  const ts = (await sql("select id from pep.bereiche where kuerzel = 'TS'"))[0].id;
+  const neuForm = `${gruppen} form:last-of-type`;
+  await c.tippe(await feldUnter(neuForm, 'Name'), 'Aktionsware');
+  await c.setzeWert(await feldUnter(neuForm, 'Bereich'), String(ts));
+  await c.setzeWert(await feldUnter(neuForm, 'Minuten'), '30');
+  await c.klick(`${neuForm} button[type="submit"]`);
+  await ruhe();
+  gleich(await sql("select bereich_id = $1 as ts, minuten, aktiv from pep.warengruppen where name = 'Aktionsware'", [ts]),
+    [{ ts: true, minuten: 30, aktiv: true }], 'DB Warengruppe Aktionsware');
+  const muster = await einstellungsAbschnitt('Liefermuster');
+  await c.setzeWert(`${muster} input[aria-label="Rollis Aktionsware Di"]`, '5');
+  await ruhe();
+  await c.setzeWert(`${muster} input[aria-label="LKW Di"]`, '08:00');
+  await ruhe();
+  gleich(await sql(`select r.rollis from pep.liefer_muster_rollis r join pep.warengruppen w on w.id = r.warengruppe_id
+    where w.name = 'Aktionsware' and r.wochentag = 2`), [{ rollis: 5 }], 'DB Muster Rollis Di');
+  gleich(await sql("select to_char(lkw_zeit, 'HH24:MI') as z from pep.liefer_muster where wochentag = 2 and filiale_id = (select filiale_id from pep.warengruppen where name = 'Aktionsware')"), [{ z: '08:00' }], 'DB Muster LKW Di');
+  const param = await einstellungsAbschnitt('Regelparameter');
+  const erkl = await c.werte((sel) => [...document.querySelectorAll(`${sel} .zeile`)]
+    .find((z) => z.textContent.includes('Kassierleistung'))?.querySelector('.erklaerung')?.textContent, param);
+  gleich(erkl, 'Wirkt erst mit der Kassenplanung (noch nicht gebaut).', 'Kassierleistung: Erklärung');
+  await einstellungsAbschnitt('Liefermuster');
+  await c.foto(`${FOTOS}einstellungen-lieferung.png`);
+  const m = await meldungen();
+  pruefe(!m.fehler, 'keine Fehlermeldung', m.fehler);
+});
+
+await szenario('Einsatzplan: Lieferung & Bedarf – Tag überschreiben, Vorschlag eintragen', async () => {
+  // heute = Mo 16.11.: der Dienstag der KW 47 ist offen für Änderungen, der Dienstag der KW 46 ist vergangen.
+  const DI2 = '2026-11-17';
+  const ts = (await sql("select id from pep.bereiche where filiale_id = $1 and kuerzel = 'TS'", [B.fil]))[0].id;
+  const gruppe = (await sql("select id from pep.warengruppen where filiale_id = $1 and name = 'Trockensortiment'", [B.fil]))[0].id;
+  await sql('delete from pep.liefer_tag_rollis where warengruppe_id = $1', [gruppe]);
+  await sql('delete from pep.liefer_tag where filiale_id = $1 and datum = $2::date', [B.fil, DI2]);
+  // Dienstag-Muster eindeutig: nur Trockensortiment 12 Rollis, LKW 07:00 (das Szenario davor legt „Aktionsware“ und 08:00 an)
+  await sql('delete from pep.liefer_muster_rollis where filiale_id = $1 and wochentag = 2', [B.fil]);
+  await sql(`insert into pep.liefer_muster (filiale_id, wochentag, lkw_zeit) values ($1, 2, '07:00')
+    on conflict (filiale_id, wochentag) do update set lkw_zeit = excluded.lkw_zeit`, [B.fil]);
+  await sql('insert into pep.liefer_muster_rollis (filiale_id, warengruppe_id, wochentag, rollis) values ($1, $2, 2, 12)', [B.fil, gruppe]);
+  await sql('delete from pep.plan_bloecke where datum = $1::date', [DI2]);
+  await c.navigiere(`${s.adresse}/browser/`);
+  await c.warteAuf(() => document.querySelector('#ansicht-start .kachel'), { text: 'Start nach Neuladen' });
+  await ruhe();
+  await epTag(DI2);
+  const box = '#ansicht-einsatzplan .ep-liefer';
+  const zeile = (sel) => c.werte((b, i) => {
+    const r = document.querySelector(`${b} tr[data-bereich="${i}"]`);
+    return r ? [...r.querySelectorAll('td')].map((td) => td.textContent.trim()) : null;
+  }, box, ts);
+  const rollis = `${box} input[aria-label="Rollis Trockensortiment"]`;
+  const wertUndRand = () => c.werte((sel) => { const e = document.querySelector(sel); return { wert: e.value, abweichung: e.classList.contains('abweichung') }; }, rollis);
+  gleich(await text(`${box} h3`), 'Lieferung & Bedarf', 'Titel');
+  gleich(await zeile(), ['9', '0', '9'], 'TS: nötig 9 h, eingeplant 0, fehlt 9');
+  gleich(await wertUndRand(), { wert: '12', abweichung: false }, 'Rollis aus Muster');
+  await c.werte((b) => document.querySelector(b).scrollIntoView({ block: 'center' }), box);
+  await c.foto(`${FOTOS}einsatzplan-lieferung-bedarf.png`);
+  await c.setzeWert(rollis, '8');
+  await ruhe();
+  gleich(await wertUndRand(), { wert: '8', abweichung: true }, 'Rollis 8 gelb umrandet');
+  gleich((await zeile())[0], '6', 'TS nötig 6 h');
+  gleich(await sql('select rollis from pep.liefer_tag_rollis where warengruppe_id = $1 and datum = $2::date', [gruppe, DI2]), [{ rollis: 8 }], 'DB Tageswert');
+  await c.klick({ text: '↺ Muster', in: box, sel: 'button', genau: true });
+  await ruhe();
+  gleich(await wertUndRand(), { wert: '12', abweichung: false }, 'zurück auf Muster');
+  gleich((await zeile())[0], '9', 'TS nötig wieder 9 h');
+  gleich((await sql('select count(*)::int as n from pep.liefer_tag_rollis where warengruppe_id = $1', [gruppe]))[0].n, 0, 'DB Tageswert gelöscht');
+  // Vorschlag: fehlen 9 h → vorausgewählt „2 × 4,5 h“ (wenigste Personen mit höchstens 6 h); hier eine Person mit 9 h wählen
+  await c.klick({ text: 'Vorschlag', in: box, sel: 'button', genau: true });
+  await warteDialog('Vorschlag');
+  await ruhe();
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] .chip[aria-pressed="true"]')].map((e) => e.textContent)),
+    ['2 × 4,5 h'], 'Vorauswahl bei 9 h');
+  await c.klick({ text: '1 × 9 h', in: 'dialog[open]', sel: '.chip', genau: true });
+  await ruhe();
+  pruefe((await text('dialog[open] .pd-unbesetzt')).includes('Über 6 h: Pause (mind. 30 min) dazu malen, sonst warnt die Regelprüfung.'),
+    'Hinweis bei Block über 6 h', await text('dialog[open] .pd-unbesetzt'));
+  const kandidat = await c.werte(() => { const k = document.querySelector('dialog[open] .pd-kandidat'); return k ? { name: k.querySelector('strong').textContent, text: k.textContent } : null; });
+  pruefe(kandidat, 'Kandidat vorhanden', await c.werte(() => document.querySelector('dialog[open]')?.textContent));
+  await c.foto(`${FOTOS}einsatzplan-vorschlag.png`);
+  await c.klick('dialog[open] .pd-kandidat');
+  await ruhe();
+  const db = await sql(`select m.name, to_char(p.von, 'HH24:MI') as von, to_char(p.bis, 'HH24:MI') as bis from pep.plan_bloecke p
+      join pep.mitarbeiter m on m.id = p.mitarbeiter_id where p.datum = $1::date and p.bereich_id = $2 order by p.von`, [DI2, ts]);
+  gleich(db.map((r) => r.von), ['07:00'], 'DB: TS-Block ab 07:00');
+  gleich(db[0]?.name, kandidat?.name, 'DB: der gewählte Kandidat');
+  const nach = await zeile();
+  gleich(nach, ['9', '9', '✓'], 'eingeplant 9 h, nichts fehlt mehr');
+  gleich(await anzahl(`${box} .ep-vorschlag`), 0, 'kein Knopf „Vorschlag“ mehr');
+  await dialogZu();
+  // Rest: 16 Rollis = 12 h, 9 h sind da, 3 h fehlen → 2 × 1,5 h; nach dem ersten Eintrag öffnet sich der Dialog mit dem Rest
+  await c.setzeWert(rollis, '16');
+  await ruhe();
+  gleich((await zeile())[2], '3', 'fehlt 3 h');
+  await c.klick({ text: 'Vorschlag', in: box, sel: 'button', genau: true });
+  await warteDialog('Vorschlag');
+  await ruhe();
+  gleich(await texte('dialog[open] .chip'), ['1 × 3 h', '2 × 1,5 h', '3 × 1 h'], 'Aufteilung 3 h');
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] .chip[aria-pressed="true"]')].map((e) => e.textContent)),
+    ['1 × 3 h'], 'Vorauswahl bei 3 h');
+  await c.klick({ text: '2 × 1,5 h', in: 'dialog[open]', sel: '.chip', genau: true });
+  await ruhe();
+  gleich(await text('dialog[open] .pd-unbesetzt'), '3 h fehlen: Block 07:00–08:30', 'Block für 1,5 h');
+  await c.klick('dialog[open] .pd-kandidat');
+  await ruhe();
+  await c.warteAuf(() => document.querySelector('dialog[open] .pd-unbesetzt')?.textContent.startsWith('1,5 h fehlen'), { text: 'Dialog mit Rest' });
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] .chip[aria-pressed="true"]')].map((e) => e.textContent)),
+    ['1 × 1,5 h'], 'Rest: eine Person weniger vorgewählt');
+  await dialogZu();
+  gleich((await zeile())[2], '1,5', 'fehlt 1,5 h');
+  await c.foto(`${FOTOS}einsatzplan-lieferung-nach-eintrag.png`);
+  // vergangener Tag: Felder gesperrt
+  await epTag(DI);
+  const gesperrt = await c.werte((b) => [...document.querySelectorAll(`${b} input`)].map((e) => e.disabled), box);
+  pruefe(gesperrt.length >= 2 && gesperrt.every(Boolean), 'Vergangener Tag: LKW und Rollis gesperrt', gesperrt);
+  gleich(await anzahl(`${box} button`), 0, 'Vergangener Tag: keine Knöpfe');
+  const m = await meldungen();
+  pruefe(!m.fehler, 'keine Fehlermeldung', m.fehler);
+});
 
 // ================================================================ Ende
 

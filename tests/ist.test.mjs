@@ -350,7 +350,8 @@ test('pep_ist_woche: Form wie pep_einsatzplan_woche plus modus/status/plan_bloec
   await plan(a, '2026-11-17', '08:00', '12:00', 'KA');               // Zukunft (KW 47)
   const w = await istWoche(2026, 46, stellv);
   const p = await json(leitung, 'select public.pep_einsatzplan_woche(2026, 46) as r');
-  for (const k of Object.keys(p)) assert.ok(k in w, `Schlüssel ${k}`);
+  // warengruppen und lieferung (Lieferung & Bedarf) gibt es nur im Plan-Modus.
+  for (const k of Object.keys(p).filter((x) => !['warengruppen', 'lieferung'].includes(x))) assert.ok(k in w, `Schlüssel ${k}`);
   assert.equal(w.modus, 'ist');
   assert.deepEqual(w.pruefung, {});
   assert.ok(w.tage.every((d) => d.ist_erlaubt === true));
