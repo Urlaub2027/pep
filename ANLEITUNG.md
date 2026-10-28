@@ -286,6 +286,17 @@ eigenen Pause zählt sie). Gelb heißt: nur eine Person da.
   Nach dem Loslassen steht der Block mit Kürzel und Farbe da. Malen mitten in einen
   anderen Block teilt ihn; gleicher Bereich daneben verschmilzt. „Radieren“ leert
   die gezogenen halben Stunden. Die Stunden der Zeile und die Abdeckung ändern sich sofort.
+- **Zeit eingeben:** Klick auf die Stunden einer Zeile (Spalte „Std.“) öffnet ein Fenster
+  mit *von*, *bis*, *Bereich* und *Pause ab*. Wählbar sind nur halbe Stunden im Zeitrahmen
+  des Tages; *bis* bietet nur Zeiten nach *von* an. Vorbelegt sind der gewählte Pinsel und
+  die zuletzt eingegebenen Zeiten (für die nächste Person mit derselben Schicht reicht
+  Enter). Mit der Tastatur: „7“ wählt 7:00, Tab, „15:3“ wählt 15:30, Enter trägt ein.
+  Für 11 Uhr „11:“ tippen (bei „11“ springt der Browser zur zweiten Zeit mit „1“, 10:30).
+  *Pause ab* malt 30 Minuten Pause in den Block (leer = keine Pause); unter den Feldern
+  stehen die Arbeitsstunden, über 6 h ohne Pause mit Hinweis. Eingetragen wird genau wie
+  beim Ziehen: dieselben Sperren, Teilen und Verschmelzen. Block und Pause nimmt ein
+  einziges „Rückgängig“ zurück. „Radieren (leeren)“ als Bereich leert den Zeitraum. Nicht
+  im Modus IST und nicht an vergangenen Tagen.
 - **Tablet:** Waagerecht ziehen malt, senkrecht wischen scrollt die Seite. Auf
   Kopfzeile, Namen und Abdeckung wischen scrollt das Raster quer.
 - **Sperren:** Geht ein Strich nicht (Kompetenz fehlt, Mitarbeiter abwesend,
@@ -586,6 +597,12 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
    → KW 53. Der Wochentag bleibt beim Blättern gewählt.
 8. Klick auf eine Warnung in der Regelprüfung markiert Zeile und Zeit, ein zweiter Klick
    hebt die Markierung auf.
+9. **Zeit eingeben:** auf „–“ in der Spalte „Std.“ einer leeren Zeile klicken. In *von* und
+   *bis* gibt es nur :00 und :30. 7:00 bis 15:30, Pause ab 11:00, Enter: Zeile zeigt KA,
+   Pause, KA und „8“. Nächste Zeile anklicken: die Zeiten sind vorbelegt. Einmal
+   „Rückgängig“ nimmt Block und Pause zusammen zurück. Bei einem Mitarbeiter ohne
+   Kassenkompetenz „KA“ eintragen: Meldung „… fehlt die Kompetenz …“, Zeile unverändert.
+   Auf dem Tablet: die Auswahlrolle erscheint und lässt sich bedienen.
 
 **Kopieren und Vorlagen**
 1. Einen geplanten Montag auf den nächsten Montag kopieren (Ziel leer): Meldung „1 Tag

@@ -8,6 +8,7 @@ import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
   rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
   vorgabeText, ersatzBloecke, uebernahmeText, lieferBedarf, aufteilung, standardVariante, vorschlagBlock,
+  bisZeiten, pauseZeiten, eingabeStriche, eingabeText, zeitAnzeige,
 } from '../docs/plan-raster.js';
 
 test('heuteDatum: lokales Datum zum Aufrufzeitpunkt; ?heute= ersetzt es nur bei gültigem Datum', () => {
@@ -391,4 +392,43 @@ test('standardVariante: wenigste Personen mit größtem Anteil höchstens 6 h, s
   assert.deepEqual(aufteilung(9)[1], [4.5, 4.5]);
   assert.equal(standardVariante(aufteilung(20)), 2); // 3 Personen, auch wenn der Anteil über 6 h bleibt
   assert.equal(standardVariante([]), -1); // nichts fehlt: keine Variante
+});
+
+test('Zeit eingeben: bis nur halbe Stunden nach von, bis zum Rahmenende', () => {
+  const sp = halbstunden('07:00', '20:00');
+  assert.deepEqual(bisZeiten(sp, '19:00'), ['19:30', '20:00']);
+  assert.equal(bisZeiten(sp, '07:00')[0], '07:30');
+  assert.equal(bisZeiten(sp, '07:00').at(-1), '20:00');
+  assert.equal(bisZeiten(sp, '07:00').length, 26);
+  assert.deepEqual(bisZeiten(sp, '19:30'), ['20:00']);
+  assert.deepEqual(bisZeiten([], '07:00'), []);
+});
+
+test('Zeit eingeben: Pause 30 min ganz im Block, mit Arbeit davor und danach', () => {
+  assert.deepEqual(pauseZeiten('07:00', '09:00'), ['07:30', '08:00']);
+  assert.deepEqual(pauseZeiten('07:00', '08:00'), []); // kein Platz für Arbeit vor und nach der Pause
+  assert.equal(pauseZeiten('07:00', '15:30').length, 15);
+});
+
+test('Zeit eingeben: Striche – erst der Block, dann die Pause darüber', () => {
+  assert.deepEqual(eingabeStriche({ von: '07:00', bis: '15:30', bereichId: 3 }), [{ von: '07:00', bis: '15:30', bereichId: 3 }]);
+  assert.deepEqual(eingabeStriche({ von: '07:00', bis: '15:30', bereichId: 3, pause: '11:00', pauseId: 9 }),
+    [{ von: '07:00', bis: '15:30', bereichId: 3 }, { von: '11:00', bis: '11:30', bereichId: 9 }]);
+  // Radieren (bereichId null) malt keine Pause
+  assert.deepEqual(eingabeStriche({ von: '07:00', bis: '09:00', bereichId: null, pause: '08:00', pauseId: 9 }),
+    [{ von: '07:00', bis: '09:00', bereichId: null }]);
+});
+
+test('Zeit eingeben: Zusammenfassung mit Arbeitsstunden und Pausenhinweis', () => {
+  assert.equal(eingabeText({ von: '07:00', bis: '15:30', pause: '11:00' }), '8 h Arbeit, 30 min Pause');
+  assert.equal(eingabeText({ von: '07:00', bis: '13:00' }), '6 h Arbeit');
+  assert.equal(eingabeText({ von: '07:00', bis: '13:30' }), '6,5 h Arbeit · über 6 h: Pause nötig');
+  assert.equal(eingabeText({ von: '07:00', bis: '09:00', radieren: true }), '07:00–09:00 wird geleert');
+});
+
+test('Zeit eingeben: Anzeige ohne führende Null, damit „7“ oder „15“ getippt die Zeit trifft', () => {
+  assert.equal(zeitAnzeige('07:00'), '7:00');
+  assert.equal(zeitAnzeige('07:30'), '7:30');
+  assert.equal(zeitAnzeige('15:00'), '15:00');
+  assert.equal(zeitAnzeige('00:30'), '0:30');
 });
