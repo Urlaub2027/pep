@@ -1456,6 +1456,53 @@ await szenario('Einsatzplan: Rückgängig während des Speicherns, danach noch e
   gleich((await bloecke(MIA, MI)).sort(), [...vorher, 'KA 06:00-07:00', 'KA 17:00-18:00'].sort(), 'Strich 0 und A bleiben, B zurückgenommen');
 });
 
+// Fenster an „Std.“: von/bis/Pause nur auf halben Stunden, Block und Pause als ein Rückgängig-Schritt, Sperren wie beim
+// Ziehen. Am Ende ist alles zurückgenommen (Datenbank und Rückgängig-Stapel wie vorher).
+await szenario('Einsatzplan: Zeit eingeben (von/bis, Pause, Sperre, Rückgängig)', async () => {
+  const knopf = (mid) => `#ansicht-einsatzplan tr[data-mitarbeiter="${mid}"] .ep-std-knopf`;
+  const optionen = (sel) => c.werte((x) => [...document.querySelector(x).options].map((o) => o.value), sel);
+  await epTag(DO);
+  await pinsel('KA');
+  const nicoVorher = await bloecke(NICO, DO); // frühere Szenarien (Kopieren) können hier schon Blöcke haben
+  await c.klick(knopf(NICO));
+  await warteDialog('Zeit eingeben');
+  const von = await feldUnter('dialog[open]', 'von');
+  const bis = await feldUnter('dialog[open]', 'bis');
+  const pauseAb = await feldUnter('dialog[open]', 'Pause ab');
+  const vonListe = await optionen(von);
+  pruefe(vonListe.length > 10 && vonListe.every((t) => /:(00|30)$/.test(t)), 'von: nur halbe Stunden', vonListe);
+  await c.setzeWert(von, '07:00');
+  await c.setzeWert(bis, '15:30');
+  gleich((await optionen(bis))[0], '07:30', 'bis beginnt nach von');
+  await c.setzeWert(pauseAb, '11:00');
+  gleich(await text('dialog[open] .hinweis'), '8 h Arbeit, 30 min Pause', 'Zusammenfassung');
+  await c.foto(`${FOTOS}zeit-eingeben.png`);
+  await c.taste('Enter');
+  await ruhe();
+  pruefe(!(await c.werte(() => Boolean(document.querySelector('dialog[open]')))), 'Enter trägt ein und schließt');
+  gleich(await bloecke(NICO, DO), ['KA 07:00-11:00', 'PA 11:00-11:30', 'KA 11:30-15:30'], 'DB: Block mit Pause');
+  gleich(await text(`#ansicht-einsatzplan tr[data-mitarbeiter="${NICO}"] .ep-std`), '8', 'Stunden der Zeile ohne Pause');
+  // Nächste Zeile: Vorbelegung mit der letzten Eingabe; fehlende Kompetenz sperrt wie beim Ziehen.
+  await epTag(MI);
+  await pinsel('KA');
+  await c.klick(knopf(ID[7]));
+  await warteDialog('Zeit eingeben');
+  gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] select')].map((s) => s.value).filter((v) => v.includes(':'))),
+    ['07:00', '15:30', '11:00'], 'Vorbelegung: letzte Eingabe');
+  await c.setzeWert(await feldUnter('dialog[open]', 'von'), '08:00');
+  await c.setzeWert(await feldUnter('dialog[open]', 'bis'), '09:00');
+  const vorher = await bloecke(ID[7], MI);
+  await dKnopf('Eintragen');
+  const hinweise = await c.werte(() => [...document.querySelectorAll('.ep-sperre-hinweis')].map((h) => h.textContent));
+  pruefe(hinweise.includes('Dem Mitarbeiter fehlt die Kompetenz für diesen Bereich (siehe Mitarbeiterkarte).'), 'Sperre: Kompetenz', hinweise);
+  gleich(await bloecke(ID[7], MI), vorher, 'Sperre: DB unverändert');
+  // Ein Rückgängig nimmt Block und Pause zusammen zurück (springt zum Donnerstag).
+  await c.klick({ text: 'Rückgängig', in: '#ansicht-einsatzplan .ep-knoepfe', sel: 'button' });
+  await ruhe();
+  gleich(await bloecke(NICO, DO), nicoVorher, 'Rückgängig: Block und Pause in einem Schritt');
+  await pause(3100); // Sperr-Hinweis verschwindet
+}, { erlaubeHttp: ['KOMPETENZ_FEHLT'] });
+
 // ---------------------------------------------------------------- Stellvertretung
 
 await szenario('Stellvertretung: Rechte in allen Reitern', async () => {

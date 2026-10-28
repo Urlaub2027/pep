@@ -167,6 +167,37 @@ export function vorschlagBlock(lkw, anteil, rahmen) {
   return von < bis ? { von: uhrzeit(von), bis: uhrzeit(bis) } : null;
 }
 
+// ---------------------------------------------------------------- Zeit eingeben (Fenster an „Std.“)
+// Auswahl nur auf halben Stunden: `von` aus den Spalten des Rasters (Rahmen des Tages), `bis` jede halbe Stunde danach
+// bis zum Rahmenende. Die Pause (30 min) liegt ganz im Block, mit Arbeit davor und danach.
+export function bisZeiten(spalten, von) {
+  if (!spalten.length) return [];
+  return [...spalten, uhrzeit(minuten(spalten.at(-1)) + 30)].filter((t) => minuten(t) > minuten(von));
+}
+
+export function pauseZeiten(von, bis) {
+  const liste = [];
+  for (let m = minuten(von) + 30; m + 30 < minuten(bis); m += 30) liste.push(uhrzeit(m));
+  return liste;
+}
+
+// Striche wie beim Ziehen: erst der Block, dann die Pause darüber (teilt ihn). bereichId null = radieren, ohne Pause.
+export function eingabeStriche({ von, bis, bereichId, pause = null, pauseId = null }) {
+  const striche = [{ von, bis, bereichId }];
+  if (pause && pauseId != null && bereichId != null) striche.push({ von: pause, bis: uhrzeit(minuten(pause) + 30), bereichId: pauseId });
+  return striche;
+}
+
+// Zeile unter den Feldern: Arbeitsstunden ohne Pause; über 6 h ohne Pause ein Hinweis (die Regelprüfung warnt sonst).
+export function eingabeText({ von, bis, pause = null, radieren = false }) {
+  if (radieren) return `${von}–${bis} wird geleert`;
+  const arbeit = (minuten(bis) - minuten(von) - (pause ? 30 : 0)) / 60;
+  return `${kurz(arbeit)} h Arbeit${pause ? ', 30 min Pause' : arbeit > 6 ? ' · über 6 h: Pause nötig' : ''}`;
+}
+
+// Uhrzeit in den Auswahllisten ohne führende Null: getippt „7“ trifft 7:00, „15“ trifft 15:00.
+export const zeitAnzeige = (t) => t.replace(/^0(\d)/, '$1');
+
 // Rückgängig-Stapel (F10): der älteste Eintrag fällt heraus, wenn mehr als `max` gemerkt sind.
 export function rueckgaengigStapel(max = 20) {
   const eintraege = [];

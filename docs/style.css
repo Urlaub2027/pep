@@ -736,6 +736,21 @@ table.liefermuster th:not(:first-child) { text-align: center; }
 .ep-info .badge { margin-left: 3px; padding: 0 4px; font-size: 10px; border-radius: 4px; }
 .ep-abw-kz { font-weight: 700; color: var(--text); }
 .ep-tabelle td.ep-std { padding: 0 var(--a2); font-weight: 600; }
+/* „Zeit eingeben“: die Stunden der Zeile als Knopf, gestrichelter Rahmen erst beim Zeigen */
+.ep-std-knopf {
+  width: 100%;
+  height: 30px;
+  padding: 0 4px;
+  font: inherit;
+  text-align: right;
+  color: var(--text);
+  background: none;
+  border: 1px dashed transparent;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ep-std-knopf:hover, .ep-std-knopf:focus-visible { border-color: var(--grau); background: var(--hell); }
+.ep-eingabe { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 0 var(--a3); }
 .ep-tabelle td.ep-kom, .ep-tabelle th.ep-kom { padding: 0 var(--a2); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ep-tabelle td.ep-kom.bearbeitbar { cursor: text; }
 .ep-kom-leer { color: var(--text-2); opacity: 0.6; }

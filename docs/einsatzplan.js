@@ -3,12 +3,13 @@
 // Blöcke kommen als Abschnitte (F2): dieselbe id kann mehrfach vorkommen, je Abschnitt eigenes `unbesetzt`.
 // Modus „IST“ (G8, ?modus=ist): dieselbe Mal-, Warteschlangen- und Rückgängig-Logik mit pep_ist_* statt pep_plan_*;
 // was nur der IST-Modus zeigt, liegt in ist-ansicht.js. Gezeichnet wird nach dem Modus der geladenen Woche (woche.modus).
-import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE, textfarbe } from './hilfe.js';
+import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE, textfarbe, feld, auswahlfeld } from './hilfe.js';
+import { dialog } from './dialog.js';
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
 import { minuten, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum, montagDerKw } from './zeit.js';
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel, rund, kurz,
-  lieferBedarf, vorschlagBlock,
+  lieferBedarf, vorschlagBlock, bisZeiten, pauseZeiten, eingabeStriche, eingabeText, zeitAnzeige, tagKurz,
 } from './plan-raster.js';
 import { oeffneLieferung } from './einstellungen.js';
 import {
@@ -58,6 +59,7 @@ let pinsel = lesePinsel(); // Bereich-Id als Text oder 'radieren'
 let zug = null; // laufendes Ziehen: { mitarbeiter, zellen, start, ende, pointerId }
 let hervor = null; // in der Regelprüfung angeklickter Eintrag
 let wunschTag = null; // Wochentag-Index (0 = Mo), der nach dem Blättern gewählt bleibt
+let letzteEingabe = null; // Zeit eingeben: zuletzt eingetragenes { von, bis, pause } als Vorbelegung für die nächste Zeile
 const stapel = rueckgaengigStapel(20);
 // Striche und Rückgängig laufen je Zeile („mitarbeiter|datum“) nacheinander: der nächste Aufruf startet erst, wenn die
 // Antwort des vorigen eingearbeitet ist (sonst könnte eine ältere Antwort eine neuere überschreiben). Ein Strich, der
@@ -401,8 +403,13 @@ function zeile(m, sp, oeffnung) {
   const segmente = segmenteVon(m.id);
   const a = abwesenheitVon(m.id);
   const stunden = tagesStunden(segmente, pauseIds());
-  tr.append(namensZelle(m), element('td', { class: 'ep-std zahl' }, segmente.length ? kurz(stunden) : '–'));
-  if (a?.sperrt && !a.von && !segmente.length) {
+  const ganztagsAbwesend = a?.sperrt && !a.von && !segmente.length;
+  const stdText = segmente.length ? kurz(stunden) : '–';
+  // Plan: Klick auf die Stunden öffnet „Zeit eingeben“ (von/bis statt ziehen), wo auch gemalt werden darf.
+  tr.append(namensZelle(m), element('td', { class: 'ep-std zahl' }, darfMalen() && !istAnsicht() && !ganztagsAbwesend
+    ? element('button', { type: 'button', class: 'ep-std-knopf', title: `Zeit eingeben: ${m.name}`, onclick: () => zeitEingeben(m) }, stdText)
+    : stdText));
+  if (ganztagsAbwesend) {
     // Ganztags abwesend ohne geplante Blöcke: graue Zeile, nicht bemalbar.
     tr.classList.add('ep-abwesend');
     tr.append(element('td', { class: 'ep-sperre', colspan: sp.length }, `${a.code} – ${a.name}`), ...zeilenEnde(m));
@@ -651,7 +658,76 @@ async function beiPointerAuf(e) {
   }
   wartend.push(s);
   zeigeWartende();
-  await einreihen(zeilenSchluessel(s.ist, mitarbeiter, s.datum), () => sendeStrich(s, bereichId, zeiger, vorherBeimZiehen));
+  await einreihen(zeilenSchluessel(s.ist, mitarbeiter, s.datum), () => sendeStrich(s, [{ von, bis, bereichId }], zeiger, vorherBeimZiehen));
+}
+
+// „Zeit eingeben“ (Klick auf „Std.“ einer Zeile): von, bis und Pause nur auf halben Stunden im Zeitrahmen des Tages,
+// vorbelegt mit der letzten Eingabe (meist ähnliche Schichten nacheinander) und dem Pinsel. Tastatur: „7“ Tab „15“
+// Enter. Danach läuft es wie ein gezogener Strich: dieselben Sperren, Teilen und Verschmelzen; Block und Pause sind
+// ein Rückgängig-Schritt.
+function zeitEingeben(m) {
+  const sp = rahmen.sp ?? [];
+  if (!darfMalen() || istAnsicht() || !sp.length) return;
+  const d = datum;
+  const bereiche = woche.bereiche.filter((b) => b.aktiv !== false);
+  const pauseBereich = bereiche.find((b) => b.art === 'pause');
+  const zeiten = (liste) => liste.map((z) => [z, zeitAnzeige(z)]);
+  const passt = (liste, wert) => (liste.includes(wert) ? wert : null);
+  const vonStart = passt(sp, letzteEingabe?.von) ?? passt(sp, tag().oeffnung_von?.slice(0, 5)) ?? sp[0];
+  const bisListe = bisZeiten(sp, vonStart);
+  const bisStart = passt(bisListe, letzteEingabe?.bis) ?? bisListe.at(15) ?? bisListe.at(-1); // ohne Vorgabe 8 h
+
+  const von = auswahlfeld(zeiten(sp), vonStart);
+  const bis = auswahlfeld([], '');
+  const pinselGilt = pinsel === 'radieren' || bereiche.some((b) => String(b.id) === pinsel);
+  const bereich = auswahlfeld([...bereiche.map((b) => [String(b.id), `${b.kuerzel} – ${b.name}`]), ['radieren', 'Radieren (leeren)']],
+    pinselGilt ? pinsel : String(bereiche[0]?.id ?? 'radieren'));
+  const pause = auswahlfeld([], '');
+  const text = element('p', { class: 'hinweis', 'aria-live': 'polite' });
+  // „bis“ und „Pause“ folgen „von“: ein Wert, der noch passt, bleibt stehen.
+  const fuelle = (auswahl, liste, wert, leer = null) => {
+    auswahl.replaceChildren(...[leer, ...zeiten(liste)].filter(Boolean).map(([w, b]) => element('option', { value: w }, b)));
+    auswahl.value = wert && liste.includes(wert) ? wert : leer ? leer[0] : liste[0];
+  };
+  let erstesMal = true;
+  const aktualisiere = () => {
+    fuelle(bis, bisZeiten(sp, von.value), erstesMal ? bisStart : bis.value);
+    const radieren = bereich.value === 'radieren';
+    const ohnePause = radieren || !pauseBereich || bereich.value === String(pauseBereich.id);
+    fuelle(pause, ohnePause ? [] : pauseZeiten(von.value, bis.value), erstesMal ? letzteEingabe?.pause : pause.value, ['', 'keine']);
+    pause.disabled = ohnePause;
+    text.textContent = eingabeText({ von: von.value, bis: bis.value, pause: pause.value || null, radieren });
+    erstesMal = false;
+  };
+  for (const f of [von, bis, bereich, pause]) f.addEventListener('change', aktualisiere);
+  aktualisiere();
+
+  const eintragen = () => {
+    // Woche inzwischen neu geladen: der Rückgängig-Schnappschuss käme aus einer anderen Woche (wie beim Grund-Dialog).
+    if (!inWoche(d)) { meldung('Nicht gespeichert: Woche oder Modus haben inzwischen gewechselt.'); return; }
+    const bereichId = bereich.value === 'radieren' ? null : Number(bereich.value);
+    const teile = eingabeStriche({ von: von.value, bis: bis.value, bereichId, pause: pause.value || null, pauseId: pauseBereich?.id });
+    letzteEingabe = { von: von.value, bis: bis.value, pause: pause.value || null };
+    const s = { mitarbeiter: m.id, datum: d, von: von.value, bis: bis.value, ist: false, grund: null };
+    // Hinweis bei einer Sperre an der Stundenzelle der Zeile (die Zelle von vorhin kann schon neu gezeichnet sein).
+    const r = rahmen.raster.querySelector(`tbody tr[data-mitarbeiter="${m.id}"] td.ep-std`)?.getBoundingClientRect();
+    const zeiger = r ? { x: r.right, y: r.top } : { x: 0, y: 0 };
+    const vorher = gespeicherteZeile(m.id, d);
+    wartend.push(s);
+    zeigeWartende();
+    einreihen(zeilenSchluessel(false, m.id, d), () => sendeStrich(s, teile, zeiger, vorher));
+  };
+  const fenster = dialog(`Zeit eingeben: ${m.name}, ${tagKurz(d)}`, [
+    element('div', { class: 'ep-eingabe' }, feld('von', von), feld('bis', bis), feld('Bereich', bereich),
+      pauseBereich ? feld('Pause ab (30 min)', pause) : null),
+    text,
+  ], [{ text: 'Eintragen', aktion: eintragen }]);
+  // Enter trägt ein (außer auf einem Knopf, der hat seinen eigenen Klick).
+  fenster.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.target.closest('button')) return;
+    e.preventDefault();
+    fenster.querySelector('.dialog-knoepfe .primaer')?.click();
+  });
 }
 
 // IST: Grund für eine Zeile. null = Tag nicht bestätigt (kein Grund nötig), undefined = abgebrochen. Ein einmal
@@ -680,34 +756,47 @@ async function abschlussHinweis(d) {
 
 // Schickt einen Strich, wenn die vorige Antwort seiner Zeile eingearbeitet ist. Der Rückgängig-Schnappschuss ist die
 // Zeile in diesem Moment (letzte Antwort der Zeile, sonst die Zeile beim Loslassen), damit ein „Rückgängig“ genau
-// diesen einen Strich zurücknimmt.
-async function sendeStrich(s, bereichId, zeiger, vorherBeimZiehen) {
+// diesen einen Strich zurücknimmt. `teile` ([{ von, bis, bereichId }]) gehen nacheinander an den Server: gezogen ein
+// Teil, eingegeben Block und Pause. Alle Teile sind ein Rückgängig-Schritt; scheitert ein späterer Teil, bleibt der
+// frühere gespeichert und wird angezeigt.
+async function sendeStrich(s, teile, zeiger, vorherBeimZiehen) {
   const schluessel = zeilenSchluessel(s.ist, s.mitarbeiter, s.datum);
   const vorher = stand.get(schluessel) ?? vorherBeimZiehen;
-  try {
-    const parameter = { p_mitarbeiter_id: s.mitarbeiter, p_datum: s.datum, p_von: s.von, p_bis: s.bis, p_bereich_id: bereichId };
-    const antwort = s.ist ? await aufruf('pep_ist_malen', { ...parameter, p_grund: s.grund })
-      : await aufruf('pep_plan_malen', parameter);
-    wartend.splice(wartend.indexOf(s), 1);
-    if (!antwort) { zeigeWartende(); return; } // Vorschau ohne Datenbank
-    const nachher = zeileAus(antwort.bloecke ?? [], s.mitarbeiter, s.datum);
-    stand.set(schluessel, nachher);
-    if (JSON.stringify(nachher) !== JSON.stringify(vorher)) {
-      stapel.merken({ mitarbeiterId: s.mitarbeiter, datum: s.datum, bloecke: vorher, ist: s.ist, grund: s.grund });
+  let antwort = null;
+  let fehler = null;
+  for (const t of teile) {
+    const parameter = { p_mitarbeiter_id: s.mitarbeiter, p_datum: s.datum, p_von: t.von, p_bis: t.bis, p_bereich_id: t.bereichId };
+    try {
+      antwort = (s.ist ? await aufruf('pep_ist_malen', { ...parameter, p_grund: s.grund })
+        : await aufruf('pep_plan_malen', parameter)) ?? antwort;
+    } catch (f) {
+      fehler = f;
+      break;
     }
-    rueckgaengigKnopf();
-    if (inWoche(s.datum, s.ist)) {
-      uebernehme(antwort, [s.mitarbeiter]);
-      if (s.datum === datum) zeichneZeilen([s.mitarbeiter]);
-      else { zeigeWartende(); zeichneSeite(); } // Tag inzwischen gewechselt: Wochenstunden trotzdem aktuell halten
-    } else zeigeWartende(); // Woche inzwischen gewechselt: die Antwort gehört nicht zu den geladenen Daten
-  } catch (fehler) {
-    if (wartend.includes(s)) wartend.splice(wartend.indexOf(s), 1);
-    zeigeWartende();
-    if (fehler.behandelt) return;
-    sperreAmZeiger(fehlerText(fehler.message), zeiger.x, zeiger.y);
-    meldung(fehlerText(fehler.message));
   }
+  if (wartend.includes(s)) wartend.splice(wartend.indexOf(s), 1);
+  if (!antwort) zeigeWartende(); // abgelehnt oder Vorschau ohne Datenbank
+  else {
+    try {
+      const nachher = zeileAus(antwort.bloecke ?? [], s.mitarbeiter, s.datum);
+      stand.set(schluessel, nachher);
+      if (JSON.stringify(nachher) !== JSON.stringify(vorher)) {
+        stapel.merken({ mitarbeiterId: s.mitarbeiter, datum: s.datum, bloecke: vorher, ist: s.ist, grund: s.grund });
+      }
+      rueckgaengigKnopf();
+      if (inWoche(s.datum, s.ist)) {
+        uebernehme(antwort, [s.mitarbeiter]);
+        if (s.datum === datum) zeichneZeilen([s.mitarbeiter]);
+        else { zeigeWartende(); zeichneSeite(); } // Tag inzwischen gewechselt: Wochenstunden trotzdem aktuell halten
+      } else zeigeWartende(); // Woche inzwischen gewechselt: die Antwort gehört nicht zu den geladenen Daten
+    } catch (f) {
+      fehler ??= f;
+      zeigeWartende();
+    }
+  }
+  if (!fehler || fehler.behandelt) return;
+  sperreAmZeiger(fehlerText(fehler.message), zeiger.x, zeiger.y);
+  meldung(fehlerText(fehler.message));
 }
 
 // Kleiner Hinweis an der Zeigerposition, 3 s lang.
