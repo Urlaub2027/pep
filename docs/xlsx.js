@@ -7,6 +7,8 @@
 // blaetter: [{ name, spalten: [{ titel, breite }], zeilen: [[wert, ...]], fixiereSpalten }]
 // Werte: Zahl → Zahlzelle, { datum: 'JJJJ-MM-TT' } → Datumszelle (Anzeige TT.MM.JJJJ), alles andere → Text.
 // null/undefined, '' und ein ungültiges Datum → leere Zelle.
+// Texte stehen wie bei Excel in xl/sharedStrings.xml: Die iPhone-/Mac-Vorschau zeigt
+// Inline-Texte (t="inlineStr") nicht an, die Blätter blieben dort leer.
 
 const enc = new TextEncoder();
 
@@ -44,7 +46,8 @@ export function excelDatum(iso) {
 
 const DATUMSSTIL = 3; // cellXfs-Index in styles.xml: numFmt 164 „dd.mm.yyyy“
 
-function zelle(wert, ref, stil) {
+// texte: { index: Map(Text → Nr.), anzahl } — wird über alle Blätter gemeinsam befüllt.
+function zelle(wert, ref, stil, texte) {
   const s = stil ? ` s="${stil}"` : '';
   if (wert === null || wert === undefined || wert === '') return '';
   if (typeof wert === 'object' && 'datum' in wert) {
@@ -52,19 +55,22 @@ function zelle(wert, ref, stil) {
     return n === null ? '' : `<c r="${ref}" s="${DATUMSSTIL}"><v>${n}</v></c>`;
   }
   if (typeof wert === 'number' && Number.isFinite(wert)) return `<c r="${ref}"${s}><v>${wert}</v></c>`;
-  return `<c r="${ref}" t="inlineStr"${s}><is><t xml:space="preserve">${xml(wert)}</t></is></c>`;
+  const text = bereinige(wert);
+  if (!texte.index.has(text)) texte.index.set(text, texte.index.size);
+  texte.anzahl += 1;
+  return `<c r="${ref}" t="s"${s}><v>${texte.index.get(text)}</v></c>`;
 }
 
-function blattXml(blatt) {
+function blattXml(blatt, texte) {
   const fixiert = blatt.fixiereSpalten || 0;
   const pane = fixiert
     ? `<pane xSplit="${fixiert}" ySplit="1" topLeftCell="${spaltenName(fixiert)}2" activePane="bottomRight" state="frozen"/>`
     : '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/>';
   const cols = blatt.spalten.map((s, i) =>
     `<col min="${i + 1}" max="${i + 1}" width="${s.breite || 12}" customWidth="1"/>`).join('');
-  const kopf = `<row r="1">${blatt.spalten.map((s, i) => zelle(s.titel, `${spaltenName(i)}1`, 1)).join('')}</row>`;
+  const kopf = `<row r="1">${blatt.spalten.map((s, i) => zelle(s.titel, `${spaltenName(i)}1`, 1, texte)).join('')}</row>`;
   const daten = blatt.zeilen.map((zeile, z) =>
-    `<row r="${z + 2}">${zeile.map((w, i) => zelle(w, `${spaltenName(i)}${z + 2}`, 2)).join('')}</row>`).join('');
+    `<row r="${z + 2}">${zeile.map((w, i) => zelle(w, `${spaltenName(i)}${z + 2}`, 2, texte)).join('')}</row>`).join('');
   const letzte = `${spaltenName(blatt.spalten.length - 1)}${blatt.zeilen.length + 1}`;
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
@@ -78,13 +84,23 @@ function blattName(name) {
   return xml(String(name).replace(/[\\/?*[\]:]/g, ' ').slice(0, 31));
 }
 
+function sstXml(texte) {
+  const eintraege = [...texte.index.keys()].map((t) => `<si><t xml:space="preserve">${xml(t)}</t></si>`).join('');
+  return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"'
+    + ` count="${texte.anzahl}" uniqueCount="${texte.index.size}">${eintraege}</sst>`;
+}
+
 function dateien(blaetter) {
+  const texte = { index: new Map(), anzahl: 0 };
+  const blattDateien = blaetter.map((b, i) => [`xl/worksheets/sheet${i + 1}.xml`, blattXml(b, texte)]);
   const ct = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
     + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
     + '<Default Extension="xml" ContentType="application/xml"/>'
     + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
     + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
+    + '<Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/>'
     + blaetter.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
     + '</Types>';
   const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -101,6 +117,7 @@ function dateien(blaetter) {
     + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
     + blaetter.map((_, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')
     + `<Relationship Id="rId${blaetter.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
+    + `<Relationship Id="rId${blaetter.length + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>`
     + '</Relationships>';
   // Stil 0 = Standard, 1 = Kopfzeile (fett, grau), 2 = Daten (oben ausgerichtet, Umbruch), 3 = Datum (PEP, wie 2 mit
   // eigenem Zahlenformat 164 „dd.mm.yyyy“; eigene Formate beginnen bei 164)
@@ -124,7 +141,8 @@ function dateien(blaetter) {
     ['xl/workbook.xml', workbook],
     ['xl/_rels/workbook.xml.rels', wbRels],
     ['xl/styles.xml', styles],
-    ...blaetter.map((b, i) => [`xl/worksheets/sheet${i + 1}.xml`, blattXml(b)]),
+    ['xl/sharedStrings.xml', sstXml(texte)],
+    ...blattDateien,
   ];
 }
 
