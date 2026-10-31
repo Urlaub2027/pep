@@ -410,3 +410,15 @@ test('Excel-Datum: Seriennummer seit 30.12.1899, Zelle mit Datumsstil, Format dd
   const plan = new TextDecoder().decode(erzeugeXlsx([wochenplanBlatt(woche())]));
   assert.ok(!plan.slice(plan.indexOf('<worksheet')).includes('s="3"'));
 });
+
+// Die iPhone-/Mac-Vorschau (Quick Look) zeigt Inline-Texte (t="inlineStr") nicht an: Die Datei öffnet sich,
+// die Blätter bleiben leer. Excel selbst schreibt Texte in xl/sharedStrings.xml.
+test('Excel: Texte stehen in sharedStrings, nicht inline; Datumszellen bleiben Zahlen', () => {
+  const roh = new TextDecoder().decode(erzeugeXlsx([journalTabelle(journal()), wochenplanBlatt(woche())]));
+  assert.ok(!roh.includes('inlineStr'), 'keine Inline-Texte');
+  assert.match(roh, /PartName="\/xl\/sharedStrings\.xml"/, 'Content-Type für sharedStrings');
+  assert.match(roh, /relationships\/sharedStrings" Target="sharedStrings\.xml"/, 'Beziehung zur Arbeitsmappe');
+  assert.match(roh, /<sst [^>]*count="\d+" uniqueCount="\d+">/);
+  assert.match(roh, /<c r="A1" t="s" s="1"><v>\d+<\/v><\/c>/, 'Kopfzelle verweist auf sharedStrings');
+  assert.match(roh, /<c r="A2" s="3"><v>46327<\/v><\/c>/, 'Datum unverändert als Zahl mit Stil 3');
+});
