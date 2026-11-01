@@ -39,11 +39,13 @@ export function zugangAbschnitt(m, { speichere, aufruf }) {
     }), gesperrt) },
   gesperrt ? 'Sperren' : 'Entsperren');
 
-  // Gesperrt: nur „Entsperren“ – ein neuer Link würde die Sperre beim Einlösen still aufheben.
+  // Gesperrt: nur „Entsperren“ (einladen ginge nicht: ZUGANG_GESPERRT). Ruht (inaktiv oder ausgetreten): kein neuer
+  // Link, der Server lehnt ihn ab (MITARBEITER_INAKTIV); Sperren bleibt möglich.
   const knoepfe = {
     kein: [einladen('Zugang einrichten')],
     eingeladen: [einladen('Neuer Link'), sperren(true)],
     aktiv: [einladen('Neuer Link'), sperren(true)],
+    ruht: [sperren(true)],
     gesperrt: [sperren(false)],
   }[zugang.stand] ?? [];
   const zeigeLink = einladung?.id === m.id && zugang.gueltig_bis && zugang.stand !== 'gesperrt';

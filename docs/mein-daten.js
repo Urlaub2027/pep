@@ -37,6 +37,11 @@ export function tagZeilen(tag) {
   return zeilen;
 }
 
+// Arbeitet der Mitarbeiter an dem Tag? Mindestens ein Block, der keine Pause ist (wie pep.mein_tag für die Kollegen).
+export function arbeitetAn(tag) {
+  return (tag.bloecke ?? []).some((b) => !b.pause);
+}
+
 // „Jo 08:00–16:00; Ida 12:00–20:00“ (mehrere Zeiträume einer Person mit Komma).
 export function kollegenText(kollegen) {
   return (kollegen ?? []).map((k) => `${k.name} ${k.zeiten.map((z) => zeitraum(z.von, z.bis)).join(', ')}`).join('; ');

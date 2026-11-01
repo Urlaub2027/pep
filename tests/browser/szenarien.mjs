@@ -2759,7 +2759,10 @@ await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, rich
   await ruhe();
   const version = (await sql('select version, text from pep.datenschutz_texte where filiale_id = $1 order by version desc limit 1', [B.fil]))[0];
   pruefe(version?.text.startsWith('Entwurf – rechtlich nicht geprüft'), 'DB: Datenschutztext gespeichert', version?.text?.slice(0, 40));
-  pruefe((await text(`${ds} p:nth-of-type(2)`)).startsWith('Aktuell: Version'), 'Version und Datum stehen da', await text(`${ds} p:nth-of-type(2)`));
+  const aktuell = await c.werte((x) => [...document.querySelectorAll(`${x} p`)].map((e) => e.textContent).find((t) => t.startsWith('Aktuell: ')) ?? null, ds);
+  pruefe(aktuell?.startsWith('Aktuell: Version'), 'Version und Datum stehen da', aktuell);
+  // Schalter „Kollegen“: Vorgabe aus
+  gleich(await c.werte((x) => document.querySelector(`${x} input.schalter`)?.checked ?? null, ds), false, 'Schalter Kollegen: Vorgabe aus');
   // Mitarbeiter-Karte: Zugang einrichten → Link
   await reiter('mitarbeiter');
   await c.klick({ text: 'Demo, Emil', in: '#ma-liste', sel: '.ma-eintrag' });
@@ -2805,6 +2808,19 @@ await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, rich
   const neuerLink = await c.werte(() => document.querySelector('#ma-karte .zugang-link')?.value ?? null);
   pruefe(/#zugang=[0-9a-f]{32}$/.test(neuerLink ?? ''), 'Neuer Link bei aktivem Konto sichtbar', neuerLink);
   pruefe((await zugang()).startsWith('Stand: aktiv seit '), 'Stand bleibt aktiv', await zugang());
+  // Konto vorhanden, Mitarbeiter inaktiv: Stand „ruht“, kein „Neuer Link“
+  await sql("update pep.mitarbeiter set aktiv = false where filiale_id = $1 and name = 'Demo, Emil'", [B.fil]);
+  try {
+    await c.klick({ text: 'Muster, Ben', in: '#ma-liste', sel: '.ma-eintrag' });
+    await ruhe();
+    await c.klick({ text: 'Demo, Emil', in: '#ma-liste', sel: '.ma-eintrag' });
+    await ruhe();
+    gleich(await zugang(), 'Stand: ruht (inaktiv oder ausgetreten)', 'inaktiv mit Konto: Stand ruht');
+    pruefe(!(await texte('#ma-karte .box:nth-child(2) button')).includes('Neuer Link'), 'ruht: kein „Neuer Link“',
+      await texte('#ma-karte .box:nth-child(2) button'));
+  } finally {
+    await sql("update pep.mitarbeiter set aktiv = true where filiale_id = $1 and name = 'Demo, Emil'", [B.fil]);
+  }
   // Einsatzplan: Woche freigeben und zurücknehmen
   await reiter('einsatzplan');
   const frei = () => c.werte(() => document.querySelector('#ansicht-einsatzplan .ep-freigabe')?.dataset.freigabe ?? null);
@@ -2889,14 +2905,14 @@ await szenario('Mitarbeiter-Ansicht: Registrierung über den Link, Zustimmung, W
     const tagTexte = (d) => c.werte((x) => document.querySelector(`.mein-tag[data-datum="${x}"]`)?.innerText ?? '', d);
     const di = await tagTexte('2026-11-17');
     pruefe(di.includes('08:00–12:00 KA, Pause 12:00–12:30, 12:30–16:00 KA'), 'Di: Zeiten mit Pause', di);
-    pruefe(di.includes(`Mit dir eingeteilt: ${kollegName} 10:00–18:00`), 'Di: Kollege mit Zeiten', di);
-    pruefe(!(await c.werte(() => document.getElementById('ansicht-mein').innerHTML)).includes(abwesendName), 'abwesender Kollege nicht im DOM', abwesendName);
+    // Vorgabe: Schalter „Kollegen“ aus – nur die eigenen Zeiten, kein Kollegenname im DOM
+    gleich(await anzahl('#ansicht-mein .mein-kollegen'), 0, 'Vorgabe: keine Kollegenzeile');
+    pruefe(!(await c.werte(() => document.getElementById('ansicht-mein').innerHTML)).includes(kollegName), 'Vorgabe: Kollegenname nicht im DOM', kollegName);
     const mi = await tagTexte('2026-11-18');
     pruefe(mi.includes('Ware <b>annehmen</b>'), 'Mi: Kommentar als Text', mi);
     gleich(await anzahl('#ansicht-mein .mein-tag b'), 0, 'kein Markup aus Daten');
     const don = await tagTexte('2026-11-19');
     pruefe(don.includes('Urlaub (U)'), 'Do: eigene Abwesenheit', don);
-    pruefe(!don.includes('Mit dir eingeteilt'), 'Do: keine Kollegenzeile ohne eigene Zeiten');
     pruefe((await text('.mein-kachel:nth-child(1) h3')).startsWith('Resturlaub 2026'), 'Kachel Resturlaub', await text('.mein-kachel:nth-child(1) h3'));
     pruefe((await text('.mein-kachel:nth-child(2) .mein-wert')).length > 0, 'Kachel Zeitkonto');
     pruefe((await text('.mein-app')).includes('Zum Home-Bildschirm'), 'Hinweis „Als App nutzen“');
@@ -2909,19 +2925,51 @@ await szenario('Mitarbeiter-Ansicht: Registrierung über den Link, Zustimmung, W
     gleich(await anzahl('#ansicht-mein .mein-tag'), 7, 'KW 48: sieben Tageskarten');
     pruefe((await tagTexte('2026-11-23')).includes('Nicht eingeteilt'), 'KW 48: nicht eingeteilt', await tagTexte('2026-11-23'));
     await ohneQuerscroll('Wochenansicht KW 48');
-    // Schalter „Kollegen“ aus (Leitung): keine Kollegenzeile, Kollegenname nirgends im DOM
-    await ruf('pep_einstellung_setzen', { p_schluessel: 'mitarbeiter_kollegen', p_wert: false });
-    try {
-      await c.navigiere(`${s.adresse}/browser/?d=4`);
-      await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-tag'), { text: 'Wochenansicht ohne Kollegen', ms: 20000 });
+    // Schalter „Kollegen“ an (Leitung): Kollegen an eigenen Arbeitstagen, Abwesende nie; wieder aus: keine Namen im DOM
+    const neuLaden = async (nr) => {
+      await c.navigiere(`${s.adresse}/browser/?d=${nr}`);
+      await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-tag'), { text: 'Wochenansicht', ms: 20000 });
       await ruhe();
+    };
+    try {
+      await ruf('pep_einstellung_setzen', { p_schluessel: 'mitarbeiter_kollegen', p_wert: true });
+      await neuLaden(4);
+      const diAn = await tagTexte('2026-11-17');
+      pruefe(diAn.includes(`Mit dir eingeteilt: ${kollegName} 10:00–18:00`), 'Schalter an: Di Kollege mit Zeiten', diAn);
+      pruefe(!(await tagTexte('2026-11-19')).includes('Mit dir eingeteilt'), 'Schalter an: Do keine Kollegenzeile ohne eigene Zeiten');
+      pruefe(!(await c.werte(() => document.getElementById('ansicht-mein').innerHTML)).includes(abwesendName), 'abwesender Kollege nicht im DOM', abwesendName);
+      await c.foto(`${FOTOS}mein-woche-kollegen.png`, { ganz: true });
+      await ruf('pep_einstellung_setzen', { p_schluessel: 'mitarbeiter_kollegen', p_wert: false });
+      await neuLaden(5);
       pruefe((await tagTexte('2026-11-17')).includes('08:00–12:00 KA'), 'Schalter aus: eigene Zeiten bleiben', await tagTexte('2026-11-17'));
       gleich(await anzahl('#ansicht-mein .mein-kollegen'), 0, 'Schalter aus: keine Kollegenzeile');
       const dom = await c.werte(() => document.getElementById('ansicht-mein').innerHTML);
       pruefe(!dom.includes(kollegName) && !dom.includes('Mit dir eingeteilt'), 'Schalter aus: Kollegenname nicht im DOM', kollegName);
     } finally {
-      await ruf('pep_einstellung_setzen', { p_schluessel: 'mitarbeiter_kollegen', p_wert: true });
+      await sql("delete from pep.einstellungen where filiale_id = $1 and schluessel = 'mitarbeiter_kollegen'", [B.fil]);
     }
+    // Schnell abmelden, während die Woche noch lädt (langsame Verbindung): nichts landet im versteckten DOM, kein
+    // zweites Abmelden mit Fehlermeldung.
+    s.verzoegere(700);
+    try {
+      await c.navigiere(`${s.adresse}/browser/?f=6`);
+      await c.warteAuf(() => !document.getElementById('ansicht-mein').hidden, { text: 'Mitarbeiter-Ansicht lädt', ms: 20000 });
+      await c.werte(() => document.getElementById('abmelden').click());
+      await pause(2500);
+      await ruhe();
+    } finally {
+      s.verzoegere(0);
+    }
+    gleich(await sichtbar('#ansicht-login'), true, 'schnell abgemeldet: Login sichtbar');
+    gleich(await anzahl('#ansicht-mein > *'), 0, 'schnell abgemeldet: nichts im DOM der Mitarbeiter-Ansicht');
+    const mSchnell = await meldungen();
+    pruefe(!mSchnell.fehler, 'schnell abgemeldet: keine Fehlermeldung', mSchnell.fehler);
+    // wieder anmelden
+    await c.tippe('#login-name', 'dana.probe');
+    await c.tippe('#login-passwort', 'passwort-1234');
+    await c.klick('#login-knopf');
+    await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-tag'), { text: 'Wochenansicht nach erneuter Anmeldung', ms: 20000 });
+    await ruhe();
     // Abmelden
     await c.klick({ text: 'Abmelden', in: '#ansicht-mein', sel: 'button', genau: true });
     await c.warteAuf(() => !document.getElementById('ansicht-login').hidden, { text: 'Login' });

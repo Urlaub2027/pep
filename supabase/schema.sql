@@ -566,7 +566,7 @@ begin
                                   from pep.wochenvorgaben w where w.mitarbeiter_id = v_m.id), '[]'::jsonb),
     'urlaubsjahre', coalesce((select jsonb_agg(to_jsonb(u) order by u.jahr)
                                 from pep.urlaubsjahre u where u.mitarbeiter_id = v_m.id), '[]'::jsonb),
-    -- Mitarbeiter-Zugang (Stufe 3): kein / eingeladen / aktiv / gesperrt, s. pep.zugang_json
+    -- Mitarbeiter-Zugang (Stufe 3): kein / eingeladen / aktiv / ruht / gesperrt, s. pep.zugang_json
     'zugang', pep.zugang_json(v_m.id));
 end;
 $$;
@@ -1075,8 +1075,8 @@ begin
                           from pep.rahmen r where r.filiale_id = v_f), '[]'::jsonb),
     'abweichungen', coalesce((select jsonb_agg(to_jsonb(a) - 'filiale_id' order by a.datum)
                                 from pep.tag_abweichungen a where a.filiale_id = v_f), '[]'::jsonb),
-    -- mitarbeiter_kollegen: fehlt die Zeile, gilt true (Vorgabe: Kollegen sichtbar)
-    'werte', jsonb_build_object('mitarbeiter_kollegen', true)
+    -- mitarbeiter_kollegen: fehlt die Zeile, gilt false (Vorgabe: Mitarbeiter sehen nur ihre eigenen Zeiten)
+    'werte', jsonb_build_object('mitarbeiter_kollegen', false)
              || coalesce((select jsonb_object_agg(e.schluessel, e.wert)
                             from pep.einstellungen e where e.filiale_id = v_f), '{}'::jsonb),
     'codes', coalesce((select jsonb_agg(to_jsonb(c) - 'filiale_id' order by c.position, c.id)
@@ -7898,14 +7898,16 @@ as $$
   select coalesce(p_m.aktiv, false) and (p_m.austritt is null or p_m.austritt >= pep.heute())
 $$;
 
--- Einladung gültig: nicht eingelöst, nicht ersetzt, nicht abgelaufen, Mitarbeiter darf ein Konto haben, die Filiale
--- hat einen Datenschutztext. Eine Regel für pep_zugang_pruefen und den Trigger.
+-- Einladung gültig: nicht eingelöst, nicht ersetzt, nicht abgelaufen, Mitarbeiter darf ein Konto haben, Zugang nicht
+-- gesperrt, die Filiale hat einen Datenschutztext. Eine Regel für pep_zugang_pruefen, den Trigger und pep.zugang_json:
+-- Ein Link hebt so nie eine Sperre auf, auch keiner, der in einem Wettlauf mit dem Sperren entstanden ist.
 create or replace function pep.einladung_gueltig(p_e pep.mitarbeiter_einladungen)
 returns boolean
 language sql stable
 set search_path = ''
 as $$
   select p_e.code is not null and p_e.eingeloest_von is null and p_e.ersetzt_am is null and p_e.gueltig_bis > now()
+     and not exists (select 1 from pep.mitarbeiter_zugaenge z where z.mitarbeiter_id = p_e.mitarbeiter_id and z.gesperrt)
      and coalesce((select pep.zugang_erlaubt(m)
                      and (pep.datenschutz_aktuell(m.filiale_id)).version is not null
                      from pep.mitarbeiter m where m.id = p_e.mitarbeiter_id), false)
@@ -7925,7 +7927,8 @@ as $$
 $$;
 
 -- Stand des Zugangs für die Mitarbeiterkarte (pep_mitarbeiter). gueltig_bis: offener, gültiger Link (auch neben einem
--- aktiven Konto, z. B. nach „Neuer Link“).
+-- aktiven Konto, z. B. nach „Neuer Link“). ruht: Konto vorhanden, aber der Mitarbeiter ist inaktiv oder ausgetreten
+-- (pep.zugang_erlaubt) – anmelden geht nicht, einladen auch nicht (MITARBEITER_INAKTIV).
 create or replace function pep.zugang_json(p_mitarbeiter_id bigint)
 returns jsonb
 language sql stable
@@ -7933,6 +7936,7 @@ set search_path = ''
 as $$
   select jsonb_build_object(
     'stand', case when z.gesperrt then 'gesperrt'
+                  when z.user_id is not null and not coalesce(pep.zugang_erlaubt(m), false) then 'ruht'
                   when z.user_id is not null then 'aktiv'
                   when e.gueltig_bis is not null then 'eingeladen'
                   else 'kein' end,
@@ -7940,6 +7944,7 @@ as $$
     'aktiv_seit', case when z.user_id is not null then z.aktiv_seit end,
     'zustimmung_am', case when z.user_id is not null then pep.zustimmung_am(p_mitarbeiter_id, z.user_id) end)
     from (select 1) eins
+    left join pep.mitarbeiter m on m.id = p_mitarbeiter_id
     left join pep.mitarbeiter_zugaenge z on z.mitarbeiter_id = p_mitarbeiter_id
     left join lateral (
       select max(x.gueltig_bis) as gueltig_bis from pep.mitarbeiter_einladungen x
@@ -8006,7 +8011,8 @@ begin
   select * into v_alt from pep.mitarbeiter_zugaenge where mitarbeiter_id = v_m.id for update;
   insert into pep.mitarbeiter_zugaenge (mitarbeiter_id, user_id, gesperrt, angelegt_von, aktiv_seit)
   values (v_m.id, new.id, false, v_e.erstellt_von, now())
-  on conflict (mitarbeiter_id) do update set user_id = excluded.user_id, gesperrt = false, aktiv_seit = excluded.aktiv_seit
+  -- gesperrt bleibt, wie es ist: Gesperrte kommen hier nie an (pep.einladung_gueltig), ein Link entsperrt nie.
+  on conflict (mitarbeiter_id) do update set user_id = excluded.user_id, aktiv_seit = excluded.aktiv_seit
   returning * into v_neu;
   perform pep.protokolliere(v_m.filiale_id, 'zugang_aktiv', 'mitarbeiter_zugaenge', v_m.id::text,
     case when v_alt.mitarbeiter_id is null then null else to_jsonb(v_alt) end, to_jsonb(v_neu));
@@ -8042,7 +8048,7 @@ as $$
 $$;
 
 -- Nur Leitung: neuer Link für einen Mitarbeiter der eigenen Filiale (offene ältere werden ungültig). Ein bestehendes
--- Konto bleibt gültig, bis der neue Link eingelöst ist.
+-- Konto bleibt gültig, bis der neue Link eingelöst ist. Gesperrt → ZUGANG_GESPERRT: erst entsperren.
 create or replace function public.pep_zugang_einladen(p_mitarbeiter_id bigint)
 returns jsonb
 language plpgsql
@@ -8063,6 +8069,12 @@ begin
   perform 1 from pep.mitarbeiter where id = v_m.id for update; -- zwei gleichzeitige Einladungen nacheinander
   update pep.mitarbeiter_einladungen set ersetzt_am = now()
    where mitarbeiter_id = v_m.id and eingeloest_von is null and ersetzt_am is null;
+  -- Nach den Einladungen, wie Trigger und pep_zugang_sperren (erst Einladung, dann Zugang): keine Verklemmung, und ein
+  -- gleichzeitiges Sperren ist danach schon sichtbar oder muss warten.
+  perform 1 from pep.mitarbeiter_zugaenge where mitarbeiter_id = v_m.id and gesperrt for update;
+  if found then
+    raise exception 'ZUGANG_GESPERRT';
+  end if;
   insert into pep.mitarbeiter_einladungen (mitarbeiter_id, erstellt_von) values (v_m.id, v_b.user_id) returning * into v_e;
   insert into pep.mitarbeiter_zugaenge (mitarbeiter_id, angelegt_von) values (v_m.id, v_b.user_id)
   on conflict (mitarbeiter_id) do nothing;
@@ -8089,14 +8101,16 @@ begin
   if p_gesperrt is null then
     raise exception 'WERT_UNGUELTIG';
   end if;
-  select * into v_alt from pep.mitarbeiter_zugaenge where mitarbeiter_id = v_m.id for update;
-  insert into pep.mitarbeiter_zugaenge (mitarbeiter_id, gesperrt, angelegt_von) values (v_m.id, p_gesperrt, v_b.user_id)
-  on conflict (mitarbeiter_id) do update set gesperrt = excluded.gesperrt
-  returning * into v_neu;
+  -- Erst die Einladungen, dann der Zugang: dieselbe Reihenfolge der Sperren wie im Trigger pep.neuer_mitarbeiter und in
+  -- pep_zugang_einladen. Andersherum könnten sich Sperren und gleichzeitiges Einlösen gegenseitig blockieren.
   if p_gesperrt then
     update pep.mitarbeiter_einladungen set ersetzt_am = now()
      where mitarbeiter_id = v_m.id and eingeloest_von is null and ersetzt_am is null;
   end if;
+  select * into v_alt from pep.mitarbeiter_zugaenge where mitarbeiter_id = v_m.id for update;
+  insert into pep.mitarbeiter_zugaenge (mitarbeiter_id, gesperrt, angelegt_von) values (v_m.id, p_gesperrt, v_b.user_id)
+  on conflict (mitarbeiter_id) do update set gesperrt = excluded.gesperrt
+  returning * into v_neu;
   perform pep.protokolliere(v_b.filiale_id, case when p_gesperrt then 'zugang_sperren' else 'zugang_entsperren' end,
     'mitarbeiter_zugaenge', v_m.id::text,
     case when v_alt.mitarbeiter_id is null then null else to_jsonb(v_alt) end, to_jsonb(v_neu));
@@ -8210,10 +8224,11 @@ $$;
 -- freigegebene Wochen; Urlaub und Zeitkonto hängen nicht an der Freigabe. Anti-Ziel: Ein Mitarbeiter erfährt nie, wer
 -- fehlt oder warum – keine Namen, Codes oder Anzahlen abwesender Kollegen.
 
--- Kollegen eines Tages für die Mitarbeiter-Ansicht: andere Mitarbeiter der Filiale mit Blöcken (ohne Pausen) an diesem
--- Datum und ohne jede Abwesenheitszeile an diesem Datum (ganz- oder stundenweise, jeder Code: wer fehlt, erscheint gar
--- nicht, auch eine gekürzte Schicht verrät nichts). Nur Name und Zeiten; aneinandergrenzende Blöcke sind ein Zeitraum
--- (Pläne überlappen nie, pep.bloecke_ohne_ueberlappung). Nach erster Zeit, dann Name.
+-- Kollegen eines Tages für die Mitarbeiter-Ansicht: andere aktive, an dem Tag nicht ausgetretene Mitarbeiter der
+-- Filiale mit Blöcken (ohne Pausen) an diesem Datum und ohne jede Abwesenheitszeile an diesem Datum (ganz- oder
+-- stundenweise, jeder Code: wer fehlt, erscheint gar nicht, auch eine gekürzte Schicht verrät nichts). Nur Name und
+-- Zeiten; aneinandergrenzende Blöcke sind ein Zeitraum (Pläne überlappen nie, pep.bloecke_ohne_ueberlappung). Nach
+-- erster Zeit, dann Name.
 create or replace function pep.kollegen_tag(p_m pep.mitarbeiter, p_datum date)
 returns jsonb
 language sql stable
@@ -8239,11 +8254,14 @@ as $$
                                                       where a.mitarbeiter_id = b.mitarbeiter_id and a.datum = p_datum)) y) i
                    group by i.mitarbeiter_id, i.insel) z
             join pep.mitarbeiter m on m.id = z.mitarbeiter_id
+           where m.aktiv and (m.austritt is null or m.austritt >= p_datum)
            group by m.id, m.name) k
 $$;
 
 -- Ein Tag des eigenen Plans: Öffnung (pep.tag_status), eigene Blöcke mit Bereich und Pausen, eigener Kommentar, eigene
--- Abwesenheit (höchstens eine je Tag) und die Kollegen (pep.kollegen_tag).
+-- Abwesenheit (höchstens eine je Tag) und die Kollegen (pep.kollegen_tag) – nur an Tagen, an denen der Mitarbeiter
+-- selbst arbeitet (mindestens ein Block, der keine Pause ist), sonst []. Das entscheidet die Datenbank, nicht die
+-- Seite: Wer pep_mein_plan direkt aufruft, bekommt dasselbe.
 drop function if exists pep.mein_tag(pep.mitarbeiter, date); -- Fassung ohne p_kollegen
 create or replace function pep.mein_tag(p_m pep.mitarbeiter, p_datum date, p_kollegen boolean default true)
 returns jsonb
@@ -8268,7 +8286,12 @@ as $$
                       join pep.abwesenheitscodes c on c.id = a.code_id
                      where a.mitarbeiter_id = p_m.id and a.datum = p_datum),
     -- Schalter aus: JSON null, die Kollegenabfrage läuft gar nicht (CASE wertet nur den gewählten Zweig aus)
-    'kollegen', case when p_kollegen then pep.kollegen_tag(p_m, p_datum) end)
+    'kollegen', case when p_kollegen then
+                  case when exists (select 1 from pep.plan_bloecke b
+                                      join pep.bereiche r on r.id = b.bereich_id
+                                     where b.mitarbeiter_id = p_m.id and b.datum = p_datum and r.art <> 'pause')
+                       then pep.kollegen_tag(p_m, p_datum) else '[]'::jsonb end
+                end)
     from pep.tag_status(p_m.filiale_id, p_datum) s
 $$;
 
@@ -8306,9 +8329,9 @@ as $$
 declare
   v_m pep.mitarbeiter := pep.ich_mitarbeiter();
   v_f pep.wochen_freigaben;
-  -- Schalter der Leitung (Einstellungen → Datenschutz); fehlt die Zeile, sind Kollegen sichtbar
+  -- Schalter der Leitung (Einstellungen → Datenschutz); fehlt die Zeile, sind Kollegen nicht sichtbar (Vorgabe aus)
   v_koll boolean := coalesce((select (e.wert #>> '{}')::boolean from pep.einstellungen e
-                               where e.filiale_id = v_m.filiale_id and e.schluessel = 'mitarbeiter_kollegen'), true);
+                               where e.filiale_id = v_m.filiale_id and e.schluessel = 'mitarbeiter_kollegen'), false);
 begin
   select * into v_f from pep.wochen_freigaben f
    where f.filiale_id = v_m.filiale_id

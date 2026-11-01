@@ -4,7 +4,7 @@
 import { $, element, meldung, fehlerText } from './hilfe.js';
 import { aufruf, reiter, zeigeAnsicht, abmelden } from './app.js';
 import { heuteDatum } from './zeit.js';
-import { tagZeilen, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText } from './mein-daten.js';
+import { tagZeilen, arbeitetAn, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText } from './mein-daten.js';
 
 let konto = null; // Antwort von pep_mein_konto
 let wochen = []; // freigegebene Wochen
@@ -58,7 +58,7 @@ function zustimmungZeigen() {
 // ---------------------------------------------------------------- Plan
 
 function tagKarte(tag) {
-  const arbeitet = tag.bloecke.length > 0;
+  const arbeitet = arbeitetAn(tag); // die Datenbank liefert an anderen Tagen ohnehin keine Kollegen
   return element('article', { class: `mein-tag${tag.geoeffnet ? '' : ' zu'}`, 'data-datum': tag.datum },
     element('h3', {}, tagKopf(tag.datum)),
     tagZeilen(tag).map((z) => element('p', { class: `mein-zeile ${z.art}` }, z.text)),
@@ -75,13 +75,18 @@ function planZeigen(plan) {
     ...plan.tage.map(tagKarte));
 }
 
+// Nach jedem await prüfen, ob die Sitzung noch dieselbe ist (konto): Wer schnell abmeldet, bekommt sonst Daten in die
+// versteckte Ansicht, und der nächste Aufruf ohne Anmeldung meldet ein zweites Mal ab.
 async function wocheLaden(index) {
+  const k = konto;
   gewaehlt = index;
   const w = wochen[index];
   try {
     const plan = await meinAufruf('pep_mein_plan', { p_jahr: w.jahr, p_kw: w.kw });
+    if (konto !== k) return;
     if (gewaehlt === index) planZeigen(plan); // eine schnellere spätere Wahl nicht überschreiben
   } catch (fehler) {
+    if (konto !== k) return;
     if (fehler.message === 'WOCHE_NICHT_FREIGEGEBEN') { // inzwischen zurückgenommen: Liste neu holen
       meldung(fehlerText(fehler.message));
       return zeigen(true);
@@ -105,9 +110,11 @@ function kacheln(urlaub, zeitkonto) {
 // behalteWoche: nach einer zurückgenommenen Woche die Auswahl nicht auf die erste zurücksetzen müssen – die Liste ist neu.
 async function zeigen(behalteWoche = false) {
   if (!konto) return;
+  const k = konto; // s. wocheLaden
   const jahr = Number(heuteDatum().slice(0, 4));
   const [liste, urlaub, zeitkonto] = await Promise.all([
     meinAufruf('pep_mein_wochen'), meinAufruf('pep_mein_urlaub', { p_jahr: jahr }), meinAufruf('pep_mein_zeitkonto')]);
+  if (konto !== k) return;
   const vorher = behalteWoche && wochen[gewaehlt] ? wochen[gewaehlt].montag : null;
   wochen = liste;
   gewaehlt = Math.max(0, wochen.findIndex((w) => w.montag === vorher));

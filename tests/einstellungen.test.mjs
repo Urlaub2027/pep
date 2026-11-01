@@ -124,13 +124,13 @@ test('Einstellung setzen und lesen; unbekannter Schlüssel → EINSTELLUNG_UNBEK
   await setze('spaet_grenze', '18:00');
 });
 
-test('Schalter mitarbeiter_kollegen: Vorgabe true, Leitung setzt true/false, andere Werte WERT_UNGUELTIG, Stellvertretung NUR_LEITUNG', async () => {
+test('Schalter mitarbeiter_kollegen: Vorgabe false, Leitung setzt true/false, andere Werte WERT_UNGUELTIG, Stellvertretung NUR_LEITUNG', async () => {
   const setze = (nutzer, w) => aufruf(nutzer, 'select public.pep_einstellung_setzen($1, $2::jsonb)', ['mitarbeiter_kollegen', JSON.stringify(w)]);
-  assert.strictEqual((await alle()).werte.mitarbeiter_kollegen, true); // Zeile fehlt ⇒ wirksam true
-  await setze(leitung, false);
-  assert.strictEqual((await alle()).werte.mitarbeiter_kollegen, false);
+  assert.strictEqual((await alle()).werte.mitarbeiter_kollegen, false); // Zeile fehlt ⇒ wirksam false
   await setze(leitung, true);
   assert.strictEqual((await alle()).werte.mitarbeiter_kollegen, true);
+  await setze(leitung, false);
+  assert.strictEqual((await alle()).werte.mitarbeiter_kollegen, false);
   for (const w of ['ja', 1, null]) await wirft(setze(leitung, w), 'WERT_UNGUELTIG');
   await wirft(setze(stellv, false), 'NUR_LEITUNG');
   await db.query("delete from pep.einstellungen where filiale_id = $1 and schluessel = 'mitarbeiter_kollegen'", [fil]);

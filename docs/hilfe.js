@@ -118,6 +118,7 @@ const FEHLER = {
   ZEITEN_UNGUELTIG: 'Die Zeiten sind ungültig. „Bis“ muss nach „von“ liegen.',
   ZEITRAUM_UNGUELTIG: 'Der Zeitraum ist ungültig. „Bis“ darf nicht vor „von“ liegen.',
   ZEITRAUM_ZU_LANG: 'Der Zeitraum ist zu lang.',
+  ZUGANG_GESPERRT: 'Der Zugang ist gesperrt. Erst „Entsperren“, dann gibt es wieder einen neuen Link.',
   ZUKUNFT: 'Arbeitszeiten (IST) lassen sich erst ab dem Tag selbst erfassen, nicht für künftige Tage.',
   ZUSTIMMUNG_FEHLT: 'Bitte zuerst den Datenschutztext lesen und bestätigen.',
   ZUSTIMMUNG_UNVERAENDERBAR: 'Datenschutzbestätigungen lassen sich nicht ändern oder löschen.',

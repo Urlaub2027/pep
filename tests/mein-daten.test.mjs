@@ -1,7 +1,7 @@
 // Mitarbeiter-Ansicht, reine Aufbereitung (docs/mein-daten.js): Tageszeilen, Kollegen, Saldo, Wochenkopf.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tagZeilen, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText } from '../docs/mein-daten.js';
+import { tagZeilen, arbeitetAn, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText } from '../docs/mein-daten.js';
 
 const tag = (ueberschreibe = {}) => ({
   datum: '2026-11-10', geoeffnet: true, feiertag: null, bloecke: [], kommentar: null, abwesenheit: null, kollegen: [],
@@ -66,4 +66,12 @@ test('Tageskopf, Wochentext, „zuletzt geändert“', () => {
   assert.equal(wochenText({ jahr: 2026, kw: 46, montag: '2026-11-09' }), 'KW 46 · 09.11.–15.11.2026');
   assert.equal(geaendertText('2026-11-05T10:00:00Z'), 'zuletzt geändert am 05.11.2026');
   assert.equal(geaendertText(null), '');
+});
+
+test('arbeitet an dem Tag: mindestens ein Block ohne Pause; nur Pause oder nichts zählt nicht', () => {
+  const block = (pause) => ({ von: '08:00', bis: '12:00', bereich_kuerzel: pause ? 'PA' : 'KA', bereich_name: '', pause });
+  assert.equal(arbeitetAn(tag()), false);
+  assert.equal(arbeitetAn(tag({ bloecke: [block(true)] })), false);
+  assert.equal(arbeitetAn(tag({ bloecke: [block(true), block(false)] })), true);
+  assert.equal(arbeitetAn({ datum: '2026-11-10' }), false);
 });

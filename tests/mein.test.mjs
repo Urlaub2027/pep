@@ -6,7 +6,7 @@ import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { neueDatenbank, als, planGrundlage, pepBenutzer, filiale, registriereMitarbeiter } from './helfer.mjs';
 
-let db, leitung, fil, code, json, ma, malen, ida, idaU, jo, kai, lea, ola, chef2;
+let db, leitung, fil, code, json, ma, malen, ida, idaU, jo, kai, lea, ben, uwe, ola, chef2;
 
 const wirft = (versprechen, c) => assert.rejects(versprechen, (e) => e.message.includes(c), c);
 const freigeben = (jahr, kw, nutzer = leitung) =>
@@ -20,6 +20,10 @@ const mein = {
   urlaub: (u, jahr) => json(u, 'select public.pep_mein_urlaub($1) as r', [jahr]),
   zeitkonto: (u) => json(u, 'select public.pep_mein_zeitkonto() as r'),
 };
+// Schalter „Kollegen in der Mitarbeiter-Ansicht“ der Leitung; null entfernt die Zeile (Vorgabe).
+const kollegenSchalter = (w) => (w === null
+  ? db.query("delete from pep.einstellungen where filiale_id = $1 and schluessel = 'mitarbeiter_kollegen'", [fil])
+  : als(db, 'authenticated', leitung, 'select public.pep_einstellung_setzen($1, $2::jsonb)', ['mitarbeiter_kollegen', JSON.stringify(w)]));
 // Interne Rechnungen als Eigentümer, zum Vergleich.
 const tagStatus = async (datum) => (await db.query('select * from pep.tag_status($1, $2::date)', [fil, datum])).rows[0];
 
@@ -42,8 +46,8 @@ before(async () => {
   jo = await ma('Test, Jo');
   kai = await ma('Test, Kai');
   lea = await ma('Test, Lea');
-  const ben = await ma('Test, Ben');
-  const uwe = await ma('Test, Uwe');
+  ben = await ma('Test, Ben');
+  uwe = await ma('Test, Uwe');
   idaU = await konto(ida, 'ida');
 
   // Di 10.11.
@@ -129,7 +133,8 @@ test('eigener Plan mit Blöcken, Pause, Kommentar, eigener Abwesenheit', async (
   assert.ok(don.abwesenheit.name);
 });
 
-test('Kollegen: Jo mit Zeiten; Kai, Lea, Ola tauchen nirgends im JSON auf', async () => {
+test('Kollegen (Schalter an): Jo mit Zeiten; Kai, Lea, Ola tauchen nirgends im JSON auf', async () => {
+  await kollegenSchalter(true);
   const r = await mein.plan(idaU, 2026, 46);
   const di = r.tage[1];
   // Pausen zählen nicht, aneinandergrenzende Blöcke sind ein Zeitraum; nach erster Zeit, dann Name; nur Name und Zeiten.
@@ -153,20 +158,23 @@ test('Kollegen: Jo mit Zeiten; Kai, Lea, Ola tauchen nirgends im JSON auf', asyn
     assert.ok((await db.query(`select 1 from pep.plan_bloecke where mitarbeiter_id = $1 and datum = '2026-11-10'`, [id])).rows.length);
   }
   assert.ok((await db.query(`select 1 from pep.abwesenheiten where mitarbeiter_id = $1 and datum = '2026-11-10'`, [lea])).rows.length);
+  await kollegenSchalter(null);
 });
 
-test('Schalter mitarbeiter_kollegen: aus ⇒ kollegen überall null, kein Kollegenname im JSON; an/ungesetzt ⇒ sichtbar', async () => {
-  const setze = (w) => als(db, 'authenticated', leitung, 'select public.pep_einstellung_setzen($1, $2::jsonb)', ['mitarbeiter_kollegen', JSON.stringify(w)]);
-  assert.ok(JSON.stringify(await mein.plan(idaU, 2026, 46)).includes('Test, Jo')); // Vorgabe (Zeile fehlt): mit Kollegen
-  await setze(false);
-  const aus = await mein.plan(idaU, 2026, 46);
-  assert.equal(aus.tage.length, 7);
-  for (const t of aus.tage) assert.strictEqual(t.kollegen, null, t.datum);
-  assert.ok(!JSON.stringify(aus).includes('Jo'));
-  assert.ok(aus.tage[1].bloecke.length > 0); // der eigene Plan bleibt
-  await setze(true);
+test('Schalter mitarbeiter_kollegen: Vorgabe (Zeile fehlt) und aus ⇒ kollegen überall null, kein Kollegenname im JSON; an ⇒ sichtbar', async () => {
+  const ohne = async () => {
+    const r = await mein.plan(idaU, 2026, 46);
+    assert.equal(r.tage.length, 7);
+    for (const t of r.tage) assert.strictEqual(t.kollegen, null, t.datum);
+    assert.ok(!JSON.stringify(r).includes('Jo'));
+    assert.ok(r.tage[1].bloecke.length > 0); // der eigene Plan bleibt
+  };
+  await ohne(); // Vorgabe: aus
+  await kollegenSchalter(true);
   assert.ok(JSON.stringify(await mein.plan(idaU, 2026, 46)).includes('Test, Jo'));
-  await db.query("delete from pep.einstellungen where filiale_id = $1 and schluessel = 'mitarbeiter_kollegen'", [fil]);
+  await kollegenSchalter(false);
+  await ohne();
+  await kollegenSchalter(null);
 });
 
 test('pep_mein_wochen nur freigegebene ab laufender Woche, aufsteigend, höchstens 8', async () => {
@@ -271,5 +279,69 @@ test('ohne Zustimmung → ZUSTIMMUNG_FEHLT; Leitung → KEIN_ZUGRIFF', async () 
     await wirft(mein.plan(n, 2026, 54), c); // die Zustimmung wird vor der Woche geprüft
     await wirft(mein.urlaub(n, 2026), c);
     await wirft(mein.zeitkonto(n), c);
+  }
+});
+
+test('Kollegen nur an Tagen, an denen der Mitarbeiter selbst arbeitet (eine Pause allein zählt nicht)', async () => {
+  await kollegenSchalter(true);
+  try {
+    await malen(leitung, jo, '2026-11-09', '08:00', '12:00', 'KA'); // Mo: Ida hat keine Blöcke
+    await malen(leitung, jo, '2026-11-14', '08:00', '16:00', 'KA'); // Sa: Ida hat nur eine Pause
+    await malen(leitung, ida, '2026-11-14', '12:00', '12:30', 'PA');
+    await malen(leitung, jo, '2026-11-11', '08:00', '12:00', 'KA'); // Mi: Ida hat ganztägig Urlaub
+    const r = await mein.plan(idaU, 2026, 46);
+    const tag = (d) => r.tage.find((t) => t.datum === d);
+    for (const d of ['2026-11-09', '2026-11-11', '2026-11-14']) {
+      assert.deepEqual(tag(d).kollegen, [], d);
+      assert.ok(!JSON.stringify(tag(d)).includes('Jo'), d);
+    }
+    assert.ok(tag('2026-11-10').kollegen.some((k) => k.name === 'Test, Jo')); // Di: Ida arbeitet
+  } finally {
+    await kollegenSchalter(null);
+  }
+});
+
+test('ganz abwesender Mitarbeiter sieht an keinem Tag Kollegen', async () => {
+  const zoe = await ma('Test, Zoe');
+  const zoeU = await konto(zoe, 'zoe');
+  await als(db, 'authenticated', leitung,
+    "select public.pep_abwesenheit_setzen($1, $2, '2026-11-09'::date, '2026-11-15'::date, null, null, null, null)", [zoe, code.U]);
+  await kollegenSchalter(true);
+  try {
+    const r = await mein.plan(zoeU, 2026, 46);
+    for (const t of r.tage) assert.deepEqual(t.kollegen, [], t.datum);
+    assert.ok(!JSON.stringify(r).includes('Test, Jo'));
+  } finally {
+    await kollegenSchalter(null);
+  }
+});
+
+test('Kollegen: nur aktive Mitarbeiter, Austritt vor dem Tag fällt weg, Austritt am Tag bleibt', async () => {
+  const namen = async () => (await mein.plan(idaU, 2026, 46)).tage[1].kollegen.map((k) => k.name);
+  await kollegenSchalter(true);
+  try {
+    assert.ok((await namen()).includes('Test, Ben'));
+    assert.ok((await namen()).includes('Test, Uwe'));
+    await db.query('update pep.mitarbeiter set aktiv = false where id = $1', [ben]);
+    await db.query("update pep.mitarbeiter set austritt = '2026-11-09' where id = $1", [uwe]);
+    assert.ok(!(await namen()).includes('Test, Ben'), 'inaktiv');
+    assert.ok(!(await namen()).includes('Test, Uwe'), 'vor dem Tag ausgetreten');
+    await db.query("update pep.mitarbeiter set austritt = '2026-11-10' where id = $1", [uwe]);
+    assert.ok((await namen()).includes('Test, Uwe'), 'Austritt am Tag selbst: noch beschäftigt');
+  } finally {
+    await db.query('update pep.mitarbeiter set aktiv = true where id = $1', [ben]);
+    await db.query('update pep.mitarbeiter set austritt = null where id = $1', [uwe]);
+    await kollegenSchalter(null);
+  }
+});
+
+test('Kollege mit Abwesenheit an einem anderen Tag bleibt am getesteten Tag sichtbar', async () => {
+  await abwesend(jo, 'U', '2026-11-12');
+  await kollegenSchalter(true);
+  try {
+    const r = await mein.plan(idaU, 2026, 46);
+    assert.ok(r.tage[1].kollegen.some((k) => k.name === 'Test, Jo'), 'Di');
+  } finally {
+    await kollegenSchalter(null);
   }
 });

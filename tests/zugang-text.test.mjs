@@ -11,11 +11,12 @@ test('Einladungslink: Seiten-Adresse ohne Hash plus #zugang=<code>', () => {
     'https://beispiel.test/pep/?heute=2026-11-02#zugang=neu');
 });
 
-test('Standtext für alle vier Stände', () => {
+test('Standtext für alle fünf Stände', () => {
   assert.equal(zugangsStandText({ stand: 'kein' }), 'kein Zugang');
   assert.equal(zugangsStandText({ stand: 'eingeladen', gueltig_bis: '2026-11-08T12:00:00+00:00' }), 'eingeladen bis 08.11.2026');
   assert.equal(zugangsStandText({ stand: 'aktiv', aktiv_seit: '2026-10-20T08:00:00+00:00' }), 'aktiv seit 20.10.2026');
   assert.equal(zugangsStandText({ stand: 'gesperrt' }), 'gesperrt');
+  assert.equal(zugangsStandText({ stand: 'ruht', aktiv_seit: '2026-10-20T08:00:00+00:00' }), 'ruht (inaktiv oder ausgetreten)');
 });
 
 test('Standtext ohne Datum und ohne Zugang-Objekt fällt nicht um', () => {

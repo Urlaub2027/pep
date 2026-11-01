@@ -356,3 +356,54 @@ test('pep_zugang_pruefen als anon: {gueltig} ohne weitere Felder', async () => {
   // Angemeldet geht es genauso (die Seite prüft den Link vor der Registrierung, ggf. noch angemeldet).
   assert.deepEqual(await json(leitung, 'select public.pep_zugang_pruefen($1) as r', [code]), { gueltig: true });
 });
+
+test('gesperrt: neu einladen → ZUGANG_GESPERRT; ein Code von vor der Sperre bleibt ungültig, auch nach dem Entsperren', async () => {
+  const { ma, u } = await mitKonto('Test, Vera', 'vera');
+  const { code: vorher } = await einladen(ma);
+  await sperren(ma, true);
+  await wirft(einladen(ma), 'ZUGANG_GESPERRT');
+  assert.equal((await zugang(ma)).stand, 'gesperrt');
+  // Eine offene Einladung neben einem gesperrten Zugang (z. B. aus einem Wettlauf) gilt nicht und entsperrt nichts.
+  const roh = (await db.query('insert into pep.mitarbeiter_einladungen (mitarbeiter_id) values ($1) returning code', [ma])).rows[0].code;
+  assert.deepEqual(await pruefen(roh), { gueltig: false });
+  await wirft(registriereMitarbeiter(db, 'vera2', roh), 'EINLADUNG_UNGUELTIG');
+  assert.equal((await zugang(ma)).stand, 'gesperrt');
+  assert.equal((await zugang(ma)).gueltig_bis, null);
+  await wirft(ichMitarbeiter(u, false), 'KEIN_ZUGRIFF');
+  await db.query('delete from pep.mitarbeiter_einladungen where code = $1', [roh]);
+  await sperren(ma, false);
+  assert.deepEqual(await pruefen(vorher), { gueltig: false });
+  await wirft(registriereMitarbeiter(db, 'vera3', vorher), 'EINLADUNG_UNGUELTIG');
+  assert.equal(await ichMitarbeiter(u), ma);
+});
+
+test('pep_zugang_sperren: Einladungen vor dem Zugang anfassen (Sperrreihenfolge wie der Trigger)', async () => {
+  const quelle = async (fn) => (await db.query('select pg_get_functiondef($1::regprocedure) as d', [fn])).rows[0].d;
+  const sperrenSql = await quelle('public.pep_zugang_sperren(bigint, boolean)');
+  const einl = sperrenSql.indexOf('update pep.mitarbeiter_einladungen');
+  const zug = sperrenSql.indexOf('from pep.mitarbeiter_zugaenge');
+  assert.ok(einl > 0 && zug > 0, 'beide Stellen gefunden');
+  assert.ok(einl < zug, 'erst Einladungen, dann Zugang');
+  const trigger = await quelle('pep.neuer_mitarbeiter()');
+  assert.ok(trigger.indexOf('from pep.mitarbeiter_einladungen') < trigger.indexOf('from pep.mitarbeiter_zugaenge'));
+});
+
+test('Konto vorhanden, Mitarbeiter inaktiv oder ausgetreten → Stand „ruht“; gesperrt bleibt „gesperrt“', async () => {
+  const { ma } = await mitKonto('Test, Wim', 'wim');
+  assert.equal((await zugang(ma)).stand, 'aktiv');
+  await aendern(ma, { aktiv: false });
+  assert.equal((await zugang(ma)).stand, 'ruht');
+  await aendern(ma, { aktiv: true });
+  await aendern(ma, { austritt: '2026-11-01' });
+  assert.equal((await zugang(ma)).stand, 'ruht');
+  await aendern(ma, { austritt: '2026-11-02' }); // Austritt heute: noch beschäftigt
+  assert.equal((await zugang(ma)).stand, 'aktiv');
+  await aendern(ma, { austritt: null, aktiv: false });
+  await sperren(ma, true);
+  assert.equal((await zugang(ma)).stand, 'gesperrt');
+  // Ohne Konto: inaktiv heißt „kein“ (eine offene Einladung gilt nicht)
+  const ohne = await neuerMa('Test, Xaver');
+  await einladen(ohne);
+  await aendern(ohne, { aktiv: false });
+  assert.equal((await zugang(ohne)).stand, 'kein');
+});

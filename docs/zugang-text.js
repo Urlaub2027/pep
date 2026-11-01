@@ -20,6 +20,7 @@ export function zugangsStandText(zugang) {
   switch (zugang?.stand) {
     case 'eingeladen': return mit('eingeladen bis', zugang.gueltig_bis);
     case 'aktiv': return mit('aktiv seit', zugang.aktiv_seit);
+    case 'ruht': return 'ruht (inaktiv oder ausgetreten)';
     case 'gesperrt': return 'gesperrt';
     default: return 'kein Zugang';
   }
