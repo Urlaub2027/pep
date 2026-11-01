@@ -8197,6 +8197,185 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Mitarbeiter-Ansicht: Lesefunktionen
+-- ---------------------------------------------------------------------------
+-- Alles nur über pep.ich_mitarbeiter() (Zustimmung nötig), nur die eigene Filiale. Plan und Kollegen nur für
+-- freigegebene Wochen; Urlaub und Zeitkonto hängen nicht an der Freigabe. Anti-Ziel: Ein Mitarbeiter erfährt nie, wer
+-- fehlt oder warum – keine Namen, Codes oder Anzahlen abwesender Kollegen.
+
+-- Kollegen eines Tages für die Mitarbeiter-Ansicht: andere Mitarbeiter der Filiale mit Blöcken (ohne Pausen) an diesem
+-- Datum und ohne jede Abwesenheitszeile an diesem Datum (ganz- oder stundenweise, jeder Code: wer fehlt, erscheint gar
+-- nicht, auch eine gekürzte Schicht verrät nichts). Nur Name und Zeiten; aneinandergrenzende Blöcke sind ein Zeitraum
+-- (Pläne überlappen nie, pep.bloecke_ohne_ueberlappung). Nach erster Zeit, dann Name.
+create or replace function pep.kollegen_tag(p_m pep.mitarbeiter, p_datum date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('name', k.name, 'zeiten', k.zeiten) order by k.erste, k.name, k.id),
+                  '[]'::jsonb)
+    from (select m.id, m.name, min(z.von) as erste,
+                 jsonb_agg(jsonb_build_object('von', to_char(z.von, 'HH24:MI'), 'bis', to_char(z.bis, 'HH24:MI'))
+                           order by z.von) as zeiten
+            from (select i.mitarbeiter_id, min(i.von) as von, max(i.bis) as bis
+                    -- Inseln: ein Block beginnt eine neue, wenn er nicht direkt am Ende des vorigen anschließt.
+                    from (select y.mitarbeiter_id, y.von, y.bis,
+                                 sum(case when y.von = y.vorher then 0 else 1 end)
+                                   over (partition by y.mitarbeiter_id order by y.von) as insel
+                            from (select b.mitarbeiter_id, b.von, b.bis,
+                                         lag(b.bis) over (partition by b.mitarbeiter_id order by b.von) as vorher
+                                    from pep.plan_bloecke b
+                                    join pep.bereiche r on r.id = b.bereich_id
+                                   where b.filiale_id = p_m.filiale_id and b.datum = p_datum
+                                     and b.mitarbeiter_id <> p_m.id and r.art <> 'pause'
+                                     and not exists (select 1 from pep.abwesenheiten a
+                                                      where a.mitarbeiter_id = b.mitarbeiter_id and a.datum = p_datum)) y) i
+                   group by i.mitarbeiter_id, i.insel) z
+            join pep.mitarbeiter m on m.id = z.mitarbeiter_id
+           group by m.id, m.name) k
+$$;
+
+-- Ein Tag des eigenen Plans: Öffnung (pep.tag_status), eigene Blöcke mit Bereich und Pausen, eigener Kommentar, eigene
+-- Abwesenheit (höchstens eine je Tag) und die Kollegen (pep.kollegen_tag).
+create or replace function pep.mein_tag(p_m pep.mitarbeiter, p_datum date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'datum', to_char(p_datum, 'YYYY-MM-DD'),
+    'geoeffnet', s.geoeffnet,
+    'feiertag', s.feiertag,
+    'bloecke', coalesce((
+      select jsonb_agg(jsonb_build_object('von', to_char(b.von, 'HH24:MI'), 'bis', to_char(b.bis, 'HH24:MI'),
+                                          'bereich_kuerzel', r.kuerzel, 'bereich_name', r.name,
+                                          'pause', r.art = 'pause') order by b.von)
+        from pep.plan_bloecke b
+        join pep.bereiche r on r.id = b.bereich_id
+       where b.mitarbeiter_id = p_m.id and b.datum = p_datum), '[]'::jsonb),
+    'kommentar', (select k.text from pep.plan_kommentare k where k.mitarbeiter_id = p_m.id and k.datum = p_datum),
+    'abwesenheit', (select jsonb_build_object('code', c.code, 'name', c.name, 'stunden', a.stunden,
+                                              'von', to_char(a.von, 'HH24:MI'), 'bis', to_char(a.bis, 'HH24:MI'))
+                      from pep.abwesenheiten a
+                      join pep.abwesenheitscodes c on c.id = a.code_id
+                     where a.mitarbeiter_id = p_m.id and a.datum = p_datum),
+    'kollegen', pep.kollegen_tag(p_m, p_datum))
+    from pep.tag_status(p_m.filiale_id, p_datum) s
+$$;
+
+-- Freigegebene Wochen der eigenen Filiale ab der laufenden Woche, aufsteigend, höchstens 8:
+-- [{jahr, kw, montag, zuletzt_geaendert}].
+create or replace function public.pep_mein_wochen()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter();
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('jahr', extract(isoyear from w.montag)::int, 'kw', extract(week from w.montag)::int,
+                                        'montag', to_char(w.montag, 'YYYY-MM-DD'), 'zuletzt_geaendert', w.zuletzt_geaendert)
+                     order by w.montag)
+      from (select f.montag, f.zuletzt_geaendert from pep.wochen_freigaben f
+             where f.filiale_id = v_m.filiale_id and f.montag >= date_trunc('week', pep.heute())::date
+             order by f.montag limit 8) w), '[]'::jsonb);
+end;
+$$;
+
+-- Eigener Plan einer freigegebenen Woche: {jahr, kw, zuletzt_geaendert, tage: [pep.mein_tag Mo–So]}. Nicht
+-- freigegeben, Woche einer anderen Filiale oder eine KW, die es nicht gibt → WOCHE_NICHT_FREIGEGEBEN (ein Code für
+-- alles, kein DATUM_UNGUELTIG: von außen ist nicht zu unterscheiden, ob es die Woche gibt). Die Woche wird in den
+-- Freigaben der eigenen Filiale gesucht, nicht über pep.kw_montag berechnet.
+create or replace function public.pep_mein_plan(p_jahr int, p_kw int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter();
+  v_f pep.wochen_freigaben;
+begin
+  select * into v_f from pep.wochen_freigaben f
+   where f.filiale_id = v_m.filiale_id
+     and extract(isoyear from f.montag)::int = p_jahr and extract(week from f.montag)::int = p_kw;
+  if not found then
+    raise exception 'WOCHE_NICHT_FREIGEGEBEN';
+  end if;
+  return jsonb_build_object(
+    'jahr', p_jahr, 'kw', p_kw, 'zuletzt_geaendert', v_f.zuletzt_geaendert,
+    'tage', (select jsonb_agg(pep.mein_tag(v_m, v_f.montag + i) order by i) from generate_series(0, 6) i));
+end;
+$$;
+
+-- Eigener Urlaub eines Kalenderjahres: Konto aus pep.urlaub_konto (dieselbe Rechnung wie pep_resturlaub) und die
+-- eigenen Tage mit Code U: {jahr, anspruch, rest_vorjahr, genehmigt, rest, tage: [{datum, stunden}]}.
+create or replace function public.pep_mein_urlaub(p_jahr int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter();
+  v_k record;
+begin
+  if p_jahr is null or p_jahr not between 2000 and 2100 then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  select * into v_k from pep.urlaub_konto(v_m.id, p_jahr);
+  return jsonb_build_object(
+    'jahr', p_jahr, 'anspruch', v_k.anspruch, 'rest_vorjahr', v_k.rest_vorjahr, 'genehmigt', v_k.genehmigt,
+    'rest', v_k.rest,
+    'tage', coalesce((
+      select jsonb_agg(jsonb_build_object('datum', to_char(a.datum, 'YYYY-MM-DD'), 'stunden', a.stunden) order by a.datum)
+        from pep.abwesenheiten a
+        join pep.abwesenheitscodes c on c.id = a.code_id
+       where a.mitarbeiter_id = v_m.id and c.code = 'U'
+         and a.datum >= make_date(p_jahr, 1, 1) and a.datum < make_date(p_jahr + 1, 1, 1)), '[]'::jsonb));
+end;
+$$;
+
+-- Eigenes Zeitkonto: saldo = saldo_nach der jüngsten eigenen Buchung (höchste id, wie pep.zeitkonto_buchen rechnet),
+-- stand = spätestes eigenes Buchungsdatum (eine nachträglich gebuchte Woche hat eine höhere id, aber ein früheres
+-- datum); ohne Buchung beide null. wochen = die letzten 6 abgeschlossenen Wochen der Filiale,
+-- neueste zuerst, je soll/ist/diff aus pep.zeitkonto_woche (null ohne Vertrag in der Woche) und saldo = Saldo nach allen
+-- eigenen Buchungen bis zum Sonntag (wie saldo_aktuell in pep_zeitkonto_woche und saldo_nach in
+-- pep.stundenblatt_person; null ohne Buchung bis dahin).
+create or replace function public.pep_mein_zeitkonto()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter();
+  v_saldo numeric;
+  v_stand date;
+begin
+  select (select k.saldo_nach from pep.zeitkonto_buchungen k where k.mitarbeiter_id = v_m.id order by k.id desc limit 1),
+         (select max(k.datum) from pep.zeitkonto_buchungen k where k.mitarbeiter_id = v_m.id)
+    into v_saldo, v_stand;
+  return jsonb_build_object(
+    'saldo', v_saldo,
+    'stand', to_char(v_stand, 'YYYY-MM-DD'),
+    'wochen', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'montag', to_char(w.montag, 'YYYY-MM-DD'),
+               'soll', z.zk -> 'soll', 'ist', z.zk -> 'ist', 'diff', z.zk -> 'diff',
+               'saldo', (select sum(k.stunden) from pep.zeitkonto_buchungen k
+                          where k.mitarbeiter_id = v_m.id and k.datum <= w.montag + 6))
+             order by w.montag desc)
+        from (select a.montag from pep.wochen_abschluesse a
+               where a.filiale_id = v_m.filiale_id order by a.montag desc limit 6) w
+        -- offset 0: pep.zeitkonto_woche nur einmal je Woche rechnen (wie in pep_zeitkonto_woche).
+        cross join lateral (select pep.zeitkonto_woche(v_m.id, w.montag) as zk offset 0) z), '[]'::jsonb));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Rechte
 -- ---------------------------------------------------------------------------
 
@@ -8388,6 +8567,10 @@ revoke all on function public.pep_datenschutz() from public, anon, authenticated
 revoke all on function public.pep_datenschutz_speichern(text) from public, anon, authenticated;
 revoke all on function public.pep_mein_konto() from public, anon, authenticated;
 revoke all on function public.pep_mein_zustimmen(int) from public, anon, authenticated;
+revoke all on function public.pep_mein_wochen() from public, anon, authenticated;
+revoke all on function public.pep_mein_plan(int, int) from public, anon, authenticated;
+revoke all on function public.pep_mein_urlaub(int) from public, anon, authenticated;
+revoke all on function public.pep_mein_zeitkonto() from public, anon, authenticated;
 grant execute on function public.pep_zugang_pruefen(text) to anon, authenticated;
 grant execute on function public.pep_zugang_einladen(bigint) to authenticated;
 grant execute on function public.pep_zugang_sperren(bigint, boolean) to authenticated;
@@ -8395,6 +8578,10 @@ grant execute on function public.pep_datenschutz() to authenticated;
 grant execute on function public.pep_datenschutz_speichern(text) to authenticated;
 grant execute on function public.pep_mein_konto() to authenticated;
 grant execute on function public.pep_mein_zustimmen(int) to authenticated;
+grant execute on function public.pep_mein_wochen() to authenticated;
+grant execute on function public.pep_mein_plan(int, int) to authenticated;
+grant execute on function public.pep_mein_urlaub(int) to authenticated;
+grant execute on function public.pep_mein_zeitkonto() to authenticated;
 
 -- Weckruf gegen das Pausieren (Supabase Free pausiert Projekte nach etwa 7 Tagen mit wenig Aktivität).
 -- Ein GitHub-Workflow ruft diese Funktion alle zwei Tage ohne Anmeldung auf. Sie ist deshalb neben

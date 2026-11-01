@@ -77,8 +77,9 @@ const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loesche
 const OHNE_ANMELDUNG = ['pep_lebenszeichen'];
 const OHNE_FILIALE_ERLAUBT = ['pep_filiale_anlegen'];
 // Eigene Prüfung statt pep.ich(): Einladungscode (anon) und die Funktionen des Mitarbeiter-Kontos (pep.ich_mitarbeiter);
-// abgedeckt in tests/zugang.test.mjs.
-const EIGENE_PRUEFUNG = ['pep_zugang_pruefen', 'pep_mein_konto', 'pep_mein_zustimmen'];
+// abgedeckt in tests/zugang.test.mjs und tests/mein.test.mjs.
+const EIGENE_PRUEFUNG = ['pep_zugang_pruefen', 'pep_mein_konto', 'pep_mein_zustimmen',
+  'pep_mein_wochen', 'pep_mein_plan', 'pep_mein_urlaub', 'pep_mein_zeitkonto'];
 
 // Dummy-Aufrufe aller Funktionen: tests/rechte-aufrufe.mjs (auch von tests/zugang.test.mjs genutzt).
 const ids = () => ({ ma, jo, stellv, wg, vorlage, sicherung });

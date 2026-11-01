@@ -110,6 +110,7 @@ const FEHLER = {
   WERT_UNGUELTIG: 'Der Wert ist ungültig.',
   WIEDERHOLUNG_NICHT_GEFUNDEN: 'Diese Wiederholung gibt es nicht (mehr).',
   WOCHE_GEBUCHT: 'Diese Woche ist schon abgeschlossen.',
+  WOCHE_NICHT_FREIGEGEBEN: 'Diese Woche ist (noch) nicht freigegeben. Die Filialleitung gibt den Plan frei, sobald er fertig ist.',
   WOCHE_NICHT_VORBEI: 'Diese Woche ist noch nicht vorbei. Abschließen geht ab dem Montag danach.',
   WOCHENTAG_UNGUELTIG: 'Der Wochentag ist ungültig.',
   WOCHENVORGABE_NICHT_GEFUNDEN: 'Diese Wochenvorgabe gibt es nicht (mehr).',
