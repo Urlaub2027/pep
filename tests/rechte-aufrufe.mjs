@@ -52,6 +52,8 @@ export const aufrufe = ({ ma, jo, stellv, wg, vorlage, sicherung }) => ({
   pep_schnell_abwesend: `select public.pep_schnell_abwesend(${ma}, 'ZA', '2027-05-04', '2027-05-04')`,
   pep_ersatz_uebernehmen: `select public.pep_ersatz_uebernehmen(${ma}, '2027-05-03', ${jo})`,
   // Schreibt Planumsatz und Vorgabe der Woche (und ein Protokoll): ohne Rechtecheck wäre das sichtbar.
+  // Freigabe einer echten Woche: ohne Rechtecheck entstünde eine Zeile in pep.wochen_freigaben.
+  pep_woche_freigeben: `select public.pep_woche_freigeben(2027, 18, true)`,
   pep_woche_speichern: `select public.pep_woche_speichern(2027, 18, '{"planumsatz":61000,"stundenvorgabe_manuell":240}')`,
   // IST an einem vergangenen Montag (Ida hat seit 01.01.2026 Vertrag): ohne Rechtecheck entstünden IST-Blöcke
   // bzw. ein ist_tage-Eintrag.

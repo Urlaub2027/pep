@@ -70,7 +70,7 @@ const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loesche
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
   'pep_plan_malen', 'pep_plan_zeile_setzen', 'pep_kommentar_setzen',
   'pep_tag_kopieren', 'pep_woche_kopieren', 'pep_vorlage_speichern', 'pep_vorlage_laden', 'pep_vorlage_loeschen',
-  'pep_schnell_abwesend', 'pep_ersatz_uebernehmen', 'pep_woche_speichern',
+  'pep_schnell_abwesend', 'pep_ersatz_uebernehmen', 'pep_woche_speichern', 'pep_woche_freigeben',
   'pep_ist_malen', 'pep_ist_zeile_setzen', 'pep_ist_bestaetigen', 'pep_liefer_tag_setzen'];
 // Legt für die Leitung ohne Filiale die Filiale an – das ist gewollt und in basis.test.mjs geprüft.
 // Weckruf: ohne Anmeldung aufrufbar, ohne Rollenprüfung, ohne Daten; eigener Test am Dateiende.

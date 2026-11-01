@@ -3361,7 +3361,9 @@ as $$
 declare
   v_b pep.benutzer := pep.leitung_oder_stellvertretung();
 begin
-  return pep.woche_antwort(v_b.filiale_id, p_jahr, p_kw, false);
+  -- freigabe: für die Mitarbeiter-Ansicht freigegeben ({am, von_name}) oder null.
+  return pep.woche_antwort(v_b.filiale_id, p_jahr, p_kw, false)
+         || jsonb_build_object('freigabe', pep.freigabe_json(v_b.filiale_id, pep.kw_montag(p_jahr, p_kw)));
 end;
 $$;
 
@@ -7033,7 +7035,7 @@ as $$
     'warengruppen', 'liefer_muster', 'liefer_muster_rollis', 'liefer_tag', 'liefer_tag_rollis',
     'mitarbeiter', 'vertraege', 'urlaubsjahre', 'kompetenzen', 'wochenvorgaben', 'wiederholungen',
     'urlaub_umfragen', 'urlaub_zuordnung', 'urlaub_freigaben', 'abwesenheiten',
-    'plan_bloecke', 'plan_kommentare', 'wochen', 'vorlagen',
+    'plan_bloecke', 'plan_kommentare', 'wochen', 'vorlagen', 'wochen_freigaben',
     'ist_bloecke', 'ist_tage', 'ist_leer', 'wochen_abschluesse', 'zeitkonto_buchungen', 'protokoll']
 $$;
 
@@ -7756,6 +7758,115 @@ drop trigger if exists zustimmungen_nicht_leeren on pep.zustimmungen;
 create trigger zustimmungen_nicht_leeren
   before truncate on pep.zustimmungen
   for each statement execute function pep.zustimmungen_unveraenderbar();
+
+-- ---------------------------------------------------------------------------
+-- Wochenfreigabe für die Mitarbeiter-Ansicht
+-- ---------------------------------------------------------------------------
+-- Mitarbeiter sehen eine Woche erst, wenn Leitung oder Stellvertretung sie freigibt. zuletzt_geaendert merkt, wann
+-- der Plan der freigegebenen Woche danach zuletzt geändert wurde (auch durch Löschen, das plan_bloecke.geaendert_am
+-- nicht sieht); die Mitarbeiter-Ansicht zeigt daran „Plan geändert“.
+create table if not exists pep.wochen_freigaben (
+  filiale_id       bigint not null references pep.filialen (id) on delete cascade,
+  montag           date not null check (extract(isodow from montag) = 1),
+  freigegeben_am   timestamptz not null default now(),
+  freigegeben_von  uuid,
+  zuletzt_geaendert timestamptz,
+  primary key (filiale_id, montag)
+);
+alter table pep.wochen_freigaben enable row level security;
+
+-- Auslöser plan_bloecke, plan_kommentare, abwesenheiten: vermerkt die Änderung in der freigegebenen Woche (nur eine
+-- vorhandene Zeile, nie eine neue). Ein verschobener Tag berührt die alte und die neue Woche.
+create or replace function pep.freigabe_aenderung()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_alt date;
+  v_neu date;
+begin
+  if pep.einspielen() then
+    return null;
+  end if;
+  if tg_op <> 'INSERT' then
+    v_alt := date_trunc('week', old.datum)::date;
+  end if;
+  if tg_op <> 'DELETE' then
+    v_neu := date_trunc('week', new.datum)::date;
+  end if;
+  update pep.wochen_freigaben
+     set zuletzt_geaendert = now()
+   where filiale_id = case when tg_op = 'DELETE' then old.filiale_id else new.filiale_id end
+     and montag in (coalesce(v_alt, v_neu), coalesce(v_neu, v_alt));
+  return null;
+end;
+$$;
+
+do $$
+declare
+  v_t text;
+begin
+  foreach v_t in array array['plan_bloecke', 'plan_kommentare', 'abwesenheiten'] loop
+    if not exists (select 1 from pg_trigger where tgname = v_t || '_freigabe' and not tgisinternal) then
+      execute format('create trigger %I after insert or update or delete on pep.%I '
+                     'for each row execute function pep.freigabe_aenderung()', v_t || '_freigabe', v_t);
+    end if;
+  end loop;
+end;
+$$;
+
+-- Freigabe einer Woche als {am, von_name} oder null.
+create or replace function pep.freigabe_json(p_filiale_id bigint, p_montag date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object('am', f.freigegeben_am,
+                            'von_name', (select o.anzeigename from urlaub.organisatoren o
+                                          where o.user_id = f.freigegeben_von))
+    from pep.wochen_freigaben f
+   where f.filiale_id = p_filiale_id and f.montag = p_montag
+$$;
+
+-- Gibt die Woche für die Mitarbeiter frei (p_frei) oder nimmt die Freigabe zurück. Schon freigegeben: bleibt wie sie
+-- ist (Zeitpunkt und Name ändern sich nicht). Antwort: die Freigabe oder null.
+create or replace function public.pep_woche_freigeben(p_jahr int, p_kw int, p_frei boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b  pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_mo date := pep.kw_montag(p_jahr, p_kw);
+  v_f  pep.wochen_freigaben;
+begin
+  if p_frei is null then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  if p_frei then
+    insert into pep.wochen_freigaben (filiale_id, montag, freigegeben_von)
+    values (v_b.filiale_id, v_mo, v_b.user_id)
+    on conflict do nothing
+    returning * into v_f;
+    if found then
+      perform pep.protokolliere(v_b.filiale_id, 'woche_freigeben', 'wochen_freigaben', to_char(v_mo, 'YYYY-MM-DD'),
+        null, to_jsonb(v_f));
+    end if;
+  else
+    delete from pep.wochen_freigaben where filiale_id = v_b.filiale_id and montag = v_mo returning * into v_f;
+    if found then
+      perform pep.protokolliere(v_b.filiale_id, 'woche_zuruecknehmen', 'wochen_freigaben', to_char(v_mo, 'YYYY-MM-DD'),
+        to_jsonb(v_f), null);
+    end if;
+  end if;
+  return pep.freigabe_json(v_b.filiale_id, v_mo);
+end;
+$$;
+
+revoke all on function public.pep_woche_freigeben(int, int, boolean) from public, anon, authenticated;
+grant execute on function public.pep_woche_freigeben(int, int, boolean) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- Mitarbeiter-Zugang: interne Funktionen
