@@ -1057,6 +1057,14 @@ await szenario('Vorausplanung: Eingaben, Neuladen, Sprung, Jahreswechsel', async
 
 // ---------------------------------------------------------------- Druck und Excel (Einsatzplan)
 
+// Blatt-XML mit eingesetzten Texten: xlsx.js legt Texte in xl/sharedStrings.xml ab (Zelle t="s" mit Index), die
+// Prüfungen suchen sie aber im Blatt. Ersetzt jede solche Zelle durch die Inline-Form mit demselben (escapten) Text.
+function blattMitTexten(dateien, pfad = 'xl/worksheets/sheet1.xml') {
+  const texte = [...(dateien['xl/sharedStrings.xml'] ?? '').matchAll(/<si><t[^>]*>([\s\S]*?)<\/t><\/si>/g)].map((m) => m[1]);
+  return (dateien[pfad] ?? '').replace(/<c ([^>]*)t="s"([^>]*)><v>(\d+)<\/v><\/c>/g,
+    (_, vor, nach, i) => `<c ${vor}t="inlineStr"${nach}><is><t>${texte[Number(i)] ?? ''}</t></is></c>`);
+}
+
 function pruefeXlsx(puffer) {
   const u8 = new Uint8Array(puffer);
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
@@ -1139,7 +1147,7 @@ await szenario('Druck Einsatzplan: Tagesplan, Wochenplan, Tagespläne, Excel', a
     const dateien = pruefeXlsx(puffer);
     const namen = Object.keys(dateien);
     for (const n of ['[Content_Types].xml', 'xl/workbook.xml', 'xl/worksheets/sheet1.xml']) pruefe(namen.includes(n), `xlsx enthält ${n}`, namen);
-    const blatt = dateien['xl/worksheets/sheet1.xml'] ?? '';
+    const blatt = blattMitTexten(dateien);
     pruefe(blatt.includes('Muster, Ben'), 'Blatt enthält Mitarbeiter');
     notiz(`xlsx: ${namen.length} Dateien, Blattname ${/<sheet name="([^"]+)"/.exec(dateien['xl/workbook.xml'] ?? '')?.[1]}, ${(blatt.match(/<row /g) ?? []).length} Zeilen`);
   } catch (e) {
@@ -2049,7 +2057,7 @@ await szenario('Ausdrucke: Stundenblatt, Wocheneinsatz-IST, Journal als Excel', 
     const stile = dateien['xl/styles.xml'] ?? '';
     pruefe(stile.includes('<numFmt numFmtId="164" formatCode="dd.mm.yyyy"/>'), 'styles.xml: numFmt 164 dd.mm.yyyy');
     pruefe(/<cellXfs count="4">(?:<xf[^>]*\/>|<xf[^>]*>.*?<\/xf>){3}<xf numFmtId="164"[^>]*applyNumberFormat="1"/.test(stile), 'Stil 3 nutzt numFmt 164');
-    const blatt1 = dateien['xl/worksheets/sheet1.xml'] ?? '';
+    const blatt1 = blattMitTexten(dateien);
     const datum = [...blatt1.matchAll(/<c r="A(\d+)" s="3"><v>(\d+)<\/v><\/c>/g)].map((m) => zkDatum(m[2])).sort();
     const db = (await sql(`select datum::text as d from pep.zeitkonto_buchungen where datum between '2026-01-01' and $1::date order by datum`, [HEUTE_IST])).map((r) => r.d);
     gleich(datum, db, 'Spalte Datum: Datumszellen (Stil 3) = Buchungsdaten der DB');
@@ -2099,7 +2107,7 @@ await szenario('Stellvertretung: Zeitkonto ansehen, Journal lesen, Drucken und E
   const { puffer } = await blobHolen();
   try {
     const dateien = pruefeXlsx(puffer);
-    pruefe((dateien['xl/worksheets/sheet1.xml'] ?? '').includes('Beispiel, Cem'), 'Excel der Stellvertretung enthält das Journal');
+    pruefe(blattMitTexten(dateien).includes('Beispiel, Cem'), 'Excel der Stellvertretung enthält das Journal');
   } catch (e) {
     pruefe(false, `xlsx gültig: ${e.message}`);
   }
