@@ -1,6 +1,7 @@
 // Mitarbeiter-Karte, Abschnitt „Zugang“: Stand, Einladungslink, Sperren/Entsperren (nur Leitung).
-// Wird von mitarbeiter.js mit dessen `speichere` und `aufruf` aufgerufen; der Link steht nur, solange der Stand „eingeladen“ ist und die Karte dieser Person offen bleibt
-// (Sperren/Entsperren, Einlösen und der Wechsel zu einer anderen Person lassen ihn verschwinden).
+// Wird von mitarbeiter.js mit dessen `speichere` und `aufruf` aufgerufen; der Link steht nur, solange der Server eine offene, gültige Einladung meldet (`gueltig_bis`, auch neben
+// einem aktiven Konto) und die Karte dieser Person offen bleibt (Sperren/Entsperren und der Wechsel zu einer anderen
+// Person lassen ihn verschwinden).
 import { element, abschnitt, meldung } from './hilfe.js';
 import { dialog } from './dialog.js';
 import { einladungsLink, zugangsStandText, tagDE } from './zugang-text.js';
@@ -45,12 +46,12 @@ export function zugangAbschnitt(m, { speichere, aufruf }) {
     aktiv: [einladen('Neuer Link'), sperren(true)],
     gesperrt: [sperren(false)],
   }[zugang.stand] ?? [];
-  const zeigeLink = einladung?.id === m.id && zugang.stand === 'eingeladen';
+  const zeigeLink = einladung?.id === m.id && zugang.gueltig_bis && zugang.stand !== 'gesperrt';
   return abschnitt('Zugang',
     element('p', {}, `Stand: ${zugangsStandText(zugang)}`),
     zugang.zustimmung_am ? element('p', { class: 'hinweis' }, `Datenschutz bestätigt am ${tagDE(zugang.zustimmung_am)}`) : null,
     element('div', { class: 'zeile' }, knoepfe),
     zeigeLink ? element('div', {},
-      element('p', { class: 'hinweis' }, `Einladungslink für ${m.name}, gültig bis ${tagDE(einladung.gueltig_bis)}. Er bleibt nur sichtbar, bis du die Karte wechselst oder neu lädst.`),
+      element('p', { class: 'hinweis' }, `Einladungslink für ${m.name}, gültig bis ${tagDE(einladung.gueltig_bis)}. Er bleibt sichtbar, solange er gültig ist und du diese Karte offen lässt.`),
       linkZeile(einladung.link)) : null);
 }

@@ -2785,6 +2785,26 @@ await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, rich
   await dKnopf('Entsperren');
   gleich(await anzahl('#ma-karte .zugang-link'), 0, 'nach Entsperren kein toter Link mehr');
   pruefe(!(await zugang()).startsWith('Stand: eingeladen'), 'nach Entsperren nicht wieder „eingeladen“', await zugang());
+  // Aktives Konto: „Neuer Link“ zeigt den neuen Link (der Server meldet gueltig_bis auch neben einem aktiven Konto)
+  const einmal = (await texte('#ma-karte button')).includes('Zugang einrichten') ? 'Zugang einrichten' : 'Neuer Link';
+  await c.klick({ text: einmal, in: '#ma-karte', sel: 'button', genau: true });
+  await ruhe();
+  const erstCode = ((await c.werte(() => document.querySelector('#ma-karte .zugang-link')?.value ?? '')) ?? '').split('#zugang=')[1];
+  pruefe(erstCode, 'Link für die Einladung vor der Registrierung', erstCode);
+  await sql('set role supabase_auth_admin');
+  await sql('insert into auth.users (email, raw_user_meta_data) values ($1, $2)', ['emil.demo@example.com', JSON.stringify({ pep_einladung: erstCode })]);
+  await sql('reset role');
+  await c.klick({ text: 'Muster, Ben', in: '#ma-liste', sel: '.ma-eintrag' });
+  await ruhe();
+  await c.klick({ text: 'Demo, Emil', in: '#ma-liste', sel: '.ma-eintrag' });
+  await ruhe();
+  pruefe((await zugang()).startsWith('Stand: aktiv seit '), 'Stand: aktiv nach der Registrierung', await zugang());
+  gleich(await anzahl('#ma-karte .zugang-link'), 0, 'kein Link mehr nach Kartenwechsel und Einlösen');
+  await c.klick({ text: 'Neuer Link', in: '#ma-karte', sel: 'button', genau: true });
+  await ruhe();
+  const neuerLink = await c.werte(() => document.querySelector('#ma-karte .zugang-link')?.value ?? null);
+  pruefe(/#zugang=[0-9a-f]{32}$/.test(neuerLink ?? ''), 'Neuer Link bei aktivem Konto sichtbar', neuerLink);
+  pruefe((await zugang()).startsWith('Stand: aktiv seit '), 'Stand bleibt aktiv', await zugang());
   // Einsatzplan: Woche freigeben und zurücknehmen
   await reiter('einsatzplan');
   const frei = () => c.werte(() => document.querySelector('#ansicht-einsatzplan .ep-freigabe')?.dataset.freigabe ?? null);
