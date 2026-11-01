@@ -70,14 +70,15 @@ export const HILFE = {
       '„Kopieren“ und „Vorlagen“ übertragen einen Tag oder eine Woche. „Krank/ZA“ trägt Krankheit oder Zeitausgleich ein.',
     ],
     gut_zu_wissen: [
-      'Geht ein Strich nicht (z. B. Kompetenz fehlt), steht der Grund oben als Meldung.',
+      'Geht ein Strich nicht, steht der Grund oben als Meldung.',
       'Rot gestreift = unbesetzt, weil die Person abwesend ist. „Ersatz“ zeigt, wer einspringen kann.',
       'Zeilen Kasse/VP: Rot heißt niemand da. VP an der Kasse ohne Ablösung zählt nicht.',
       'Klick auf einen Namen öffnet die Eckdaten.',
       'Vergangene Tage sind schreibgeschützt. „IST erfassen“ wechselt in den Modus IST.',
-      'Am Tablet: waagerecht ziehen malt, senkrecht wischen scrollt.',
+      'Am Tablet: waagerecht malen, senkrecht scrollen.',
       'Was ein Kürzel bedeutet, zeigt „Kürzel“ (aufklappen).',
-      'Kasten „Lieferung & Bedarf“: Rollis eintragen, „Vorschlag“ nennt, wer fehlende Stunden übernehmen kann.',
+      'Kasten „Lieferung & Bedarf“: Rollis eintragen, „Vorschlag“ nennt Helfer.',
+      'Mitarbeiter sehen nur Wochen, die „Woche für Mitarbeiter freigeben“ freigibt.',
     ],
   },
 
@@ -141,6 +142,7 @@ export const HILFE = {
       'Kompetenzen bestimmen, in welchem Bereich jemand eingeplant werden kann.',
       'Wochenvorgaben mit „Pflicht“ sperren im Einsatzplan, die anderen geben nur einen Hinweis.',
       'Der letzte Vertrag eines Mitarbeiters lässt sich nicht löschen.',
+      'Nur Leitung: „Zugang einrichten“ erzeugt einen Link zum Weitergeben. „Sperren“ sperrt den Zugang, „Entsperren“ öffnet ihn wieder.',
     ],
   },
 
@@ -154,16 +156,17 @@ export const HILFE = {
       'Feiertage stehen unter „Abweichende Tage“. „öffnen …“ macht einen Feiertag zum Öffnungstag.',
       'Urlaubstool: Umfrage mit „aktiv“ einschalten, dann unter „Teilnehmer zuordnen“ „Vorschläge übernehmen“ '
         + 'oder je Zeile wählen und „Speichern“.',
-      'Jede Woche „Sicherung herunterladen“. Die Datei auf dem PC oder USB-Stick aufheben, nie per E-Mail schicken.',
+      'Jede Woche „Sicherung herunterladen“; Datei auf PC oder USB-Stick aufheben, nie mailen.',
     ],
     gut_zu_wissen: [
       '„IST-Erfassung ab“ lässt sich nur vor dem ersten „Woche buchen“ ändern.',
-      '„Gutschrift im Zeitkonto“: Die Stunden des Codes zählen wie Arbeitszeit (bei ZA aus).',
-      'Eine Umfrage lässt sich nur in einer Filiale einschalten. Ausschalten behält die Zuordnungen. '
+      '„Gutschrift im Zeitkonto“: Codestunden zählen wie Arbeitszeit (bei ZA aus).',
+      'Eine Umfrage lässt sich nur in einer Filiale einschalten. '
         + 'Umfragen anderer Leitungen erscheinen erst nach deren erster Anmeldung.',
       'Stellvertretung unter „Benutzer“ hinzufügen; sie braucht ein Urlaubstool-Konto.',
+      '„Datenschutz“: Text für die Zustimmung der Mitarbeiter; ohne ihn kein Zugang.',
       'Die Sicherung enthält das Protokoll nur der letzten 12 Monate. Einspielen geht nur in eine leere Filiale.',
       'GitHub weckt die Datenbank alle zwei Tage; nichts zu tun.',
-    ],
+          ],
   },
 };

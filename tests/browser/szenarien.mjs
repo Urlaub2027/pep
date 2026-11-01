@@ -2750,6 +2750,56 @@ await szenario('Einsatzplan: Lieferung & Bedarf – Tag überschreiben, Vorschla
   pruefe(!m.fehler, 'keine Fehlermeldung', m.fehler);
 });
 
+await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, richtet den Zugang ein, gibt die Woche frei', async () => {
+  // Datenschutz in den Einstellungen: Entwurf einfügen, speichern
+  await reiter('einstellungen');
+  const ds = await einstellungsAbschnitt('Datenschutz');
+  await c.klick({ text: 'Entwurf einfügen', in: ds, sel: 'button', genau: true });
+  await c.klick({ text: 'Speichern', in: ds, sel: 'button', genau: true });
+  await ruhe();
+  const version = (await sql('select version, text from pep.datenschutz_texte where filiale_id = $1 order by version desc limit 1', [B.fil]))[0];
+  pruefe(version?.text.startsWith('Entwurf – rechtlich nicht geprüft'), 'DB: Datenschutztext gespeichert', version?.text?.slice(0, 40));
+  pruefe((await text(`${ds} p:nth-of-type(2)`)).startsWith('Aktuell: Version'), 'Version und Datum stehen da', await text(`${ds} p:nth-of-type(2)`));
+  // Mitarbeiter-Karte: Zugang einrichten → Link
+  await reiter('mitarbeiter');
+  await c.klick({ text: 'Demo, Emil', in: '#ma-liste', sel: '.ma-eintrag' });
+  await ruhe();
+  const zugang = () => text('#ma-karte .box:nth-child(2) p');
+  gleich(await zugang(), 'Stand: kein Zugang', 'Stand vor der Einladung');
+  await c.klick({ text: 'Zugang einrichten', in: '#ma-karte', sel: 'button', genau: true });
+  await ruhe();
+  const link = await c.werte(() => document.querySelector('#ma-karte .zugang-link')?.value ?? null);
+  pruefe(/#zugang=[0-9a-f]{32}$/.test(link ?? ''), 'Einladungslink mit Code', link);
+  pruefe((await zugang()).startsWith('Stand: eingeladen bis '), 'Stand: eingeladen', await zugang());
+  const code = (link ?? '').split('#zugang=')[1];
+  gleich((await sql('select count(*)::int as n from pep.mitarbeiter_einladungen where code = $1', [code]))[0].n, 1, 'DB: Einladung mit diesem Code');
+  await c.foto(`${FOTOS}zugang-link.png`);
+  // Sperren mit Rückfrage; danach nur „Entsperren“
+  await c.klick({ text: 'Sperren', in: '#ma-karte', sel: 'button', genau: true });
+  await warteDialog('sperren');
+  await dKnopf('Sperren');
+  gleich(await zugang(), 'Stand: gesperrt', 'Stand gesperrt');
+  gleich(await texte('#ma-karte .box:nth-child(2) button'), ['Entsperren'], 'gesperrt: nur Entsperren');
+  await c.klick({ text: 'Entsperren', in: '#ma-karte', sel: 'button', genau: true });
+  await warteDialog('entsperren');
+  await dKnopf('Entsperren');
+  // Einsatzplan: Woche freigeben und zurücknehmen
+  await reiter('einsatzplan');
+  const frei = () => c.werte(() => document.querySelector('#ansicht-einsatzplan .ep-freigabe')?.dataset.freigabe ?? null);
+  gleich(await frei(), 'nein', 'Woche noch nicht freigegeben');
+  await c.klick({ text: 'Woche für Mitarbeiter freigeben', in: '#ansicht-einsatzplan', sel: 'button', genau: true });
+  await ruhe();
+  gleich(await frei(), 'ja', 'Woche freigegeben');
+  pruefe((await text('#ansicht-einsatzplan .ep-freigabe .hinweis')).startsWith('Freigegeben am '), 'Freigabe-Text', await text('#ansicht-einsatzplan .ep-freigabe .hinweis'));
+  gleich((await sql('select count(*)::int as n from pep.wochen_freigaben where filiale_id = $1', [B.fil]))[0].n, 1, 'DB: eine Freigabe');
+  await c.klick({ text: 'Freigabe zurücknehmen', in: '#ansicht-einsatzplan', sel: 'button', genau: true });
+  await ruhe();
+  gleich(await frei(), 'nein', 'Freigabe zurückgenommen');
+  gleich((await sql('select count(*)::int as n from pep.wochen_freigaben where filiale_id = $1', [B.fil]))[0].n, 0, 'DB: keine Freigabe');
+  const m = await meldungen();
+  pruefe(!m.fehler, 'keine Fehlermeldung', m.fehler);
+});
+
 // ================================================================ Ende
 
 const ok = ergebnisse.filter((e) => e.ok).length;

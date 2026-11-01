@@ -1092,3 +1092,7 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
 .ep-vorschlag td { padding: 0 var(--a1) var(--a2); }
 .ep-vorschlag .knopf { min-height: 32px; padding: 0 var(--a3); font-size: 0.85rem; }
 .ep-link { color: var(--text); font-weight: 600; }
+
+.zugang-link { flex: 1 1 22rem; min-width: 0; }
+.datenschutz-text { width: 100%; min-height: 16rem; }
+.ep-freigabe { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a1) var(--a3); margin: var(--a2) 0 0; }
