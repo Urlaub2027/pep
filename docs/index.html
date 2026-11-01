@@ -6,9 +6,12 @@
   <meta name="robots" content="noindex, nofollow">
   <meta name="referrer" content="no-referrer">
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://*.supabase.co; img-src data:; base-uri 'none'; form-action 'none'">
+        content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src https://*.supabase.co; img-src 'self' data:; manifest-src 'self'; base-uri 'none'; form-action 'none'">
   <title>PEP</title>
-  <link rel="icon" href="data:,">
+  <meta name="theme-color" content="#FFE500">
+  <link rel="icon" href="icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="main.js"></script>
 </head>
@@ -45,6 +48,27 @@
         <button type="submit" id="login-knopf">Anmelden</button>
       </form>
     </section>
+
+    <section id="ansicht-registrieren" hidden>
+      <form id="reg-form" class="box formular-box" novalidate hidden>
+        <h2>Zugang einrichten</h2>
+        <p>Wähle einen Benutzernamen und ein Passwort. Damit meldest du dich danach an.</p>
+        <label class="feld">Benutzername
+          <input id="reg-name" type="text" autocomplete="username" autocapitalize="none" required>
+        </label>
+        <label class="feld">Passwort (mindestens 10 Zeichen)
+          <input id="reg-passwort" type="password" autocomplete="new-password" required>
+        </label>
+        <label class="feld">Passwort wiederholen
+          <input id="reg-passwort2" type="password" autocomplete="new-password" required>
+        </label>
+        <button type="submit" id="reg-knopf">Zugang einrichten</button>
+      </form>
+      <p class="mein-zurueck"><button type="button" class="knopf" id="reg-zum-login">Zur Anmeldung</button></p>
+    </section>
+
+    <section id="ansicht-zustimmung" hidden></section>
+    <section id="ansicht-mein" hidden></section>
 
     <section id="ansicht-filiale" hidden>
       <form id="filiale-form" class="box formular-box" novalidate>

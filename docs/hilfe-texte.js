@@ -146,6 +146,22 @@ export const HILFE = {
     ],
   },
 
+  mein: {
+    titel: 'Mein Plan',
+    wozu: 'Hier siehst du deinen Plan der Wochen, die die Leitung freigegeben hat, dazu deinen Resturlaub und dein Zeitkonto. '
+      + 'Du kannst nichts ändern.',
+    schritte: [
+      'Oben die Woche wählen. Jeder Tag zeigt deine Zeiten, Pausen und Abwesenheiten.',
+      'Unter den Zeiten steht „Mit dir eingeteilt“: Wer an dem Tag mit dir arbeitet.',
+      'Ganz unten „Abmelden“, wenn du fertig bist.',
+    ],
+    gut_zu_wissen: [
+      'Als App nutzen: im Browser-Menü „Zum Home-Bildschirm“ wählen, dann öffnet sich PEP wie eine App.',
+      'Ändert die Leitung eine freigegebene Woche, steht neben der Woche „zuletzt geändert am“.',
+      'Der Saldo im Zeitkonto gilt bis zur zuletzt abgeschlossenen Woche.',
+    ],
+  },
+
   einstellungen: {
     titel: 'Einstellungen',
     wozu: 'Hier steht, wie die Filiale arbeitet; den Reiter sieht nur die Leitung. Oben den Teil wählen: „Filiale & Zeiten“, '

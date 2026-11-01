@@ -8,14 +8,14 @@ import { HILFE } from '../docs/hilfe-texte.js';
 const quelle = readFileSync('docs/app.js', 'utf8');
 const liste = /const ANSICHTEN = \[([^\]]*)\]/.exec(quelle);
 const ANSICHTEN = [...liste[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1])
-  .filter((a) => !['login', 'filiale', 'druck'].includes(a)).concat('einsatzplan_ist');
+  .filter((a) => !['login', 'registrieren', 'zustimmung', 'filiale', 'druck'].includes(a)).concat('einsatzplan_ist');
 
 const alleTexte = (h) => [h.titel, h.wozu, ...h.schritte, ...h.gut_zu_wissen];
 const woerter = (h) => alleTexte(h).join(' ').split(/\s+/).filter(Boolean).length;
 
 test('Ansichtenliste aus app.js gelesen', () => {
   assert.deepEqual(ANSICHTEN, ['start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'zeitkonto', 'mitarbeiter',
-    'einstellungen', 'einsatzplan_ist']);
+    'einstellungen', 'mein', 'einsatzplan_ist']);
 });
 
 test('jede Ansicht hat Titel, „Wozu“, mindestens zwei Schritte und „Gut zu wissen“; keine übrigen Einträge', () => {

@@ -3,7 +3,7 @@ import { $, meldung, fehlerText } from './hilfe.js';
 import * as sitzung from './sitzung.js';
 import { richteHilfeEin, ansichtGezeigt } from './hilfe-leiste.js';
 
-const ANSICHTEN = ['login', 'filiale', 'start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'zeitkonto', 'mitarbeiter', 'einstellungen'];
+const ANSICHTEN = ['login', 'filiale', 'start', 'abwesenheiten', 'vorausplanung', 'einsatzplan', 'zeitkonto', 'mitarbeiter', 'einstellungen', 'registrieren', 'zustimmung', 'mein'];
 
 export let ich = null;
 let aktiveAnsicht = null;
@@ -56,6 +56,7 @@ function fehlerAnzeigen(fehler) {
 export function abmelden(text = '') {
   sitzung.logout();
   ich = null;
+  reiter.mein?.zuruecksetzen();
   $('wer').textContent = '';
   $('kopf-filiale').textContent = '';
   $('navigation').hidden = true;
@@ -64,7 +65,27 @@ export function abmelden(text = '') {
   $('login-name').focus();
 }
 
-async function nachLogin() {
+// Erst fragen, ob das Konto ein Mitarbeiter-Konto ist: pep_mein_konto liefert null für Organisator-Konten. Direkt über
+// sitzung.orgRpc, nicht über aufruf(): dort meldet KEIN_ZUGRIFF ab, was hier für ein gesperrtes Mitarbeiter-Konto
+// stimmt (eigene Meldung unten), aber nie für ein Organisator-Konto – das bekommt null.
+export async function nachLogin() {
+  let konto;
+  try {
+    konto = await sitzung.orgRpc('pep_mein_konto');
+  } catch (fehler) {
+    if (fehler.message === 'KEIN_ZUGRIFF' || fehler.message === 'NICHT_ANGEMELDET' || fehler.status === 401) {
+      return abmelden(fehlerText(fehler.message === 'KEIN_ZUGRIFF' ? 'KEIN_ZUGRIFF' : 'NICHT_ANGEMELDET'));
+    }
+    fehlerAnzeigen(fehler);
+    return;
+  }
+  if (konto) {
+    $('navigation').hidden = true; // Mitarbeiter sehen nur ihre eigene Ansicht
+    $('wer').textContent = `Angemeldet als ${konto.name}`;
+    $('kopf-filiale').textContent = konto.filiale?.name ?? '';
+    reiter.mein.oeffne(konto);
+    return;
+  }
   try {
     await aktualisiereIch();
   } catch (fehler) {
@@ -137,6 +158,10 @@ export function start() {
   for (const k of document.querySelectorAll('[data-ziel]')) {
     k.addEventListener('click', () => zeigeAnsicht(k.dataset.ziel));
   }
-  if (sitzung.istAngemeldet()) nachLogin();
+  // Einladungslink (#zugang=<code>): Registrierung hat Vorrang; eine noch offene Sitzung in diesem Tab endet.
+  if (/^#zugang=/.test(location.hash)) {
+    sitzung.logout();
+    zeigeAnsicht('registrieren');
+  } else if (sitzung.istAngemeldet()) nachLogin();
   else zeigeAnsicht('login');
 }

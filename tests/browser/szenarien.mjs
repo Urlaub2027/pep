@@ -2822,6 +2822,104 @@ await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, rich
   pruefe(!m.fehler, 'keine Fehlermeldung', m.fehler);
 });
 
+await szenario('Mitarbeiter-Ansicht: Registrierung über den Link, Zustimmung, Woche auf dem Handy (390 px)', async () => {
+  // Vorbereitung als Leitung: Datenschutztext, Plan in KW 47/48 (heute = 16.11.), Kollegen, einer davon abwesend
+  const ruf = async (funktion, body) => {
+    const r = await s.rpc(funktion, body, B.leitung);
+    if (r.status >= 300) throw new Error(`${funktion}: ${JSON.stringify(r.json)}`);
+    return r.json;
+  };
+  const [ich, kolleg, abwesend] = [ID[1], ID[2], ID[3]];
+  await ruf('pep_datenschutz_speichern', { p_text: 'Testtext zum Datenschutz.\n\nZweiter Absatz.' });
+  await sql("delete from pep.plan_bloecke where filiale_id = $1 and datum between '2026-11-16' and '2026-11-22'", [B.fil]);
+  const malen = (m, datum, von, bis, k) => ruf('pep_plan_malen', { p_mitarbeiter_id: m, p_datum: datum, p_von: von, p_bis: bis, p_bereich_id: B.bereich[k] });
+  const urlaub = (m, datum) => ruf('pep_abwesenheit_setzen', { p_mitarbeiter_id: m, p_code_id: B.code.U, p_von: datum, p_bis: datum, p_stunden: null, p_von_zeit: null, p_bis_zeit: null, p_notiz: null });
+  await malen(ich, '2026-11-17', '08:00', '12:00', 'KA');
+  await malen(ich, '2026-11-17', '12:00', '12:30', 'PA');
+  await malen(ich, '2026-11-17', '12:30', '16:00', 'KA');
+  await malen(kolleg, '2026-11-17', '10:00', '18:00', 'KA');
+  await malen(abwesend, '2026-11-17', '08:00', '16:00', 'KA');
+  await urlaub(abwesend, '2026-11-17');
+  gleich((await sql("select count(*)::int as n from pep.plan_bloecke where mitarbeiter_id = $1 and datum = '2026-11-17'", [abwesend]))[0].n, 1, 'Vorbedingung: abwesender Kollege hat Blöcke im Plan');
+  await ruf('pep_kommentar_setzen', { p_mitarbeiter_id: ich, p_datum: '2026-11-18', p_text: 'Ware <b>annehmen</b>' });
+  await urlaub(ich, '2026-11-19');
+  await ruf('pep_woche_freigeben', { p_jahr: 2026, p_kw: 47, p_frei: true });
+  await ruf('pep_woche_freigeben', { p_jahr: 2026, p_kw: 48, p_frei: true });
+  const [name, kollegName, abwesendName] = await Promise.all([ich, kolleg, abwesend].map(async (id) => (await sql('select name from pep.mitarbeiter where id = $1', [id]))[0].name));
+  const { code } = await ruf('pep_zugang_einladen', { p_mitarbeiter_id: ich });
+  const handy = (an) => c.sende('Emulation.setDeviceMetricsOverride', an ? { width: 390, height: 844, deviceScaleFactor: 1, mobile: true } : { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+  const ohneQuerscroll = async (wo) => pruefe(await c.werte(() => document.documentElement.scrollWidth <= window.innerWidth), `kein waagerechtes Scrollen: ${wo}`);
+  await handy(true);
+  try {
+    // Link ungültig
+    await c.navigiere(`${s.adresse}/browser/?a=1#zugang=${'0'.repeat(32)}`);
+    await c.warteAuf(() => !document.getElementById('meldung').hidden, { text: 'Hinweis zum Link' });
+    gleich((await meldungen()).fehler, 'Link ungültig, abgelaufen oder schon benutzt – bitte bei der Leitung einen neuen anfordern', 'Hinweis bei ungültigem Link');
+    gleich(await sichtbar('#reg-form'), false, 'Formular bei ungültigem Link versteckt');
+    // Gültiger Link
+    await c.navigiere(`${s.adresse}/browser/?b=2#zugang=${code}`);
+    await c.warteAuf(() => !document.getElementById('reg-form').hidden, { text: 'Formular' });
+    gleich(await sichtbar('#navigation'), false, 'Navigation bei der Registrierung versteckt');
+    await c.tippe('#reg-name', 'dana.probe');
+    await c.tippe('#reg-passwort', 'passwort-1234');
+    await c.tippe('#reg-passwort2', 'passwort-4321');
+    await c.klick('#reg-knopf');
+    await c.warteAuf(() => !document.getElementById('meldung').hidden, { text: 'Fehlermeldung' });
+    gleich((await meldungen()).fehler, 'Die beiden Passwörter stimmen nicht überein.', 'Passwörter verschieden');
+    await ohneQuerscroll('Registrierung');
+    await c.foto(`${FOTOS}mein-registrierung.png`);
+    await c.setzeWert('#reg-passwort2', 'passwort-1234');
+    await c.klick('#reg-knopf');
+    await c.warteAuf(() => document.querySelector('#ansicht-zustimmung .mein-text'), { text: 'Zustimmung', ms: 20000 });
+    await ruhe();
+    gleich(await c.werte(() => location.hash), '', 'Hash nach der Registrierung entfernt');
+    gleich(await sichtbar('#navigation'), false, 'Navigation für Mitarbeiter versteckt');
+    gleich(await text('#wer'), `Angemeldet als ${name}`, 'Kopfzeile: Name');
+    pruefe((await text('.mein-text')).startsWith('Testtext zum Datenschutz.'), 'Datenschutztext sichtbar', await text('.mein-text'));
+    gleich(await anzahl('#ansicht-mein .mein-tag'), 0, 'Plan erst nach der Zustimmung');
+    await ohneQuerscroll('Zustimmung');
+    await c.foto(`${FOTOS}mein-zustimmung.png`);
+    await c.klick({ text: 'Ich habe den Text gelesen und stimme zu', in: '#ansicht-zustimmung', sel: 'button', genau: true });
+    await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-tag'), { text: 'Wochenansicht', ms: 20000 });
+    await ruhe();
+    gleich((await sql('select count(*)::int as n from pep.zustimmungen where mitarbeiter_id = $1', [ich]))[0].n, 1, 'DB: eine Zustimmung');
+    // Woche KW 47
+    gleich(await anzahl('#ansicht-mein .mein-tag'), 7, 'sieben Tageskarten');
+    pruefe((await text('#mein-plan .mein-wochenkopf')).startsWith('KW 47 · 16.11.–22.11.2026'), 'Wochenkopf', await text('#mein-plan .mein-wochenkopf'));
+    const tagTexte = (d) => c.werte((x) => document.querySelector(`.mein-tag[data-datum="${x}"]`)?.innerText ?? '', d);
+    const di = await tagTexte('2026-11-17');
+    pruefe(di.includes('08:00–12:00 KA, Pause 12:00–12:30, 12:30–16:00 KA'), 'Di: Zeiten mit Pause', di);
+    pruefe(di.includes(`Mit dir eingeteilt: ${kollegName} 10:00–18:00`), 'Di: Kollege mit Zeiten', di);
+    pruefe(!(await c.werte(() => document.getElementById('ansicht-mein').innerHTML)).includes(abwesendName), 'abwesender Kollege nicht im DOM', abwesendName);
+    const mi = await tagTexte('2026-11-18');
+    pruefe(mi.includes('Ware <b>annehmen</b>'), 'Mi: Kommentar als Text', mi);
+    gleich(await anzahl('#ansicht-mein .mein-tag b'), 0, 'kein Markup aus Daten');
+    const don = await tagTexte('2026-11-19');
+    pruefe(don.includes('Urlaub (U)'), 'Do: eigene Abwesenheit', don);
+    pruefe(!don.includes('Mit dir eingeteilt'), 'Do: keine Kollegenzeile ohne eigene Zeiten');
+    pruefe((await text('.mein-kachel:nth-child(1) h3')).startsWith('Resturlaub 2026'), 'Kachel Resturlaub', await text('.mein-kachel:nth-child(1) h3'));
+    pruefe((await text('.mein-kachel:nth-child(2) .mein-wert')).length > 0, 'Kachel Zeitkonto');
+    pruefe((await text('.mein-app')).includes('Zum Home-Bildschirm'), 'Hinweis „Als App nutzen“');
+    await ohneQuerscroll('Wochenansicht KW 47');
+    await c.foto(`${FOTOS}mein-woche.png`, { ganz: true });
+    // Wochenwahl: KW 48 ohne Einträge
+    await c.setzeWert('.mein-wochenwahl', '1');
+    await c.warteAuf(() => document.querySelector('#mein-plan .mein-wochenkopf')?.textContent.startsWith('KW 48'), { text: 'KW 48' });
+    await ruhe();
+    gleich(await anzahl('#ansicht-mein .mein-tag'), 7, 'KW 48: sieben Tageskarten');
+    pruefe((await tagTexte('2026-11-23')).includes('Nicht eingeteilt'), 'KW 48: nicht eingeteilt', await tagTexte('2026-11-23'));
+    await ohneQuerscroll('Wochenansicht KW 48');
+    // Abmelden
+    await c.klick({ text: 'Abmelden', in: '#ansicht-mein', sel: 'button', genau: true });
+    await c.warteAuf(() => !document.getElementById('ansicht-login').hidden, { text: 'Login' });
+    gleich(await anzahl('#ansicht-mein .mein-tag'), 0, 'nach dem Abmelden keine Plandaten im DOM');
+    const m = await meldungen();
+    pruefe(!m.fehler, 'keine Fehlermeldung am Ende', m.fehler);
+  } finally {
+    await handy(false);
+  }
+}, { erlaubeHttp: ['LOGIN'] });
+
 // ================================================================ Ende
 
 const ok = ergebnisse.filter((e) => e.ok).length;

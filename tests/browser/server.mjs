@@ -3,6 +3,8 @@
 //   POST /rest/v1/rpc/<funktion>  wie PostgREST (benannte Argumente aus dem JSON-Body, json_to_recordset mit den
 //                                 Parametertypen der Funktion, Rolle authenticated, request.jwt.claims)
 //   POST /auth/v1/token|logout    wie GoTrue (Benutzername@example.com, Passwort „test“)
+//   POST /auth/v1/signup          legt das Konto in auth.users an (Trigger pep_neuer_mitarbeiter prüft die Einladung);
+//                                 Mitarbeiter-Konten melden sich mit dem bei der Registrierung gewählten Passwort an
 // Unter /browser/ liefert er docs/ aus. Geändert werden nur: config.js (SUPABASE_URL = dieser Server) und im
 // Content-Security-Policy-Meta connect-src (https://*.supabase.co → 'self'); die übrige CSP bleibt scharf.
 // app.js, sitzung.js und api.js laufen unverändert.
@@ -17,7 +19,7 @@ import { befuellen } from './daten.mjs';
 
 const WURZEL = fileURLToPath(new URL('../../', import.meta.url));
 const DOCS = join(WURZEL, 'docs');
-const TYPEN = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' };
+const TYPEN = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.webmanifest': 'application/manifest+json' };
 export const PASSWORT = 'test';
 
 // PostgREST: SQLSTATE → HTTP-Status (Auszug aus PostgREST/Error.hs, für die hier vorkommenden Codes).
@@ -109,10 +111,39 @@ export async function starteServer({ port = 0, protokoll = () => {} } = {}) {
     }
   }
 
+  const passwoerter = new Map(); // E-Mail → Passwort der per signup angelegten Konten
+
+  async function registrieren(body) {
+    const email = String(body.email ?? '').toLowerCase();
+    try {
+      await exklusiv(async () => {
+        await db.exec('set role supabase_auth_admin');
+        try {
+          await db.query('insert into auth.users (email, raw_user_meta_data) values ($1, $2)', [email, JSON.stringify(body.data ?? {})]);
+        } finally {
+          await db.exec('reset role');
+        }
+      });
+    } catch (e) {
+      return /unique|duplicate/i.test(e.message)
+        ? { status: 422, json: { code: 422, error_code: 'user_already_exists', msg: 'User already registered' } }
+        : { status: 500, json: { code: 500, error_code: 'unexpected_failure', msg: 'Database error saving new user' } };
+    }
+    passwoerter.set(email, body.password);
+    return { status: 200, json: { id: email } };
+  }
+
   async function anmelden(email, passwort) {
     const name = String(email ?? '').replace(/@example\.com$/i, '');
     const r = await exklusiv(() => db.query(
       'select user_id from urlaub.organisatoren where lower(benutzername) = lower($1) and not gesperrt', [name]));
+    if (!r.rows.length) {
+      const k = await exklusiv(() => db.query('select id from auth.users where lower(email) = lower($1)', [email ?? '']));
+      if (k.rows.length && passwoerter.get(String(email).toLowerCase()) === passwort) {
+        const id = k.rows[0].id;
+        return { status: 200, json: { access_token: `test.${id}`, refresh_token: `erneuern.${id}`, expires_in: 3600, token_type: 'bearer' } };
+      }
+    }
     if (!r.rows.length || passwort !== PASSWORT) {
       return { status: 400, json: { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' } };
     }
@@ -185,6 +216,10 @@ export async function starteServer({ port = 0, protokoll = () => {} } = {}) {
           return;
         }
         senden(await anmelden(body.email, body.password));
+        return;
+      }
+      if (pfad === '/auth/v1/signup' && anfrage.method === 'POST') {
+        senden(await registrieren(JSON.parse(await lesen(anfrage) || '{}')));
         return;
       }
       if (pfad === '/auth/v1/logout') { await lesen(anfrage); senden({ status: 204 }); return; }
