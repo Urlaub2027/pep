@@ -88,9 +88,10 @@ Anti-Ziele (wäre ein Fehlschlag, auch wenn es technisch läuft)
   Reihenfolge: Urlaubstool-Änderung zuerst einspielen, sonst lehnt dessen Trigger
   jede Mitarbeiter-Registrierung ab.
 - Erneutes Einladen eines Mitarbeiters mit bestehendem Konto (Passwort vergessen):
-  Die Einladung ersetzt das alte Konto – alter `user_id`-Eintrag fällt weg, das neue
-  Konto übernimmt. Das alte Auth-Konto wird gelöscht, soweit die Rechte das erlauben;
-  sonst bleibt es ohne Zugang zurück **[meine Wahl]**. Das neue Konto muss die
+  Der neue Link macht ältere offene Links ungültig; das bisherige Konto bleibt gültig,
+  bis der neue Link eingelöst ist (niemand wird vorzeitig ausgesperrt). Danach zeigt
+  der Zugang auf das neue Konto, das alte Auth-Konto bleibt ohne Zugang zurück und
+  wird nicht gelöscht **[meine Wahl]**. Das neue Konto muss die
   Datenschutzbestätigung **neu** abgeben – ein weitergegebener Link könnte bei einer
   anderen Person gelandet sein **[meine Wahl]**.
 
@@ -179,8 +180,8 @@ Name und Arbeitszeit(en) der Kollegen, die an diesem Tag **eingeplant** sind.
 ## 7. Technik
 
 - Statische Seite wie bisher (`docs/`), Anmeldung über dieselbe Maske. `pep_ich`
-  bleibt unverändert; eine neue Funktion `pep_ich_mitarbeiter` sagt der Seite, ob ein
-  Mitarbeiter-Konto angemeldet ist. Die Seite zeigt dann statt der Reiter nur die
+  bleibt unverändert; eine neue Funktion `pep_mein_konto` sagt der Seite, ob ein
+  Mitarbeiter-Konto angemeldet ist (`null` = kein Mitarbeiter-Konto). Die Seite zeigt dann statt der Reiter nur die
   Mitarbeiter-Ansicht.
 - Neue Funktionen `public.pep_mein_*` (SECURITY DEFINER, `set search_path = ''`,
   Rechte wie alle anderen: `revoke all … from public, anon, authenticated`, dann
