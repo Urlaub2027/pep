@@ -2945,7 +2945,7 @@ await szenario('Mitarbeiter-Ansicht: Registrierung über den Link, Zustimmung, W
     pruefe(don.includes('Urlaub (U)'), 'Do: eigene Abwesenheit', don);
     pruefe((await text('.mein-kachel:nth-child(1) h3')).startsWith('Resturlaub 2026'), 'Kachel Resturlaub', await text('.mein-kachel:nth-child(1) h3'));
     pruefe((await text('.mein-kachel:nth-child(2) .mein-wert')).length > 0, 'Kachel Zeitkonto');
-    pruefe((await text('.mein-app')).includes('Zum Home-Bildschirm'), 'Hinweis „Als App nutzen“');
+    pruefe((await text('.mein-app'))?.includes('Als App'), 'Hinweis bzw. Knopf „Als App …“', await text('.mein-app'));
     await ohneQuerscroll('Wochenansicht KW 47');
     await c.foto(`${FOTOS}mein-woche.png`, { ganz: true });
     // Wochenwahl: KW 48 ohne Einträge
@@ -3000,6 +3000,17 @@ await szenario('Mitarbeiter-Ansicht: Registrierung über den Link, Zustimmung, W
     await c.klick('#login-knopf');
     await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-tag'), { text: 'Wochenansicht nach erneuter Anmeldung', ms: 20000 });
     await ruhe();
+    // App installieren: meldet der Browser beforeinstallprompt (hier nachgestellt, damit prompt() zählbar ist), öffnet
+    // der Knopf seinen Installationsdialog; danach kein Hinweis mehr. Menü-/iPhone-Hinweis: tests/mein-daten.test.mjs.
+    await c.werte(() => {
+      const e = new Event('beforeinstallprompt');
+      e.prompt = async () => { window.__installFrage = (window.__installFrage ?? 0) + 1; };
+      e.userChoice = Promise.resolve({ outcome: 'accepted' });
+      window.dispatchEvent(e);
+    });
+    await c.klick({ text: 'Als App installieren', in: '#ansicht-mein', sel: 'button', genau: true });
+    await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-app')?.hidden, { text: 'Hinweis nach der Installation weg' });
+    gleich(await c.werte(() => window.__installFrage), 1, 'Knopf öffnet den Installationsdialog des Browsers');
     // Dauerhafte Anmeldung: App schließen (sessionStorage weg) und neu öffnen → weiter angemeldet.
     const speicher = () => c.werte(() => ({ tab: Boolean(sessionStorage.getItem('pep-sitzung')), dauer: Boolean(localStorage.getItem('pep-sitzung')) }));
     gleich(await speicher(), { tab: false, dauer: true }, 'Mitarbeiter: Sitzung dauerhaft gemerkt');

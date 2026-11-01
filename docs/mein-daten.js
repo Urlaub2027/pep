@@ -70,3 +70,17 @@ export function geaendertText(zeitstempel) {
   const zwei = (n) => String(n).padStart(2, '0');
   return `zuletzt geändert am ${zwei(d.getDate())}.${zwei(d.getMonth() + 1)}.${d.getFullYear()}`;
 }
+
+// Hinweis „Als App installieren“: 'knopf' = der Browser bietet die Installation an (beforeinstallprompt, Android/Chrome),
+// 'ios' = iPhone/iPad (Apple erlaubt keinen Knopf, nur Teilen → Zum Home-Bildschirm), 'menue' = sonst; null = läuft
+// schon als App.
+export function installArt({ installiert, kannFragen, ios }) {
+  if (installiert) return null;
+  if (kannFragen) return 'knopf';
+  return ios ? 'ios' : 'menue';
+}
+
+// iPadOS meldet sich als Mac; nur der Touchscreen unterscheidet es.
+export function istIos(userAgent, plattform, touchPunkte) {
+  return /iPhone|iPad|iPod/.test(userAgent) || (plattform === 'MacIntel' && touchPunkte > 1);
+}

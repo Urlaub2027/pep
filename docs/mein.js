@@ -4,6 +4,7 @@
 import { $, element, meldung, fehlerText } from './hilfe.js';
 import { aufruf, reiter, zeigeAnsicht, abmelden } from './app.js';
 import { heuteDatum } from './zeit.js';
+import { installBereich } from './app-installieren.js';
 import { tagZeilen, arbeitetAn, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText } from './mein-daten.js';
 
 let konto = null; // Antwort von pep_mein_konto
@@ -124,10 +125,10 @@ async function zeigen(behalteWoche = false) {
     : null;
   if (auswahl) auswahl.value = String(gewaehlt);
   $('ansicht-mein').replaceChildren(
+    installBereich(), // oben, damit es auch ohne Scrollen auffällt; verschwindet, sobald PEP als App läuft
     element('div', { class: 'mein-kopf' }, element('h2', {}, 'Mein Plan'), auswahl),
     wochen.length ? element('div', { id: 'mein-plan' }) : element('p', { class: 'box' }, 'Noch keine Woche freigegeben'),
     kacheln(urlaub, zeitkonto),
-    element('p', { class: 'mein-app' }, 'Als App nutzen: im Browser-Menü „Zum Home-Bildschirm“ wählen.'),
     element('div', { class: 'mein-knoepfe' }, abmeldeKnopf()));
   if (wochen.length) await wocheLaden(gewaehlt);
 }
