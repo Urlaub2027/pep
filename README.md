@@ -65,10 +65,12 @@ der Kasten „Lieferung & Bedarf“ bleibt leer. Die bestehende Filiale bekommt 
 Einspielen die Warengruppe „Trockensortiment“ (Bereich TS, 45 min) und LKW-Zeit 07:00.
 
 **Mitarbeiter-Zugang:** Reihenfolge im SQL-Editor von Supabase: **erst** das `supabase/schema.sql`
-des Urlaubstools (Repo Urlaub2027/urlaub, Branch `pep-mitarbeiter-einladung`, mit der
-Ausnahme für PEP-Einladungen im Auth-Trigger), **dann** das `supabase/schema.sql` von PEP.
-Ohne die Urlaubstool-Änderung weist dessen Trigger jede Registrierung eines Mitarbeiters
-ab. Unter Authentication muss die E-Mail-Bestätigung **aus** und die Registrierung **erlaubt**
+des Urlaubstools (Repo Urlaub2027/urlaub, Branch `pep-mitarbeiter-einladung`, Commit 14b2ed4 oder
+neuer, mit der Ausnahme für PEP-Einladungen im Auth-Trigger), **dann** das `supabase/schema.sql`
+von PEP. Das gilt **auch für eine bestehende Installation**: Das aktualisierte Urlaubstool-Schema
+muss erneut eingespielt werden. Ohne die Urlaubstool-Änderung weist dessen Trigger jede
+Registrierung eines Mitarbeiters ab (die Seite meldet „Link ungültig“). Ein neuer Link ersetzt
+den vorherigen offenen Link. Unter Authentication muss die E-Mail-Bestätigung **aus** und die Registrierung **erlaubt**
 bleiben (die Konten heißen `<name>@example.com`); bei den Leitungs-Konten ist das schon so.
 Beide Dateien sind idempotent; danach den Datenschutztext hinterlegen (ANLEITUNG,
 „Mitarbeiter-Zugang“). Der Hilfetext der Einstellungen zum Urlaubstool-Schalter hat den Satz
@@ -90,8 +92,9 @@ Die Anmeldung der Leitung läuft über die Konten des Urlaubstools.
 `pep.mitarbeiter_zugaenge`, `pep.mitarbeiter_einladungen` und `pep.zustimmungen`, nie in
 `pep.benutzer` und nie als Organisator im Urlaubstool. `pep.ich_mitarbeiter()` prüft Konto,
 Sperre und Zustimmung zum aktuellen Datenschutztext; die Funktionen `public.pep_mein_*`
-liefern nur die eigenen Daten (Plan freigegebener Wochen mit Kollegen desselben Tages,
-eigener Urlaub und Zeitkonto). Alle bisherigen `pep_*`-Funktionen antworten einem
+liefern nur die eigenen Daten (Plan freigegebener Wochen, eigener Urlaub und Zeitkonto; Kollegen
+desselben Tages nur, wenn die Leitung den Schalter `mitarbeiter_kollegen` einschaltet – Vorgabe
+aus – und nur an Tagen, an denen der Mitarbeiter selbst arbeitet). Alle bisherigen `pep_*`-Funktionen antworten einem
 Mitarbeiter-Konto mit `KEIN_ZUGRIFF`. Ein Zugang endet von selbst, wenn der Mitarbeiter
 deaktiviert wird oder ausgetreten ist. Der Schlüssel in
 `docs/config.js` ist absichtlich öffentlich. `tests/rechte.test.mjs` prüft jede

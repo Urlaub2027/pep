@@ -152,7 +152,7 @@ export const HILFE = {
       + 'Du kannst nichts ändern.',
     schritte: [
       'Oben die Woche wählen. Jeder Tag zeigt deine Zeiten, Pausen und Abwesenheiten.',
-      'Unter den Zeiten kann „Mit dir eingeteilt“ stehen: Wer an dem Tag mit dir arbeitet (die Leitung kann das ausschalten).',
+      'Hat die Leitung es eingeschaltet, steht an deinen Arbeitstagen „Mit dir eingeteilt“: wer an dem Tag mit dir arbeitet.',
       'Ganz unten „Abmelden“, wenn du fertig bist.',
     ],
     gut_zu_wissen: [
@@ -172,7 +172,7 @@ export const HILFE = {
       'Feiertage stehen unter „Abweichende Tage“. „öffnen …“ macht einen Feiertag zum Öffnungstag.',
       'Urlaubstool: Umfrage mit „aktiv“ einschalten, dann unter „Teilnehmer zuordnen“ „Vorschläge übernehmen“ '
         + 'oder je Zeile wählen und „Speichern“.',
-      'Jede Woche „Sicherung herunterladen“; Datei auf PC oder USB-Stick aufheben, nie mailen.',
+      'Jede Woche „Sicherung herunterladen“; Datei auf PC/USB-Stick aufheben, nie mailen.',
     ],
     gut_zu_wissen: [
       '„IST-Erfassung ab“ lässt sich nur vor dem ersten „Woche buchen“ ändern.',
@@ -180,9 +180,9 @@ export const HILFE = {
       'Eine Umfrage lässt sich nur in einer Filiale einschalten. '
         + 'Umfragen anderer Leitungen erscheinen erst nach deren erster Anmeldung.',
       'Stellvertretung unter „Benutzer“ hinzufügen; sie braucht ein Urlaubstool-Konto.',
-      '„Datenschutz“: Text für die Zustimmung der Mitarbeiter; ohne ihn kein Zugang.',
-      'Die Sicherung enthält das Protokoll nur der letzten 12 Monate. Einspielen geht nur in eine leere Filiale.',
-      'GitHub weckt die Datenbank alle zwei Tage; nichts zu tun.',
+      '„Datenschutz“: Zustimmungstext für Mitarbeiter (ohne ihn kein Zugang) und Schalter für Kollegen, Vorgabe aus.',
+      'Die Sicherung enthält das Protokoll der letzten 12 Monate. Einspielen geht nur in eine leere Filiale.',
+      'GitHub weckt die Datenbank alle zwei Tage.',
           ],
   },
 };

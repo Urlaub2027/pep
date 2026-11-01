@@ -208,7 +208,7 @@
 
 ### Task 8: Schalter „Kollegen in der Mitarbeiter-Ansicht“ (Nachtrag 01.11.2026)
 
-Anlass: Rückfrage des Key Users („nur persönliche Schicht oder ganzer Plan?“). Entscheidung dtn: Schalter in den Einstellungen, **Vorgabe „mit Kollegen“** (heutiges Verhalten). „Ganzer Plan wie am Aushang“ (mit Abwesenden) wird nicht angeboten.
+Anlass: Rückfrage des Key Users („nur persönliche Schicht oder ganzer Plan?“). Entscheidung dtn: Schalter in den Einstellungen, **Vorgabe „mit Kollegen“** (heutiges Verhalten). **Geändert am 01.11.2026 (Product Owner, Final-Fix): Vorgabe „aus“ – ohne Zeile gilt `false`, Mitarbeiter sehen standardmäßig nur ihre eigenen Zeiten.** „Ganzer Plan wie am Aushang“ (mit Abwesenden) wird nicht angeboten.
 
 **Files:**
 - Modify: `supabase/schema.sql` (`public.pep_einstellung_setzen` Schlüssel-Liste + Prüfung, `public.pep_einstellungen` liefert den Wert, `public.pep_mein_plan`)
@@ -217,7 +217,7 @@ Anlass: Rückfrage des Key Users („nur persönliche Schicht oder ganzer Plan?�
 - Modify: `ANLEITUNG.md` (Abschnitt Mitarbeiter-Zugang), Spec §5.2 (ein Satz zum Schalter)
 
 **Interfaces:**
-- Einstellung `mitarbeiter_kollegen` in `pep.einstellungen`, Wert JSON-Boolean; fehlt die Zeile ⇒ `true`. Setzen nur Leitung über `pep_einstellung_setzen('mitarbeiter_kollegen', true|false)`; andere Werte ⇒ bestehender Fehlercode für ungültige Einstellungswerte der Funktion.
+- Einstellung `mitarbeiter_kollegen` in `pep.einstellungen`, Wert JSON-Boolean; fehlt die Zeile ⇒ `false` (bis zum Final-Fix 01.11.2026: `true`). Setzen nur Leitung über `pep_einstellung_setzen('mitarbeiter_kollegen', true|false)`; andere Werte ⇒ bestehender Fehlercode für ungültige Einstellungswerte der Funktion.
 - `pep_mein_plan`: bei `false` ist `kollegen` an **jedem** Tag `null` (nicht `[]`) – die Datenbank liefert dann keine Kollegennamen aus; bei `true` unverändert (`[]` = niemand sonst eingeteilt).
 - UI: `kollegen === null` ⇒ keine Kollegenzeile; `[]` ⇒ wie bisher.
 

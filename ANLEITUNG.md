@@ -512,14 +512,17 @@ Farben, im Druckdialog „Hintergrundgrafiken“ einschalten.
 Mitarbeiter sehen auf dem Handy, wann sie arbeiten, dazu ihren eigenen Urlaub und ihr
 Zeitkonto. Einrichten und freigeben tut die Filialleitung.
 
-Unter den eigenen Zeiten steht standardmäßig, wer am selben Tag mit eingeteilt ist. Die
-Leitung kann das unter Einstellungen → Benutzer & Sicherung → Datenschutz ausschalten
-(„Mitarbeiter sehen Kollegen am selben Tag“): Dann liefert die Datenbank keine Kollegennamen
-mehr aus.
+Standardmäßig sehen Mitarbeiter nur ihre eigenen Zeiten. Die Leitung kann unter
+Einstellungen → Benutzer & Sicherung → Datenschutz einschalten („Mitarbeiter sehen Kollegen
+am selben Tag“): Dann steht an den Tagen, an denen jemand selbst arbeitet, auch, wer mit
+eingeteilt ist (Abwesende nie). Ausgeschaltet liefert die Datenbank keine Kollegennamen aus.
 
 **Voraussetzung (einmalig, durch den Betreiber):** Im SQL-Editor von Supabase zuerst das
 Schema des Urlaubstools, dann das von PEP einspielen (siehe README); in Supabase muss die
-E-Mail-Bestätigung ausgeschaltet und die Registrierung erlaubt bleiben.
+E-Mail-Bestätigung ausgeschaltet und die Registrierung erlaubt bleiben. **Auch bei einer
+bestehenden Installation** muss das **aktualisierte** Schema des Urlaubstools (Urlaub2027/urlaub,
+Branch `pep-mitarbeiter-einladung`, Commit 14b2ed4 oder neuer) erneut eingespielt werden – sonst
+scheitert jede Registrierung, die Person sieht „Link ungültig“.
 
 1. **Datenschutztext hinterlegen.** Einstellungen → Benutzer & Sicherung → Datenschutztext
    eingeben, „Speichern“. „Entwurf einfügen“ setzt einen Vorschlag ein. ⚠️ **Der Entwurf
@@ -538,14 +541,15 @@ E-Mail-Bestätigung ausgeschaltet und die Registrierung erlaubt bleiben.
    „Freigabe zurücknehmen“ blendet die Woche wieder aus. **Änderungen nach der Freigabe
    sind sofort sichtbar**; die Mitarbeiter sehen dann an der Woche „zuletzt geändert am …“.
 
-**Passwort vergessen:** Auf der Karte „Neuer Link“, wieder an die Person senden. Das alte
-Konto funktioniert weiter, bis der neue Link eingelöst ist; danach gilt nur das neue.
+**Passwort vergessen:** Auf der Karte „Neuer Link“, wieder an die Person senden. Ein neuer
+Link ersetzt den vorherigen offenen Link. Das alte Konto funktioniert weiter, bis der neue
+Link eingelöst ist; danach gilt nur das neue.
 
 **Sperren:** Karte → „Sperren“. Die Person kann sich nicht mehr anmelden, offene Links
 werden ungültig. Solange der Zugang gesperrt ist, gibt es nur „Entsperren“ (kein neuer Link).
 Nach dem Entsperren ist ein früherer Link nicht wieder gültig; bei Bedarf „Neuer Link“.
 **Deaktivierte** Mitarbeiter und solche **nach dem Austritt** verlieren den Zugang
-automatisch.
+automatisch; die Karte zeigt dann „ruht (inaktiv oder ausgetreten)“ und keinen „Neuer Link“.
 
 **Nach einer Sicherung:** Zugänge, Einladungen und Zustimmungen stehen **nicht** in der
 Sicherungsdatei (Datenschutztext und Freigaben schon). Nach dem Einspielen alle
@@ -554,9 +558,9 @@ Mitarbeiter neu einladen; sie stimmen erneut zu.
 **Als App aufs Handy:** iPhone (Safari): Teilen → „Zum Home-Bildschirm“. Android (Chrome):
 Menü → „App installieren“. Dann öffnet sich PEP wie eine App.
 
-**Was Mitarbeiter sehen:** den eigenen Plan der freigegebenen Wochen, an jedem Tag mit
-Namen und Zeit, wer sonst eingeteilt ist, den eigenen Urlaub und den eigenen
-Zeitkonto-Saldo. **Nicht:** wer abwesend ist und warum, Stunden oder Urlaub der Kollegen.
+**Was Mitarbeiter sehen:** den eigenen Plan der freigegebenen Wochen, den eigenen Urlaub
+und den eigenen Zeitkonto-Saldo; nur mit eingeschaltetem Schalter außerdem an den Tagen, an
+denen sie selbst arbeiten, Namen und Zeit, wer sonst eingeteilt ist. **Nicht:** wer abwesend ist und warum, Stunden oder Urlaub der Kollegen.
 
 ## 4. Handprüf-Checkliste
 
