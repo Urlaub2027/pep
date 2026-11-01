@@ -128,6 +128,19 @@ async function feldUnter(scope, beschriftung, nr = 0) {
   if (!ok) throw new Error(`Feld „${beschriftung}“ in ${scope} nicht gefunden`);
   return `[data-t="${marke}"]`;
 }
+// Box der Mitarbeiterkarte über ihre Überschrift statt über die Position (die Leitung sieht zusätzlich „Zugang“ an
+// zweiter Stelle). Markiert sie und liefert einen Selektor; nach jedem Neuzeichnen der Karte neu aufrufen.
+async function kartenBox(titel) {
+  const marke = `b${++markenZaehler}`;
+  const ok = await c.werte((t, m) => {
+    const box = [...document.querySelectorAll('#ma-karte .box')].find((b) => b.querySelector('h2')?.textContent === t);
+    if (!box) return false;
+    box.dataset.box = m;
+    return true;
+  }, titel, marke);
+  if (!ok) throw new Error(`Box „${titel}“ in #ma-karte nicht gefunden`);
+  return `#ma-karte [data-box="${marke}"]`;
+}
 // Einstellungen: öffnet den Unterreiter, in dem der Abschnitt mit dieser Überschrift steht, und liefert dessen Selektor.
 async function einstellungsAbschnitt(titel) {
   const ziel = await c.werte((t) => {
@@ -1156,7 +1169,7 @@ await szenario('Mitarbeiter: Reihenfolge ▲/▼, Stammdaten, Kompetenz, Vertrag
   await ruhe();
   await c.tippe(await feldUnter('#ma-karte', 'Personalnummer'), '99999');
   await c.tippe(await feldUnter('#ma-karte', 'Notiz'), 'Testnotiz Stammdaten');
-  await c.klick({ text: 'Speichern', in: '#ma-karte .box:nth-child(1)', sel: 'button', genau: true });
+  await c.klick({ text: 'Speichern', in: await kartenBox('Stammdaten'), sel: 'button', genau: true });
   await ruhe();
   gleich(await sql('select personalnummer, notiz from pep.mitarbeiter where id = $1', [jana]), [{ personalnummer: '99999', notiz: 'Testnotiz Stammdaten' }], 'DB Stammdaten');
   gleich((await meldungen()).toast, 'Gespeichert.', 'Toast');
@@ -1172,7 +1185,7 @@ await szenario('Mitarbeiter: Reihenfolge ▲/▼, Stammdaten, Kompetenz, Vertrag
   gleich((await sql('select count(*)::int as n from pep.kompetenzen where mitarbeiter_id = $1 and bereich_id = $2', [jana, vp]))[0].n, 0, 'DB VP aus');
   // Vertrag ändern
   await c.tippe(await feldUnter('#ma-karte', 'Wochenstunden', 0), '35');
-  await c.klick({ text: 'Speichern', in: '#ma-karte .box:nth-child(2)', sel: 'button', genau: true });
+  await c.klick({ text: 'Speichern', in: await kartenBox('Verträge'), sel: 'button', genau: true });
   await ruhe();
   gleich(await sql('select wochenstunden::float as w, vertragsart as a from pep.vertraege where mitarbeiter_id = $1 order by gueltig_ab', [jana]), [{ w: 35, a: 'vollzeit' }], 'DB Vertrag 35 h');
   pruefe((await text('#ma-liste .ma-eintrag.gewaehlt small')) === 'Vollzeit · 35,0 h', 'Liste zeigt 35,0 h', await text('#ma-liste .ma-eintrag.gewaehlt small'));
@@ -1190,7 +1203,7 @@ await szenario('Mitarbeiter: Reihenfolge ▲/▼, Stammdaten, Kompetenz, Vertrag
   await ruhe();
   gleich((await sql("select count(*)::int as n from pep.mitarbeiter where name = 'Neu, Testperson'"))[0].n, 1, 'DB neuer Mitarbeiter');
   gleich(await text('#ma-liste .ma-eintrag.gewaehlt .ma-name'), 'Neu, Testperson', 'Neuer Mitarbeiter gewählt');
-  pruefe(await sichtbar('#ma-karte .box:nth-child(2)'), 'Karte mit Verträgen sichtbar');
+  pruefe(await sichtbar(await kartenBox('Verträge')), 'Karte mit Verträgen sichtbar');
 });
 
 // ---------------------------------------------------------------- Einstellungen
@@ -2767,7 +2780,8 @@ await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, rich
   await reiter('mitarbeiter');
   await c.klick({ text: 'Demo, Emil', in: '#ma-liste', sel: '.ma-eintrag' });
   await ruhe();
-  const zugang = () => text('#ma-karte .box:nth-child(2) p');
+  const zugang = async () => text(`${await kartenBox('Zugang')} p`);
+  const zugangKnoepfe = async () => texte(`${await kartenBox('Zugang')} button`);
   gleich(await zugang(), 'Stand: kein Zugang', 'Stand vor der Einladung');
   await c.klick({ text: 'Zugang einrichten', in: '#ma-karte', sel: 'button', genau: true });
   await ruhe();
@@ -2782,7 +2796,7 @@ await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, rich
   await warteDialog('sperren');
   await dKnopf('Sperren');
   gleich(await zugang(), 'Stand: gesperrt', 'Stand gesperrt');
-  gleich(await texte('#ma-karte .box:nth-child(2) button'), ['Entsperren'], 'gesperrt: nur Entsperren');
+  gleich(await zugangKnoepfe(), ['Entsperren'], 'gesperrt: nur Entsperren');
   await c.klick({ text: 'Entsperren', in: '#ma-karte', sel: 'button', genau: true });
   await warteDialog('entsperren');
   await dKnopf('Entsperren');
@@ -2816,8 +2830,8 @@ await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, rich
     await c.klick({ text: 'Demo, Emil', in: '#ma-liste', sel: '.ma-eintrag' });
     await ruhe();
     gleich(await zugang(), 'Stand: ruht (inaktiv oder ausgetreten)', 'inaktiv mit Konto: Stand ruht');
-    pruefe(!(await texte('#ma-karte .box:nth-child(2) button')).includes('Neuer Link'), 'ruht: kein „Neuer Link“',
-      await texte('#ma-karte .box:nth-child(2) button'));
+    const ruhtKnoepfe = await zugangKnoepfe();
+    pruefe(!ruhtKnoepfe.includes('Neuer Link'), 'ruht: kein „Neuer Link“', ruhtKnoepfe);
   } finally {
     await sql("update pep.mitarbeiter set aktiv = true where filiale_id = $1 and name = 'Demo, Emil'", [B.fil]);
   }

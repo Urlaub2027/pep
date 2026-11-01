@@ -8069,8 +8069,10 @@ begin
   perform 1 from pep.mitarbeiter where id = v_m.id for update; -- zwei gleichzeitige Einladungen nacheinander
   update pep.mitarbeiter_einladungen set ersetzt_am = now()
    where mitarbeiter_id = v_m.id and eingeloest_von is null and ersetzt_am is null;
-  -- Nach den Einladungen, wie Trigger und pep_zugang_sperren (erst Einladung, dann Zugang): keine Verklemmung, und ein
-  -- gleichzeitiges Sperren ist danach schon sichtbar oder muss warten.
+  -- Nach den Einladungen, wie Trigger und pep_zugang_sperren (erst Einladung, dann Zugang): keine Verklemmung. Einen
+  -- Wettlauf mit gleichzeitigem Sperren schließt das nicht aus (ist die Zeile noch nicht gesperrt, sperrt „for update“
+  -- hier nichts): Eine so entstandene Einladung bleibt während der Sperre ungültig (pep.einladung_gueltig), könnte nach
+  -- dem Entsperren aber wieder gelten. Bekannt und akzeptiert.
   perform 1 from pep.mitarbeiter_zugaenge where mitarbeiter_id = v_m.id and gesperrt for update;
   if found then
     raise exception 'ZUGANG_GESPERRT';
