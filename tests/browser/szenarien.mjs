@@ -1329,9 +1329,11 @@ await szenario('Einsatzplan: zwei schnelle Striche in einer Zeile bei langsamer 
   const hinweis = () => c.werte(() => { const e = document.querySelector('#ansicht-einsatzplan .ep-speichert'); return e && !e.hidden ? e.textContent : ''; });
   s.verzoegere(800);
   try {
-    const p = async (von) => zellPunkt(epZelle(MIA, von), false);
-    await c.ziehe(await p('13:00'), await p('13:30'));
-    await c.ziehe(await p('15:00'), await p('15:30'));
+    // Erste Zelle jedes Strichs ins Bild holen: Das Raster endet am Fensterrand (passeHoeheAn), untere Zeilen liegen
+    // sonst unter den klebenden Abdeckungszeilen und die Maus träfe diese.
+    const p = async (von, holen = false) => zellPunkt(epZelle(MIA, von), holen);
+    await c.ziehe(await p('13:00', true), await p('13:30'));
+    await c.ziehe(await p('15:00', true), await p('15:30'));
     gleich(await wartendeZellen(), ['13:00', '13:30', '15:00', '15:30'], 'Beide Striche markiert, solange sie warten');
     gleich(await hinweis(), 'wird gespeichert …', 'Hinweis „wird gespeichert …“');
     await pause(350); // der Hinweis blendet nach 300 ms ein
@@ -2861,7 +2863,13 @@ await szenario('Mitarbeiter-Ansicht: Registrierung über den Link, Zustimmung, W
   };
   const [ich, kolleg, abwesend] = [ID[1], ID[2], ID[3]];
   await ruf('pep_datenschutz_speichern', { p_text: 'Testtext zum Datenschutz.\n\nZweiter Absatz.' });
-  await sql("delete from pep.plan_bloecke where filiale_id = $1 and datum between '2026-11-16' and '2026-11-22'", [B.fil]);
+  // Ausgangszustand selbst herstellen: Alle Szenarien eines Laufs teilen die Datenbank, frühere planen auch in KW 47/48
+  // (z. B. „Kopieren: Woche → nächste Wochen“). Darum KW 47 und 48 leeren: Plan der Filiale, Abwesenheiten und
+  // Kommentare der drei Beteiligten.
+  await sql("delete from pep.plan_bloecke where filiale_id = $1 and datum between '2026-11-16' and '2026-11-29'", [B.fil]);
+  for (const t of ['abwesenheiten', 'plan_kommentare']) {
+    await sql(`delete from pep.${t} where mitarbeiter_id = any($1::bigint[]) and datum between '2026-11-16' and '2026-11-29'`, [[ich, kolleg, abwesend]]);
+  }
   const malen = (m, datum, von, bis, k) => ruf('pep_plan_malen', { p_mitarbeiter_id: m, p_datum: datum, p_von: von, p_bis: bis, p_bereich_id: B.bereich[k] });
   const urlaub = (m, datum) => ruf('pep_abwesenheit_setzen', { p_mitarbeiter_id: m, p_code_id: B.code.U, p_von: datum, p_bis: datum, p_stunden: null, p_von_zeit: null, p_bis_zeit: null, p_notiz: null });
   await malen(ich, '2026-11-17', '08:00', '12:00', 'KA');
