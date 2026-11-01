@@ -556,8 +556,9 @@ Sicherungsdatei (Datenschutztext und Freigaben schon). Nach dem Einspielen alle
 Mitarbeiter neu einladen; sie stimmen erneut zu.
 
 **Als App aufs Handy:** Android (Chrome): oben in „Mein Plan“ auf **„Als App installieren“**
-tippen und bestätigen. iPhone (Safari): Apple erlaubt keinen solchen Knopf – dort steht eine
-Anleitung: Teilen-Symbol → „Zum Home-Bildschirm“. Dann öffnet sich PEP wie eine App; der
+tippen und bestätigen. iPhone: Apple erlaubt keinen solchen Knopf – dort steht eine
+Anleitung: Teilen-Symbol (Safari unten, Chrome oben in der Adressleiste; Chrome erst ab
+iOS 16.4) → „Zum Home-Bildschirm“. Dann öffnet sich PEP wie eine App; der
 Hinweis verschwindet, sobald PEP als App läuft.
 Mitarbeiter bleiben darin **angemeldet**, auch wenn die App geschlossen wird – bis sie sich
 abmelden oder die Leitung den Zugang sperrt. Leitung und Stellvertretung bleiben nur

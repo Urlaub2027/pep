@@ -39,7 +39,9 @@ function inhalt(fertig = false) {
       element('span', { class: 'klein' }, ' Dann öffnet sich PEP wie eine App, ohne Browser.')];
   }
   if (art === 'ios') {
-    return ['Als App nutzen: unten auf das Teilen-Symbol tippen (Viereck mit Pfeil nach oben), dann „Zum Home-Bildschirm“.'];
+    // Safari: Teilen-Symbol unten; Chrome & Co. (ab iOS 16.4): oben in der Adressleiste.
+    return ['Als App nutzen: auf das Teilen-Symbol tippen (Viereck mit Pfeil nach oben – in Safari unten, in Chrome oben ',
+      'in der Adressleiste), dann „Zum Home-Bildschirm“.'];
   }
   if (art === 'menue') {
     return ['Als App nutzen: im Browser-Menü „App installieren“ oder „Zum Startbildschirm hinzufügen“ wählen.'];
