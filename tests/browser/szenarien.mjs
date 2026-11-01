@@ -2783,6 +2783,8 @@ await szenario('Mitarbeiter-Zugang: Leitung hinterlegt den Datenschutztext, rich
   await c.klick({ text: 'Entsperren', in: '#ma-karte', sel: 'button', genau: true });
   await warteDialog('entsperren');
   await dKnopf('Entsperren');
+  gleich(await anzahl('#ma-karte .zugang-link'), 0, 'nach Entsperren kein toter Link mehr');
+  pruefe(!(await zugang()).startsWith('Stand: eingeladen'), 'nach Entsperren nicht wieder „eingeladen“', await zugang());
   // Einsatzplan: Woche freigeben und zurücknehmen
   await reiter('einsatzplan');
   const frei = () => c.werte(() => document.querySelector('#ansicht-einsatzplan .ep-freigabe')?.dataset.freigabe ?? null);

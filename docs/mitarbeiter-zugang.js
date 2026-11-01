@@ -1,5 +1,6 @@
 // Mitarbeiter-Karte, Abschnitt „Zugang“: Stand, Einladungslink, Sperren/Entsperren (nur Leitung).
-// Wird von mitarbeiter.js mit dessen `speichere` und `aufruf` aufgerufen; der Link steht nur bis zum nächsten Laden da.
+// Wird von mitarbeiter.js mit dessen `speichere` und `aufruf` aufgerufen; der Link steht nur, solange der Stand „eingeladen“ ist und die Karte dieser Person offen bleibt
+// (Sperren/Entsperren, Einlösen und der Wechsel zu einer anderen Person lassen ihn verschwinden).
 import { element, abschnitt, meldung } from './hilfe.js';
 import { dialog } from './dialog.js';
 import { einladungsLink, zugangsStandText, tagDE } from './zugang-text.js';
@@ -18,6 +19,7 @@ function linkZeile(link) {
 }
 
 export function zugangAbschnitt(m, { speichere, aufruf }) {
+  if (einladung && einladung.id !== m.id) einladung = null; // Karte einer anderen Person
   const zugang = m.zugang ?? { stand: 'kein' };
   const frage = (titel, text, knopf, aktion, gefahr = false) =>
     dialog(titel, [element('p', {}, text)], [{ text: knopf, gefahr, aktion }]);
@@ -30,7 +32,10 @@ export function zugangAbschnitt(m, { speichere, aufruf }) {
     gesperrt ? `${m.name} kann sich nicht mehr anmelden; offene Einladungen werden ungültig.`
       : `${m.name} kann sich wieder anmelden.`,
     gesperrt ? 'Sperren' : 'Entsperren',
-    () => speichere(() => aufruf('pep_zugang_sperren', { p_mitarbeiter_id: m.id, p_gesperrt: gesperrt })), gesperrt) },
+    () => speichere(async () => {
+      einladung = null; // Sperren macht offene Einladungen ungültig, Entsperren stellt sie nicht wieder her
+      await aufruf('pep_zugang_sperren', { p_mitarbeiter_id: m.id, p_gesperrt: gesperrt });
+    }), gesperrt) },
   gesperrt ? 'Sperren' : 'Entsperren');
 
   // Gesperrt: nur „Entsperren“ – ein neuer Link würde die Sperre beim Einlösen still aufheben.
@@ -40,12 +45,12 @@ export function zugangAbschnitt(m, { speichere, aufruf }) {
     aktiv: [einladen('Neuer Link'), sperren(true)],
     gesperrt: [sperren(false)],
   }[zugang.stand] ?? [];
-  const zeigeLink = einladung?.id === m.id && zugang.stand !== 'gesperrt';
+  const zeigeLink = einladung?.id === m.id && zugang.stand === 'eingeladen';
   return abschnitt('Zugang',
     element('p', {}, `Stand: ${zugangsStandText(zugang)}`),
     zugang.zustimmung_am ? element('p', { class: 'hinweis' }, `Datenschutz bestätigt am ${tagDE(zugang.zustimmung_am)}`) : null,
     element('div', { class: 'zeile' }, knoepfe),
     zeigeLink ? element('div', {},
-      element('p', { class: 'hinweis' }, `Einladungslink für ${m.name}, gültig bis ${tagDE(einladung.gueltig_bis)}. Er ist nur jetzt sichtbar.`),
+      element('p', { class: 'hinweis' }, `Einladungslink für ${m.name}, gültig bis ${tagDE(einladung.gueltig_bis)}. Er bleibt nur sichtbar, bis du die Karte wechselst oder neu lädst.`),
       linkZeile(einladung.link)) : null);
 }
