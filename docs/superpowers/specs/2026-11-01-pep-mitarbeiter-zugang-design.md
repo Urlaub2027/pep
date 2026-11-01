@@ -1,6 +1,7 @@
 # PEP – Mitarbeiter-Zugang (Design)
 
-Stand 01.11.2026. Grundlage: PEP_HANDOFF.md „Stufe 3 – Mitarbeiter-Seite“, Wunsch der
+Stand: umgesetzt auf Branch mitarbeiter-zugang (01.11.2026).
+Entwurf vom 01.11.2026. Grundlage: PEP_HANDOFF.md „Stufe 3 – Mitarbeiter-Seite“, Wunsch der
 Filialleitung (31.10.2026) und Gespräch mit dtn am 01.11.2026.
 Kennzeichnung: **[dtn]** = so gesagt oder bestätigt, **[meine Wahl]** = von mir
 entschieden, vom Builder nicht zu ändern ohne Rückfrage.

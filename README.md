@@ -64,6 +64,17 @@ der Antworten; die Seite fängt das ab (Einstellungen und Sicherung bleiben nutz
 der Kasten „Lieferung & Bedarf“ bleibt leer. Die bestehende Filiale bekommt beim
 Einspielen die Warengruppe „Trockensortiment“ (Bereich TS, 45 min) und LKW-Zeit 07:00.
 
+**Mitarbeiter-Zugang:** Reihenfolge im SQL-Editor von Supabase: **erst** das `supabase/schema.sql`
+des Urlaubstools (Repo Urlaub2027/urlaub, Branch `pep-mitarbeiter-einladung`, mit der
+Ausnahme für PEP-Einladungen im Auth-Trigger), **dann** das `supabase/schema.sql` von PEP.
+Ohne die Urlaubstool-Änderung weist dessen Trigger jede Registrierung eines Mitarbeiters
+ab. Unter Authentication muss die E-Mail-Bestätigung **aus** und die Registrierung **erlaubt**
+bleiben (die Konten heißen `<name>@example.com`); bei den Leitungs-Konten ist das schon so.
+Beide Dateien sind idempotent; danach den Datenschutztext hinterlegen (ANLEITUNG,
+„Mitarbeiter-Zugang“). Der Hilfetext der Einstellungen zum Urlaubstool-Schalter hat den Satz
+„Ausschalten behält die Zuordnungen.“ verloren (Grenze von 180 Wörtern); er steht in
+ANLEITUNG.md, Abschnitt „Urlaubstool“.
+
 ## Sicherheitsprinzip
 
 Das Repository ist öffentlich, die Daten sind es nicht. Alle Tabellen liegen im
@@ -71,8 +82,18 @@ Schema `pep`; Row Level Security ist eingeschaltet, es gibt bewusst keine Polici
 und `anon`/`authenticated` haben keinen Zugriff auf das Schema. Der Browser ruft
 ausschließlich `SECURITY DEFINER`-Funktionen `public.pep_*` auf, die Anmeldung,
 Rolle (Leitung, Stellvertretung, Mitarbeiter) und Filiale serverseitig prüfen;
-`anon` (ohne Anmeldung) darf davon nur `pep_lebenszeichen` aufrufen (Weckruf, liest nichts).
-Die Anmeldung läuft über die Konten des Urlaubstools. Der Schlüssel in
+`anon` (ohne Anmeldung) darf davon nur `pep_lebenszeichen` (Weckruf, liest nichts) und
+`pep_zugang_pruefen` (prüft einen Einladungslink vor der Registrierung) aufrufen.
+Die Anmeldung der Leitung läuft über die Konten des Urlaubstools.
+
+**Mitarbeiter-Konten** liegen getrennt davon: Zugang, Einladungen und Zustimmungen in
+`pep.mitarbeiter_zugaenge`, `pep.mitarbeiter_einladungen` und `pep.zustimmungen`, nie in
+`pep.benutzer` und nie als Organisator im Urlaubstool. `pep.ich_mitarbeiter()` prüft Konto,
+Sperre und Zustimmung zum aktuellen Datenschutztext; die Funktionen `public.pep_mein_*`
+liefern nur die eigenen Daten (Plan freigegebener Wochen mit Kollegen desselben Tages,
+eigener Urlaub und Zeitkonto). Alle bisherigen `pep_*`-Funktionen antworten einem
+Mitarbeiter-Konto mit `KEIN_ZUGRIFF`. Ein Zugang endet von selbst, wenn der Mitarbeiter
+deaktiviert wird oder ausgetreten ist. Der Schlüssel in
 `docs/config.js` ist absichtlich öffentlich. `tests/rechte.test.mjs` prüft jede
 `public.pep_*`-Funktion: neue Funktionen müssen dort eingetragen werden.
 
@@ -101,6 +122,11 @@ Sicherung eine JSON-Datei mit allen Daten der Filiale herunter (`pep_sicherung`)
 kann sie in eine **leere** Filiale einspielen (`pep_sicherung_pruefen` für die Vorschau,
 `pep_sicherung_einspielen`), z. B. nach einem Datenverlust in ein neues Projekt.
 Schritte und Grenzen: [ANLEITUNG.md](ANLEITUNG.md), Abschnitt „Sicherung“.
+
+**Mitarbeiter-Zugang:** `datenschutz_texte` und `wochen_freigaben` sind in der Datei,
+`mitarbeiter_zugaenge`, `mitarbeiter_einladungen` und `zustimmungen` nicht (Konten hängen
+am Supabase-Projekt, siehe `pep.sicherung_ausnahmen()`). Nach dem Einspielen müssen die
+Mitarbeiter neu eingeladen werden und dem Datenschutztext erneut zustimmen.
 
 - **Format** (`version: 1`, im Kopf des Abschnitts „Sicherung“ in `schema.sql`):
   `filiale`, `benutzer` (Benutzername und Rolle), `konten` (user_id → Benutzername),
@@ -170,13 +196,14 @@ Die Oberfläche lässt sich ohne Supabase ansehen, mit erfundenen Daten.
 Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funktionen.
 
 - **Lauf:** `node tests/browser/szenarien.mjs [filter]` startet den Testserver und Chrome,
-  spielt **59 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 3 min) und
+  spielt **66 Szenarien** durch (Maus und Touch, Tablet 1024×768; rund 3 min) und
   prüft jeweils Oberfläche und Datenbankstand. Die Szenarien 1–44 decken Stufe 1 ab,
   45–54 IST-Erfassung, Zeitkonto, die neuen Kacheln und Ausdrucke von Stufe 2, 55 die
   Sicherung (herunterladen, in eine zweite, leere Filiale einspielen), 56 die
   Urlaubstool-Umfrage einer zweiten Leitung samt Zuordnungsvorschlägen, 57 die Hilfe,
   58 eine nicht gebuchte Diff (Reiter und Ausdrucke), 59 die Hinweise zu Teiler und
-  Codes in den Einstellungen. Fotos,
+  Codes in den Einstellungen; die übrigen decken Lieferung & Bedarf und den
+  Mitarbeiter-Zugang ab (Einladung, Zustimmung, Handy-Ansicht bei 390 px). Fotos,
   PDFs, die Excel-Dateien und `ergebnis.json` landen in `tests/browser/fotos/` (gitignored).
 - **Server:** `tests/browser/server.mjs` baut die Datenbank wie `tests/helfer.mjs` in
   PGlite, füllt sie mit erfundenen Daten (`daten.mjs`, Stichtag 02.11.2026, Start der
@@ -197,4 +224,5 @@ Durchklickt die echte Oberfläche in Chrome (headless) gegen die echten SQL-Funk
 ## Ausblick
 
 Nächste Stufen: Kassenplanung (Bedarf an der Kasse; Lieferung und Bedarf je Bereich gibt es
-schon), eine Seite für die Rolle „Mitarbeiter“, Tausch und Fairness auf der Startseite.
+schon), Tausch und Fairness auf der Startseite. Die Seite für die Rolle „Mitarbeiter“ gibt es
+inzwischen; denkbar bleiben Schichttausch und Benachrichtigungen aufs Handy (Push).
