@@ -86,7 +86,10 @@ ausschließlich `SECURITY DEFINER`-Funktionen `public.pep_*` auf, die Anmeldung,
 Rolle (Leitung, Stellvertretung, Mitarbeiter) und Filiale serverseitig prüfen;
 `anon` (ohne Anmeldung) darf davon nur `pep_lebenszeichen` (Weckruf, liest nichts) und
 `pep_zugang_pruefen` (prüft einen Einladungslink vor der Registrierung) aufrufen.
-Die Anmeldung der Leitung läuft über die Konten des Urlaubstools.
+Die Anmeldung der Leitung läuft über die Konten des Urlaubstools. Ihre Sitzung liegt nur im
+`sessionStorage` des Tabs; Mitarbeiter-Konten liegen nach der Anmeldung im `localStorage`
+(`sitzung.dauerhaft`, gesetzt in `app.js` `nachLogin`), damit die App auf dem Handy angemeldet
+bleibt. Abmelden löscht beide, eine Sperre beendet die Sitzung beim nächsten Aufruf.
 
 **Mitarbeiter-Konten** liegen getrennt davon: Zugang, Einladungen und Zustimmungen in
 `pep.mitarbeiter_zugaenge`, `pep.mitarbeiter_einladungen` und `pep.zustimmungen`, nie in

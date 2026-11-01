@@ -2992,12 +2992,25 @@ await szenario('Mitarbeiter-Ansicht: Registrierung über den Link, Zustimmung, W
     await c.klick('#login-knopf');
     await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-tag'), { text: 'Wochenansicht nach erneuter Anmeldung', ms: 20000 });
     await ruhe();
+    // Dauerhafte Anmeldung: App schließen (sessionStorage weg) und neu öffnen → weiter angemeldet.
+    const speicher = () => c.werte(() => ({ tab: Boolean(sessionStorage.getItem('pep-sitzung')), dauer: Boolean(localStorage.getItem('pep-sitzung')) }));
+    gleich(await speicher(), { tab: false, dauer: true }, 'Mitarbeiter: Sitzung dauerhaft gemerkt');
+    await c.werte(() => sessionStorage.clear());
+    await c.navigiere(`${s.adresse}/browser/?f=7`);
+    await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-tag'), { text: 'nach Neustart der App weiter angemeldet', ms: 20000 });
+    await ruhe();
     // Abmelden
     await c.klick({ text: 'Abmelden', in: '#ansicht-mein', sel: 'button', genau: true });
     await c.warteAuf(() => !document.getElementById('ansicht-login').hidden, { text: 'Login' });
     gleich(await anzahl('#ansicht-mein .mein-tag'), 0, 'nach dem Abmelden keine Plandaten im DOM');
+    gleich(await speicher(), { tab: false, dauer: false }, 'Abmelden löscht die gemerkte Sitzung');
     const m = await meldungen();
     pruefe(!m.fehler, 'keine Fehlermeldung am Ende', m.fehler);
+    // Leitung bleibt nur im Tab angemeldet.
+    await anmelden('chef');
+    gleich(await speicher(), { tab: true, dauer: false }, 'Leitung: Sitzung nur im Tab');
+    await c.klick('#abmelden');
+    await c.warteAuf(() => !document.getElementById('ansicht-login').hidden, { text: 'Login nach Abmelden der Leitung' });
   } finally {
     await handy(false);
   }

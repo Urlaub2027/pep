@@ -557,6 +557,9 @@ Mitarbeiter neu einladen; sie stimmen erneut zu.
 
 **Als App aufs Handy:** iPhone (Safari): Teilen → „Zum Home-Bildschirm“. Android (Chrome):
 Menü → „App installieren“. Dann öffnet sich PEP wie eine App.
+Mitarbeiter bleiben darin **angemeldet**, auch wenn die App geschlossen wird – bis sie sich
+abmelden oder die Leitung den Zugang sperrt. Leitung und Stellvertretung bleiben nur
+angemeldet, solange der Tab offen ist.
 
 **Was Mitarbeiter sehen:** den eigenen Plan der freigegebenen Wochen, den eigenen Urlaub
 und den eigenen Zeitkonto-Saldo; nur mit eingeschaltetem Schalter außerdem an den Tagen, an

@@ -79,6 +79,7 @@ export async function nachLogin() {
     fehlerAnzeigen(fehler);
     return;
   }
+  sitzung.dauerhaft(Boolean(konto)); // Mitarbeiter bleiben auf dem Handy angemeldet, Leitung nur in diesem Tab
   if (konto) {
     $('navigation').hidden = true; // Mitarbeiter sehen nur ihre eigene Ansicht
     $('wer').textContent = `Angemeldet als ${konto.name}`;
