@@ -1120,6 +1120,10 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
 .mein-zusatz { margin: 0; font-size: 0.85rem; color: var(--text-2); }
 .mein-text { margin: var(--a3) 0; max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--a3); border: 1px solid var(--linie); border-radius: var(--radius); }
 .mein-app { font-size: 0.85rem; color: var(--text-2); }
+.mein-app .mein-installieren { font-size: 1rem; margin-right: var(--a2); }
+#ansicht-mein > .mein-app:first-child:not([hidden]) {
+  padding: var(--a2) var(--a3); background: var(--flaeche); border: 1px solid var(--linie); border-radius: 8px;
+}
 .mein-knoepfe { display: flex; flex-wrap: wrap; gap: var(--a2); }
 .mein-zurueck { text-align: center; }
 .kopf { flex-wrap: wrap; }

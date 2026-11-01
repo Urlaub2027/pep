@@ -555,8 +555,10 @@ automatisch; die Karte zeigt dann „ruht (inaktiv oder ausgetreten)“ und kein
 Sicherungsdatei (Datenschutztext und Freigaben schon). Nach dem Einspielen alle
 Mitarbeiter neu einladen; sie stimmen erneut zu.
 
-**Als App aufs Handy:** iPhone (Safari): Teilen → „Zum Home-Bildschirm“. Android (Chrome):
-Menü → „App installieren“. Dann öffnet sich PEP wie eine App.
+**Als App aufs Handy:** Android (Chrome): oben in „Mein Plan“ auf **„Als App installieren“**
+tippen und bestätigen. iPhone (Safari): Apple erlaubt keinen solchen Knopf – dort steht eine
+Anleitung: Teilen-Symbol → „Zum Home-Bildschirm“. Dann öffnet sich PEP wie eine App; der
+Hinweis verschwindet, sobald PEP als App läuft.
 Mitarbeiter bleiben darin **angemeldet**, auch wenn die App geschlossen wird – bis sie sich
 abmelden oder die Leitung den Zugang sperrt. Leitung und Stellvertretung bleiben nur
 angemeldet, solange der Tab offen ist.

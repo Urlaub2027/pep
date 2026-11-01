@@ -156,7 +156,7 @@ export const HILFE = {
       'Ganz unten „Abmelden“, wenn du fertig bist.',
     ],
     gut_zu_wissen: [
-      'Als App nutzen: im Browser-Menü „Zum Home-Bildschirm“ wählen, dann öffnet sich PEP wie eine App.',
+      'Als App nutzen: Knopf „Als App installieren“ antippen; auf dem iPhone Teilen → „Zum Home-Bildschirm“.',
       'Ändert die Leitung eine freigegebene Woche, steht neben der Woche „zuletzt geändert am“.',
       'Der Saldo im Zeitkonto gilt bis zur zuletzt abgeschlossenen Woche.',
     ],

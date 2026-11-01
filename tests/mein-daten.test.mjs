@@ -1,7 +1,8 @@
 // Mitarbeiter-Ansicht, reine Aufbereitung (docs/mein-daten.js): Tageszeilen, Kollegen, Saldo, Wochenkopf.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { tagZeilen, arbeitetAn, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText } from '../docs/mein-daten.js';
+import { tagZeilen, arbeitetAn, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText,
+  installArt, istIos } from '../docs/mein-daten.js';
 
 const tag = (ueberschreibe = {}) => ({
   datum: '2026-11-10', geoeffnet: true, feiertag: null, bloecke: [], kommentar: null, abwesenheit: null, kollegen: [],
@@ -74,4 +75,22 @@ test('arbeitet an dem Tag: mindestens ein Block ohne Pause; nur Pause oder nicht
   assert.equal(arbeitetAn(tag({ bloecke: [block(true)] })), false);
   assert.equal(arbeitetAn(tag({ bloecke: [block(true), block(false)] })), true);
   assert.equal(arbeitetAn({ datum: '2026-11-10' }), false);
+});
+
+test('App installieren: Knopf, wenn der Browser fragen kann; nichts, wenn schon installiert', () => {
+  assert.equal(installArt({ installiert: false, kannFragen: true, ios: false }), 'knopf');
+  assert.equal(installArt({ installiert: true, kannFragen: true, ios: false }), null);
+  assert.equal(installArt({ installiert: true, kannFragen: false, ios: true }), null);
+});
+
+test('App installieren: iPhone bekommt die Teilen-Anleitung, andere Browser den Menü-Hinweis', () => {
+  assert.equal(installArt({ installiert: false, kannFragen: false, ios: true }), 'ios');
+  assert.equal(installArt({ installiert: false, kannFragen: false, ios: false }), 'menue');
+});
+
+test('App installieren: iPhone und iPad erkennen (iPad meldet sich als Mac mit Touch)', () => {
+  assert.equal(istIos('Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)', 'iPhone', 5), true);
+  assert.equal(istIos('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 5), true);
+  assert.equal(istIos('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 0), false);
+  assert.equal(istIos('Mozilla/5.0 (Linux; Android 14; SM-S911B)', 'Linux armv8l', 5), false);
 });
