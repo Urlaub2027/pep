@@ -1,5 +1,7 @@
-// Kopie aus Urlaub2027/urlaub docs/, dort pflegen.
-// Anmelde-Sitzung der Verwaltung. Liegt nur im sessionStorage dieses Tabs.
+// Ursprünglich Kopie aus Urlaub2027/urlaub docs/ (dort pflegen); PEP-eigene Erweiterung: dauerhaft().
+// Anmelde-Sitzung. Leitung und Stellvertretung: nur im sessionStorage dieses Tabs. Mitarbeiter-Konten (app.js
+// nachLogin ruft dauerhaft(true)): im localStorage, damit die App auf dem Handy angemeldet bleibt, bis man sich
+// abmeldet oder die Leitung den Zugang sperrt (dann KEIN_ZUGRIFF → Abmelden löscht die Sitzung).
 import { rpc, anmelden, erneuern, abmeldenServer } from './api.js';
 
 const SCHLUESSEL = 'pep-sitzung';
@@ -7,10 +9,23 @@ const SCHLUESSEL = 'pep-sitzung';
 // die Domain ist reserviert (RFC 2606) und kann keine Post empfangen.
 const LOGIN_DOMAIN = 'example.com';
 
+let istDauerhaft = false;
 let sitzung = lesen();
 
+function holen(speicher) {
+  try { return JSON.parse(speicher.getItem(SCHLUESSEL)); } catch { return null; }
+}
+
 function lesen() {
-  try { return JSON.parse(sessionStorage.getItem(SCHLUESSEL)); } catch { return null; }
+  const imTab = holen(sessionStorage);
+  if (imTab) return imTab;
+  const gemerkt = holen(localStorage);
+  if (gemerkt) istDauerhaft = true;
+  return gemerkt;
+}
+
+function schreiben() {
+  try { (istDauerhaft ? localStorage : sessionStorage).setItem(SCHLUESSEL, JSON.stringify(sitzung)); } catch { /* nur im Speicher */ }
 }
 
 function speichern(antwort) {
@@ -19,7 +34,15 @@ function speichern(antwort) {
     refresh: antwort.refresh_token,
     ablauf: Date.now() + (antwort.expires_in || 3600) * 1000,
   };
-  try { sessionStorage.setItem(SCHLUESSEL, JSON.stringify(sitzung)); } catch { /* nur im Speicher */ }
+  schreiben();
+}
+
+// true: Sitzung überlebt das Schließen des Tabs bzw. der App (nur Mitarbeiter-Konten); false: nur dieser Tab.
+export function dauerhaft(an) {
+  istDauerhaft = Boolean(an);
+  if (!sitzung) return;
+  schreiben();
+  try { (istDauerhaft ? sessionStorage : localStorage).removeItem(SCHLUESSEL); } catch { /* egal */ }
 }
 
 export function emailFuer(benutzername) {
@@ -32,6 +55,7 @@ export function istAngemeldet() {
 }
 
 export async function login(benutzername, passwort) {
+  istDauerhaft = false; // neue Anmeldung erst nur im Tab, bis nachLogin die Art des Kontos kennt
   speichern(await anmelden(emailFuer(benutzername), passwort));
 }
 
@@ -39,7 +63,9 @@ export function logout() {
   // Anmeldung auch bei Supabase beenden, damit das Erneuerungs-Token ungültig wird.
   if (sitzung?.token) abmeldenServer(sitzung.token).catch(() => {});
   sitzung = null;
+  istDauerhaft = false;
   try { sessionStorage.removeItem(SCHLUESSEL); } catch { /* egal */ }
+  try { localStorage.removeItem(SCHLUESSEL); } catch { /* egal */ }
 }
 
 export async function token() {
