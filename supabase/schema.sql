@@ -21,7 +21,8 @@
 -- Sicherheitsprinzip: Alle Tabellen liegen im Schema "pep"; darauf haben die
 -- Rollen anon und authenticated keinen Zugriff, Row Level Security ist überall
 -- aktiv und es gibt keine Policies. Der Browser ruft nur Funktionen in "public"
--- mit Präfix pep_ auf (security definer, angemeldet, Rechte über pep.ich()).
+-- mit Präfix pep_ auf (security definer, angemeldet, Rechte über pep.ich(); Mitarbeiter-Konten über
+-- pep.ich_mitarbeiter(), Abschnitt „Mitarbeiter-Zugang“).
 -- Funktionen im Schema "pep" sind intern.
 
 begin;
@@ -564,7 +565,9 @@ begin
     'wochenvorgaben', coalesce((select jsonb_agg(to_jsonb(w) order by w.gueltig_von, w.id)
                                   from pep.wochenvorgaben w where w.mitarbeiter_id = v_m.id), '[]'::jsonb),
     'urlaubsjahre', coalesce((select jsonb_agg(to_jsonb(u) order by u.jahr)
-                                from pep.urlaubsjahre u where u.mitarbeiter_id = v_m.id), '[]'::jsonb));
+                                from pep.urlaubsjahre u where u.mitarbeiter_id = v_m.id), '[]'::jsonb),
+    -- Mitarbeiter-Zugang (Stufe 3): kein / eingeladen / aktiv / ruht / gesperrt, s. pep.zugang_json
+    'zugang', pep.zugang_json(v_m.id));
 end;
 $$;
 
@@ -1072,8 +1075,10 @@ begin
                           from pep.rahmen r where r.filiale_id = v_f), '[]'::jsonb),
     'abweichungen', coalesce((select jsonb_agg(to_jsonb(a) - 'filiale_id' order by a.datum)
                                 from pep.tag_abweichungen a where a.filiale_id = v_f), '[]'::jsonb),
-    'werte', coalesce((select jsonb_object_agg(e.schluessel, e.wert)
-                         from pep.einstellungen e where e.filiale_id = v_f), '{}'::jsonb),
+    -- mitarbeiter_kollegen: fehlt die Zeile, gilt false (Vorgabe: Mitarbeiter sehen nur ihre eigenen Zeiten)
+    'werte', jsonb_build_object('mitarbeiter_kollegen', false)
+             || coalesce((select jsonb_object_agg(e.schluessel, e.wert)
+                            from pep.einstellungen e where e.filiale_id = v_f), '{}'::jsonb),
     'codes', coalesce((select jsonb_agg(to_jsonb(c) - 'filiale_id' order by c.position, c.id)
                          from pep.abwesenheitscodes c where c.filiale_id = v_f), '[]'::jsonb),
     'bereiche', coalesce((select jsonb_agg(to_jsonb(b) - 'filiale_id' order by b.position, b.id)
@@ -1242,7 +1247,7 @@ begin
        'ruhezeit_u18_h', 'max_tag_h', 'max_tag_u18_h', 'max_woche_u18_h', 'spaet_grenze',
        'u18_fruehestens', 'u18_spaetestens', 'freie_samstage_monat', 'freie_samstage_jahr',
        'wochen_toleranz_h', 'zeitkonto_warnfaktor', 'stundenleistung_eur_h', 'kassierleistung_eur_halbe_h',
-       'ist_ab') then
+       'ist_ab', 'mitarbeiter_kollegen') then
     raise exception 'EINSTELLUNG_UNBEKANNT';
   end if;
 
@@ -1263,6 +1268,11 @@ begin
     end;
     if extract(isodow from v_datum) <> 1 then
       raise exception 'KEIN_MONTAG';
+    end if;
+  elsif p_schluessel = 'mitarbeiter_kollegen' then
+    -- Schalter der Mitarbeiter-Ansicht: nur JSON-true/false (false ⇒ pep_mein_plan liefert keine Kollegennamen)
+    if v_typ <> 'boolean' then
+      raise exception 'WERT_UNGUELTIG';
     end if;
   elsif p_schluessel in ('spaet_grenze', 'u18_fruehestens', 'u18_spaetestens') then
     if v_typ <> 'string' or (p_wert #>> '{}') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
@@ -3358,7 +3368,9 @@ as $$
 declare
   v_b pep.benutzer := pep.leitung_oder_stellvertretung();
 begin
-  return pep.woche_antwort(v_b.filiale_id, p_jahr, p_kw, false);
+  -- freigabe: für die Mitarbeiter-Ansicht freigegeben ({am, von_name}) oder null.
+  return pep.woche_antwort(v_b.filiale_id, p_jahr, p_kw, false)
+         || jsonb_build_object('freigabe', pep.freigabe_json(v_b.filiale_id, pep.kw_montag(p_jahr, p_kw)));
 end;
 $$;
 
@@ -7026,11 +7038,11 @@ language sql immutable
 set search_path = ''
 as $$
   select array[
-    'bereiche', 'abwesenheitscodes', 'rahmen', 'einstellungen', 'tag_abweichungen', 'schulferien',
+    'bereiche', 'abwesenheitscodes', 'rahmen', 'einstellungen', 'tag_abweichungen', 'schulferien', 'datenschutz_texte',
     'warengruppen', 'liefer_muster', 'liefer_muster_rollis', 'liefer_tag', 'liefer_tag_rollis',
     'mitarbeiter', 'vertraege', 'urlaubsjahre', 'kompetenzen', 'wochenvorgaben', 'wiederholungen',
     'urlaub_umfragen', 'urlaub_zuordnung', 'urlaub_freigaben', 'abwesenheiten',
-    'plan_bloecke', 'plan_kommentare', 'wochen', 'vorlagen',
+    'plan_bloecke', 'plan_kommentare', 'wochen', 'vorlagen', 'wochen_freigaben',
     'ist_bloecke', 'ist_tage', 'ist_leer', 'wochen_abschluesse', 'zeitkonto_buchungen', 'protokoll']
 $$;
 
@@ -7044,7 +7056,10 @@ as $$
     'sicherungen',            'Liste der heruntergeladenen Sicherungen selbst; sie beschreibt dieses Projekt, nicht die Filiale',
     'zeitkonto_vormerkungen', 'Merkliste einer laufenden Transaktion (Nachbuchen), nach jedem Commit leer',
     'filialen',               'eigener Abschnitt filiale (Name, Nummer, Bundesland)',
-    'benutzer',               'eigener Abschnitt benutzer (Benutzername und Rolle; eine user_id gilt nur in einem Projekt)')
+    'benutzer',               'eigener Abschnitt benutzer (Benutzername und Rolle; eine user_id gilt nur in einem Projekt)',
+    'mitarbeiter_zugaenge',    'Konten hängen am Supabase-Projekt, nicht an der Filiale; nach dem Einspielen neu einladen',
+    'mitarbeiter_einladungen', 'Konten hängen am Supabase-Projekt, nicht an der Filiale; nach dem Einspielen neu einladen',
+    'zustimmungen',            'Konten hängen am Supabase-Projekt, nicht an der Filiale; nach dem Einspielen neu einladen')
 $$;
 
 -- Spalten einer pep-Tabelle aus dem Katalog: Typ (pg_type.typname), not null, Identity, Ziel eines einspaltigen
@@ -7671,6 +7686,733 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Mitarbeiter-Zugang (Stufe 3): Einladung, Konto, Datenschutzbestätigung
+-- ---------------------------------------------------------------------------
+-- Mitarbeiter bekommen ein eigenes Konto, getrennt von pep.benutzer (Leitung/Stellvertretung, Organisatoren des
+-- Urlaubstools): Die Leitung lädt je Mitarbeiter-Eintrag ein (pep_zugang_einladen, Link mit Code), der Mitarbeiter
+-- registriert sich mit den Metadaten {pep_einladung: <code>}, der Trigger pep_neuer_mitarbeiter auf auth.users prüft
+-- den Code und trägt das Konto in pep.mitarbeiter_zugaenge ein. Das Urlaubstool lässt solche Konten durch
+-- (urlaub.neuer_benutzer, Gegenstück dieser Prüfung) und legt keinen Organisator an; pep.ich() kennt sie darum nicht,
+-- alle bisherigen pep_*-Funktionen antworten KEIN_ZUGRIFF. Mitarbeiter-Funktionen (pep_mein_*) beginnen mit
+-- pep.ich_mitarbeiter(). Ohne Datenschutztext der Filiale gibt es keinen Zugang; gültig ist eine Zustimmung nur für
+-- die aktuelle Textversion und das aktuelle Konto.
+
+-- Ein Zugang je Mitarbeiter-Eintrag. user_id leer, bis eine Einladung eingelöst ist; eine neue eingelöste Einladung
+-- (Passwort vergessen) setzt das neue Konto ein, das alte bleibt in auth.users ohne Zugang zurück.
+create table if not exists pep.mitarbeiter_zugaenge (
+  mitarbeiter_id bigint primary key references pep.mitarbeiter (id) on delete cascade,
+  user_id        uuid unique references auth.users (id) on delete set null,
+  gesperrt       boolean not null default false,
+  angelegt_von   uuid,
+  angelegt_am    timestamptz not null default now(),
+  aktiv_seit     timestamptz
+);
+
+-- Code wie urlaub.einladungen; eine neue Einladung macht offene ältere desselben Mitarbeiters ungültig (ersetzt_am).
+create table if not exists pep.mitarbeiter_einladungen (
+  code           text primary key default replace(gen_random_uuid()::text, '-', ''),
+  mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
+  erstellt_von   uuid,
+  erstellt_am    timestamptz not null default now(),
+  gueltig_bis    timestamptz not null default now() + interval '7 days',
+  eingeloest_von uuid,
+  eingeloest_am  timestamptz,
+  ersetzt_am     timestamptz
+);
+create index if not exists mitarbeiter_einladungen_mitarbeiter_idx on pep.mitarbeiter_einladungen (mitarbeiter_id);
+
+-- Nur anfügen (pep_datenschutz_speichern); gültig ist die höchste Version der Filiale.
+create table if not exists pep.datenschutz_texte (
+  filiale_id bigint not null references pep.filialen (id) on delete cascade,
+  version    int not null,
+  text       text not null check (btrim(text) <> ''),
+  am         timestamptz not null default now(),
+  von        uuid,
+  primary key (filiale_id, version)
+);
+
+-- Nur anfügen, nie ändern (Trigger unten). Wie beim Journal lässt sich ein Mitarbeiter mit Zustimmungen darum nicht
+-- löschen (Austritt oder Deaktivieren).
+create table if not exists pep.zustimmungen (
+  id             bigint generated always as identity primary key,
+  mitarbeiter_id bigint not null references pep.mitarbeiter (id) on delete cascade,
+  version        int not null,
+  user_id        uuid not null,
+  am             timestamptz not null default now()
+);
+create index if not exists zustimmungen_mitarbeiter_idx on pep.zustimmungen (mitarbeiter_id);
+
+alter table pep.mitarbeiter_zugaenge    enable row level security;
+alter table pep.mitarbeiter_einladungen enable row level security;
+alter table pep.datenschutz_texte       enable row level security;
+alter table pep.zustimmungen            enable row level security;
+
+create or replace function pep.zustimmungen_unveraenderbar()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  raise exception 'ZUSTIMMUNG_UNVERAENDERBAR';
+end;
+$$;
+
+drop trigger if exists zustimmungen_unveraenderbar on pep.zustimmungen;
+create trigger zustimmungen_unveraenderbar
+  before update or delete on pep.zustimmungen
+  for each row execute function pep.zustimmungen_unveraenderbar();
+drop trigger if exists zustimmungen_nicht_leeren on pep.zustimmungen;
+create trigger zustimmungen_nicht_leeren
+  before truncate on pep.zustimmungen
+  for each statement execute function pep.zustimmungen_unveraenderbar();
+
+-- ---------------------------------------------------------------------------
+-- Wochenfreigabe für die Mitarbeiter-Ansicht
+-- ---------------------------------------------------------------------------
+-- Mitarbeiter sehen eine Woche erst, wenn Leitung oder Stellvertretung sie freigibt. zuletzt_geaendert merkt, wann
+-- der Plan der freigegebenen Woche danach zuletzt geändert wurde (auch durch Löschen, das plan_bloecke.geaendert_am
+-- nicht sieht); die Mitarbeiter-Ansicht zeigt daran „Plan geändert“.
+create table if not exists pep.wochen_freigaben (
+  filiale_id       bigint not null references pep.filialen (id) on delete cascade,
+  montag           date not null check (extract(isodow from montag) = 1),
+  freigegeben_am   timestamptz not null default now(),
+  freigegeben_von  uuid,
+  zuletzt_geaendert timestamptz,
+  primary key (filiale_id, montag)
+);
+alter table pep.wochen_freigaben enable row level security;
+
+-- Auslöser plan_bloecke, plan_kommentare, abwesenheiten: vermerkt die Änderung in der freigegebenen Woche (nur eine
+-- vorhandene Zeile, nie eine neue). Ein verschobener Tag berührt die alte und die neue Woche.
+create or replace function pep.freigabe_aenderung()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  v_alt date;
+  v_neu date;
+begin
+  if pep.einspielen() then
+    return null;
+  end if;
+  if tg_op <> 'INSERT' then
+    v_alt := date_trunc('week', old.datum)::date;
+  end if;
+  if tg_op <> 'DELETE' then
+    v_neu := date_trunc('week', new.datum)::date;
+  end if;
+  update pep.wochen_freigaben
+     set zuletzt_geaendert = now()
+   where filiale_id = case when tg_op = 'DELETE' then old.filiale_id else new.filiale_id end
+     and montag in (coalesce(v_alt, v_neu), coalesce(v_neu, v_alt));
+  return null;
+end;
+$$;
+
+do $$
+declare
+  v_t text;
+begin
+  foreach v_t in array array['plan_bloecke', 'plan_kommentare', 'abwesenheiten'] loop
+    if not exists (select 1 from pg_trigger where tgname = v_t || '_freigabe' and not tgisinternal) then
+      execute format('create trigger %I after insert or update or delete on pep.%I '
+                     'for each row execute function pep.freigabe_aenderung()', v_t || '_freigabe', v_t);
+    end if;
+  end loop;
+end;
+$$;
+
+-- Freigabe einer Woche als {am, von_name} oder null.
+create or replace function pep.freigabe_json(p_filiale_id bigint, p_montag date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object('am', f.freigegeben_am,
+                            'von_name', (select o.anzeigename from urlaub.organisatoren o
+                                          where o.user_id = f.freigegeben_von))
+    from pep.wochen_freigaben f
+   where f.filiale_id = p_filiale_id and f.montag = p_montag
+$$;
+
+-- Gibt die Woche für die Mitarbeiter frei (p_frei) oder nimmt die Freigabe zurück. Schon freigegeben: bleibt wie sie
+-- ist (Zeitpunkt und Name ändern sich nicht). Antwort: die Freigabe oder null.
+create or replace function public.pep_woche_freigeben(p_jahr int, p_kw int, p_frei boolean)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b  pep.benutzer := pep.leitung_oder_stellvertretung();
+  v_mo date := pep.kw_montag(p_jahr, p_kw);
+  v_f  pep.wochen_freigaben;
+begin
+  if p_frei is null then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  if p_frei then
+    insert into pep.wochen_freigaben (filiale_id, montag, freigegeben_von)
+    values (v_b.filiale_id, v_mo, v_b.user_id)
+    on conflict do nothing
+    returning * into v_f;
+    if found then
+      perform pep.protokolliere(v_b.filiale_id, 'woche_freigeben', 'wochen_freigaben', to_char(v_mo, 'YYYY-MM-DD'),
+        null, to_jsonb(v_f));
+    end if;
+  else
+    delete from pep.wochen_freigaben where filiale_id = v_b.filiale_id and montag = v_mo returning * into v_f;
+    if found then
+      perform pep.protokolliere(v_b.filiale_id, 'woche_zuruecknehmen', 'wochen_freigaben', to_char(v_mo, 'YYYY-MM-DD'),
+        to_jsonb(v_f), null);
+    end if;
+  end if;
+  return pep.freigabe_json(v_b.filiale_id, v_mo);
+end;
+$$;
+
+revoke all on function public.pep_woche_freigeben(int, int, boolean) from public, anon, authenticated;
+grant execute on function public.pep_woche_freigeben(int, int, boolean) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Mitarbeiter-Zugang: interne Funktionen
+-- ---------------------------------------------------------------------------
+
+-- Aktuelle Fassung des Datenschutztextes der Filiale; ohne Text sind alle Felder null.
+create or replace function pep.datenschutz_aktuell(p_filiale_id bigint)
+returns pep.datenschutz_texte
+language sql stable
+set search_path = ''
+as $$
+  select * from pep.datenschutz_texte where filiale_id = p_filiale_id order by version desc limit 1
+$$;
+
+-- Darf dieser Mitarbeiter ein Konto haben? Aktiv und nicht vor heute ausgetreten. Sonst wirkt der Zugang wie gesperrt,
+-- ohne dass jemand klicken muss.
+create or replace function pep.zugang_erlaubt(p_m pep.mitarbeiter)
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select coalesce(p_m.aktiv, false) and (p_m.austritt is null or p_m.austritt >= pep.heute())
+$$;
+
+-- Einladung gültig: nicht eingelöst, nicht ersetzt, nicht abgelaufen, Mitarbeiter darf ein Konto haben, Zugang nicht
+-- gesperrt, die Filiale hat einen Datenschutztext. Eine Regel für pep_zugang_pruefen, den Trigger und pep.zugang_json:
+-- Ein Link hebt so nie eine Sperre auf, auch keiner, der in einem Wettlauf mit dem Sperren entstanden ist.
+create or replace function pep.einladung_gueltig(p_e pep.mitarbeiter_einladungen)
+returns boolean
+language sql stable
+set search_path = ''
+as $$
+  select p_e.code is not null and p_e.eingeloest_von is null and p_e.ersetzt_am is null and p_e.gueltig_bis > now()
+     and not exists (select 1 from pep.mitarbeiter_zugaenge z where z.mitarbeiter_id = p_e.mitarbeiter_id and z.gesperrt)
+     and coalesce((select pep.zugang_erlaubt(m)
+                     and (pep.datenschutz_aktuell(m.filiale_id)).version is not null
+                     from pep.mitarbeiter m where m.id = p_e.mitarbeiter_id), false)
+$$;
+
+-- Zeitpunkt der Zustimmung dieses Kontos zur aktuellen Textversion der Filiale, sonst null.
+create or replace function pep.zustimmung_am(p_mitarbeiter_id bigint, p_user_id uuid)
+returns timestamptz
+language sql stable
+set search_path = ''
+as $$
+  select max(z.am)
+    from pep.zustimmungen z
+    join pep.mitarbeiter m on m.id = z.mitarbeiter_id
+   where z.mitarbeiter_id = p_mitarbeiter_id and z.user_id = p_user_id
+     and z.version = (pep.datenschutz_aktuell(m.filiale_id)).version
+$$;
+
+-- Stand des Zugangs für die Mitarbeiterkarte (pep_mitarbeiter). gueltig_bis: offener, gültiger Link (auch neben einem
+-- aktiven Konto, z. B. nach „Neuer Link“). ruht: Konto vorhanden, aber der Mitarbeiter ist inaktiv oder ausgetreten
+-- (pep.zugang_erlaubt) – anmelden geht nicht, einladen auch nicht (MITARBEITER_INAKTIV).
+create or replace function pep.zugang_json(p_mitarbeiter_id bigint)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'stand', case when z.gesperrt then 'gesperrt'
+                  when z.user_id is not null and not coalesce(pep.zugang_erlaubt(m), false) then 'ruht'
+                  when z.user_id is not null then 'aktiv'
+                  when e.gueltig_bis is not null then 'eingeladen'
+                  else 'kein' end,
+    'gueltig_bis', e.gueltig_bis,
+    'aktiv_seit', case when z.user_id is not null then z.aktiv_seit end,
+    'zustimmung_am', case when z.user_id is not null then pep.zustimmung_am(p_mitarbeiter_id, z.user_id) end)
+    from (select 1) eins
+    left join pep.mitarbeiter m on m.id = p_mitarbeiter_id
+    left join pep.mitarbeiter_zugaenge z on z.mitarbeiter_id = p_mitarbeiter_id
+    left join lateral (
+      select max(x.gueltig_bis) as gueltig_bis from pep.mitarbeiter_einladungen x
+       where x.mitarbeiter_id = p_mitarbeiter_id and pep.einladung_gueltig(x)) e on true
+$$;
+
+-- Das angemeldete Mitarbeiter-Konto: Zugang mit user_id = auth.uid(), nicht gesperrt, Mitarbeiter darf ein Konto haben
+-- (sonst KEIN_ZUGRIFF); mit p_zustimmung_noetig außerdem die Zustimmung dieses Kontos zur aktuellen Textversion (sonst
+-- ZUSTIMMUNG_FEHLT). Gegenstück zu pep.ich() für die Funktionen pep_mein_*; Organisator-Konten kennt es nicht.
+create or replace function pep.ich_mitarbeiter(p_zustimmung_noetig boolean default true)
+returns pep.mitarbeiter
+language plpgsql stable
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter;
+begin
+  select m.* into v_m
+    from pep.mitarbeiter_zugaenge z
+    join pep.mitarbeiter m on m.id = z.mitarbeiter_id
+   where z.user_id = auth.uid() and not z.gesperrt;
+  if not found or not pep.zugang_erlaubt(v_m) then
+    raise exception 'KEIN_ZUGRIFF';
+  end if;
+  if p_zustimmung_noetig and pep.zustimmung_am(v_m.id, auth.uid()) is null then
+    raise exception 'ZUSTIMMUNG_FEHLT';
+  end if;
+  return v_m;
+end;
+$$;
+
+-- Läuft bei jedem neuen Konto (auch /auth/v1/signup). Nur Konten mit dem Metadaten-Schlüssel pep_einladung; ungültiger
+-- Code oder Benutzername → Ausnahme, das Konto entsteht nicht (alle Trigger auf auth.users laufen in derselben
+-- Transaktion, dieser vor urlaub_neuer_benutzer).
+-- Fachregel-Duplikat: Gegenstück in Urlaub2027/urlaub supabase/schema.sql (urlaub.neuer_benutzer lässt Konten mit
+-- pep_einladung ohne eigene Prüfung durch, solange es pep.mitarbeiter_einladungen gibt). Die Benutzernamen-Regel
+-- stammt aus dem Urlaubstool (admin.js, BENUTZERNAME), die Mailadresse ist <Benutzername>@example.com wie dort.
+create or replace function pep.neuer_mitarbeiter()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_code text := new.raw_user_meta_data ->> 'pep_einladung';
+  v_name text := split_part(new.email, '@', 1);
+  v_e    pep.mitarbeiter_einladungen;
+  v_m    pep.mitarbeiter;
+  v_alt  pep.mitarbeiter_zugaenge;
+  v_neu  pep.mitarbeiter_zugaenge;
+begin
+  if not coalesce(new.raw_user_meta_data ? 'pep_einladung', false) then
+    return new;
+  end if;
+  select * into v_e from pep.mitarbeiter_einladungen where code = v_code for update; -- gleichzeitiges Einlösen verhindern
+  if not coalesce(pep.einladung_gueltig(v_e), false) then
+    raise exception 'EINLADUNG_UNGUELTIG';
+  end if;
+  if v_name !~ '^(?=.{2,30}$)[a-z0-9]+(?:[.-][a-z0-9]+)*$' or new.email is distinct from v_name || '@example.com' then
+    raise exception 'BENUTZERNAME_UNGUELTIG';
+  end if;
+  select * into v_m from pep.mitarbeiter where id = v_e.mitarbeiter_id;
+  update pep.mitarbeiter_einladungen set eingeloest_von = new.id, eingeloest_am = now() where code = v_code;
+  select * into v_alt from pep.mitarbeiter_zugaenge where mitarbeiter_id = v_m.id for update;
+  insert into pep.mitarbeiter_zugaenge (mitarbeiter_id, user_id, gesperrt, angelegt_von, aktiv_seit)
+  values (v_m.id, new.id, false, v_e.erstellt_von, now())
+  -- gesperrt bleibt, wie es ist: Gesperrte kommen hier nie an (pep.einladung_gueltig), ein Link entsperrt nie.
+  on conflict (mitarbeiter_id) do update set user_id = excluded.user_id, aktiv_seit = excluded.aktiv_seit
+  returning * into v_neu;
+  perform pep.protokolliere(v_m.filiale_id, 'zugang_aktiv', 'mitarbeiter_zugaenge', v_m.id::text,
+    case when v_alt.mitarbeiter_id is null then null else to_jsonb(v_alt) end, to_jsonb(v_neu));
+  return new;
+end;
+$$;
+
+-- Kein drop trigger: auf auth.users fehlt im SQL-Editor die Eigentümerschaft (wie urlaub_neuer_benutzer).
+do $$
+begin
+  if not exists (select 1 from pg_catalog.pg_trigger
+                 where tgname = 'pep_neuer_mitarbeiter' and tgrelid = 'auth.users'::pg_catalog.regclass) then
+    create trigger pep_neuer_mitarbeiter
+      after insert on auth.users
+      for each row execute function pep.neuer_mitarbeiter();
+  end if;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Mitarbeiter-Zugang: Funktionen für den Browser
+-- ---------------------------------------------------------------------------
+
+-- Ohne Anmeldung (Seite vor der Registrierung): nur, ob der Code gilt – keine Namen, keine Filiale.
+create or replace function public.pep_zugang_pruefen(p_code text)
+returns jsonb
+language sql stable
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object('gueltig', coalesce(
+    (select pep.einladung_gueltig(e) from pep.mitarbeiter_einladungen e where e.code = p_code), false))
+$$;
+
+-- Nur Leitung: neuer Link für einen Mitarbeiter der eigenen Filiale (offene ältere werden ungültig). Ein bestehendes
+-- Konto bleibt gültig, bis der neue Link eingelöst ist. Gesperrt → ZUGANG_GESPERRT: erst entsperren.
+create or replace function public.pep_zugang_einladen(p_mitarbeiter_id bigint)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b pep.benutzer := pep.leitung();
+  v_m pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_e pep.mitarbeiter_einladungen;
+begin
+  if not pep.zugang_erlaubt(v_m) then
+    raise exception 'MITARBEITER_INAKTIV';
+  end if;
+  if (pep.datenschutz_aktuell(v_b.filiale_id)).version is null then
+    raise exception 'DATENSCHUTZ_FEHLT';
+  end if;
+  perform 1 from pep.mitarbeiter where id = v_m.id for update; -- zwei gleichzeitige Einladungen nacheinander
+  update pep.mitarbeiter_einladungen set ersetzt_am = now()
+   where mitarbeiter_id = v_m.id and eingeloest_von is null and ersetzt_am is null;
+  -- Nach den Einladungen, wie Trigger und pep_zugang_sperren (erst Einladung, dann Zugang): keine Verklemmung. Einen
+  -- Wettlauf mit gleichzeitigem Sperren schließt das nicht aus (ist die Zeile noch nicht gesperrt, sperrt „for update“
+  -- hier nichts): Eine so entstandene Einladung bleibt während der Sperre ungültig (pep.einladung_gueltig), könnte nach
+  -- dem Entsperren aber wieder gelten. Bekannt und akzeptiert.
+  perform 1 from pep.mitarbeiter_zugaenge where mitarbeiter_id = v_m.id and gesperrt for update;
+  if found then
+    raise exception 'ZUGANG_GESPERRT';
+  end if;
+  insert into pep.mitarbeiter_einladungen (mitarbeiter_id, erstellt_von) values (v_m.id, v_b.user_id) returning * into v_e;
+  insert into pep.mitarbeiter_zugaenge (mitarbeiter_id, angelegt_von) values (v_m.id, v_b.user_id)
+  on conflict (mitarbeiter_id) do nothing;
+  -- Ohne den Code: er ist ein Geheimnis, das Protokoll kommt mit in die Sicherung.
+  perform pep.protokolliere(v_b.filiale_id, 'zugang_einladen', 'mitarbeiter_einladungen', v_m.id::text, null,
+    jsonb_build_object('gueltig_bis', v_e.gueltig_bis));
+  return jsonb_build_object('code', v_e.code, 'gueltig_bis', v_e.gueltig_bis);
+end;
+$$;
+
+-- Nur Leitung. Sperren macht zugleich offene Links ungültig: Beim Einlösen würde der Zugang sonst wieder entsperrt.
+create or replace function public.pep_zugang_sperren(p_mitarbeiter_id bigint, p_gesperrt boolean)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b   pep.benutzer := pep.leitung();
+  v_m   pep.mitarbeiter := pep.eigener_mitarbeiter(p_mitarbeiter_id);
+  v_alt pep.mitarbeiter_zugaenge;
+  v_neu pep.mitarbeiter_zugaenge;
+begin
+  if p_gesperrt is null then
+    raise exception 'WERT_UNGUELTIG';
+  end if;
+  -- Erst die Einladungen, dann der Zugang: dieselbe Reihenfolge der Sperren wie im Trigger pep.neuer_mitarbeiter und in
+  -- pep_zugang_einladen. Andersherum könnten sich Sperren und gleichzeitiges Einlösen gegenseitig blockieren.
+  if p_gesperrt then
+    update pep.mitarbeiter_einladungen set ersetzt_am = now()
+     where mitarbeiter_id = v_m.id and eingeloest_von is null and ersetzt_am is null;
+  end if;
+  select * into v_alt from pep.mitarbeiter_zugaenge where mitarbeiter_id = v_m.id for update;
+  insert into pep.mitarbeiter_zugaenge (mitarbeiter_id, gesperrt, angelegt_von) values (v_m.id, p_gesperrt, v_b.user_id)
+  on conflict (mitarbeiter_id) do update set gesperrt = excluded.gesperrt
+  returning * into v_neu;
+  perform pep.protokolliere(v_b.filiale_id, case when p_gesperrt then 'zugang_sperren' else 'zugang_entsperren' end,
+    'mitarbeiter_zugaenge', v_m.id::text,
+    case when v_alt.mitarbeiter_id is null then null else to_jsonb(v_alt) end, to_jsonb(v_neu));
+end;
+$$;
+
+-- Lesen: Leitung und Stellvertretung. Aktuelle Fassung oder null.
+create or replace function public.pep_datenschutz()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_d pep.datenschutz_texte := pep.datenschutz_aktuell((pep.leitung_oder_stellvertretung()).filiale_id);
+begin
+  if v_d.version is null then
+    return null;
+  end if;
+  return jsonb_build_object('version', v_d.version, 'text', v_d.text, 'am', v_d.am);
+end;
+$$;
+
+-- Nur Leitung. Neue Version nur bei geändertem Text (Ränder gekürzt); alle Mitarbeiter müssen ihr neu zustimmen.
+create or replace function public.pep_datenschutz_speichern(p_text text)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b    pep.benutzer := pep.leitung();
+  v_text text := urlaub.trim_alles(p_text);
+  v_alt  pep.datenschutz_texte;
+  v_neu  pep.datenschutz_texte;
+begin
+  if v_text is null or v_text = '' then
+    raise exception 'TEXT_LEER';
+  end if;
+  perform 1 from pep.filialen where id = v_b.filiale_id for update; -- Versionsnummer ohne Doppelvergabe
+  v_alt := pep.datenschutz_aktuell(v_b.filiale_id);
+  if v_alt.text is distinct from v_text then
+    insert into pep.datenschutz_texte (filiale_id, version, text, von)
+    values (v_b.filiale_id, coalesce(v_alt.version, 0) + 1, v_text, v_b.user_id)
+    returning * into v_neu;
+    perform pep.protokolliere(v_b.filiale_id, 'datenschutz_text', 'datenschutz_texte', v_neu.version::text,
+      case when v_alt.version is null then null else to_jsonb(v_alt) end, to_jsonb(v_neu));
+  else
+    v_neu := v_alt;
+  end if;
+  return jsonb_build_object('version', v_neu.version, 'text', v_neu.text, 'am', v_neu.am);
+end;
+$$;
+
+-- Ruft die Seite nach der Anmeldung auf: null, wenn das Konto kein Mitarbeiter-Konto ist (dann gilt pep_ich); sonst
+-- Name, Filiale und ob die Datenschutzbestätigung fehlt. Gesperrt oder nicht mehr beschäftigt → KEIN_ZUGRIFF.
+create or replace function public.pep_mein_konto()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter;
+  v_d pep.datenschutz_texte;
+begin
+  if not exists (select 1 from pep.mitarbeiter_zugaenge where user_id = auth.uid()) then
+    return null;
+  end if;
+  v_m := pep.ich_mitarbeiter(false);
+  v_d := pep.datenschutz_aktuell(v_m.filiale_id);
+  return jsonb_build_object(
+    'name', v_m.name,
+    'filiale', (select jsonb_build_object('name', f.name) from pep.filialen f where f.id = v_m.filiale_id),
+    'zustimmung', jsonb_build_object(
+      'noetig', pep.zustimmung_am(v_m.id, auth.uid()) is null,
+      'version', v_d.version,
+      'text', v_d.text));
+end;
+$$;
+
+-- Zustimmung zur aktuellen Textversion (die Seite schickt die gelesene Version mit; inzwischen geändert →
+-- VERSION_VERALTET). Erneutes Zustimmen fügt nichts hinzu.
+create or replace function public.pep_mein_zustimmen(p_version int)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter(false);
+  v_d pep.datenschutz_texte := pep.datenschutz_aktuell(v_m.filiale_id);
+  v_z pep.zustimmungen;
+begin
+  if p_version is null or p_version is distinct from v_d.version then
+    raise exception 'VERSION_VERALTET';
+  end if;
+  if pep.zustimmung_am(v_m.id, auth.uid()) is not null then
+    return;
+  end if;
+  insert into pep.zustimmungen (mitarbeiter_id, version, user_id) values (v_m.id, p_version, auth.uid())
+  returning * into v_z;
+  perform pep.protokolliere(v_m.filiale_id, 'zustimmung', 'zustimmungen', v_m.id::text, null, to_jsonb(v_z));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Mitarbeiter-Ansicht: Lesefunktionen
+-- ---------------------------------------------------------------------------
+-- Alles nur über pep.ich_mitarbeiter() (Zustimmung nötig), nur die eigene Filiale. Plan und Kollegen nur für
+-- freigegebene Wochen; Urlaub und Zeitkonto hängen nicht an der Freigabe. Anti-Ziel: Ein Mitarbeiter erfährt nie, wer
+-- fehlt oder warum – keine Namen, Codes oder Anzahlen abwesender Kollegen.
+
+-- Kollegen eines Tages für die Mitarbeiter-Ansicht: andere aktive, an dem Tag nicht ausgetretene Mitarbeiter der
+-- Filiale mit Blöcken (ohne Pausen) an diesem Datum und ohne jede Abwesenheitszeile an diesem Datum (ganz- oder
+-- stundenweise, jeder Code: wer fehlt, erscheint gar nicht, auch eine gekürzte Schicht verrät nichts). Nur Name und
+-- Zeiten; aneinandergrenzende Blöcke sind ein Zeitraum (Pläne überlappen nie, pep.bloecke_ohne_ueberlappung). Nach
+-- erster Zeit, dann Name.
+create or replace function pep.kollegen_tag(p_m pep.mitarbeiter, p_datum date)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object('name', k.name, 'zeiten', k.zeiten) order by k.erste, k.name, k.id),
+                  '[]'::jsonb)
+    from (select m.id, m.name, min(z.von) as erste,
+                 jsonb_agg(jsonb_build_object('von', to_char(z.von, 'HH24:MI'), 'bis', to_char(z.bis, 'HH24:MI'))
+                           order by z.von) as zeiten
+            from (select i.mitarbeiter_id, min(i.von) as von, max(i.bis) as bis
+                    -- Inseln: ein Block beginnt eine neue, wenn er nicht direkt am Ende des vorigen anschließt.
+                    from (select y.mitarbeiter_id, y.von, y.bis,
+                                 sum(case when y.von = y.vorher then 0 else 1 end)
+                                   over (partition by y.mitarbeiter_id order by y.von) as insel
+                            from (select b.mitarbeiter_id, b.von, b.bis,
+                                         lag(b.bis) over (partition by b.mitarbeiter_id order by b.von) as vorher
+                                    from pep.plan_bloecke b
+                                    join pep.bereiche r on r.id = b.bereich_id
+                                   where b.filiale_id = p_m.filiale_id and b.datum = p_datum
+                                     and b.mitarbeiter_id <> p_m.id and r.art <> 'pause'
+                                     and not exists (select 1 from pep.abwesenheiten a
+                                                      where a.mitarbeiter_id = b.mitarbeiter_id and a.datum = p_datum)) y) i
+                   group by i.mitarbeiter_id, i.insel) z
+            join pep.mitarbeiter m on m.id = z.mitarbeiter_id
+           where m.aktiv and (m.austritt is null or m.austritt >= p_datum)
+           group by m.id, m.name) k
+$$;
+
+-- Ein Tag des eigenen Plans: Öffnung (pep.tag_status), eigene Blöcke mit Bereich und Pausen, eigener Kommentar, eigene
+-- Abwesenheit (höchstens eine je Tag) und die Kollegen (pep.kollegen_tag) – nur an Tagen, an denen der Mitarbeiter
+-- selbst arbeitet (mindestens ein Block, der keine Pause ist), sonst []. Das entscheidet die Datenbank, nicht die
+-- Seite: Wer pep_mein_plan direkt aufruft, bekommt dasselbe.
+drop function if exists pep.mein_tag(pep.mitarbeiter, date); -- Fassung ohne p_kollegen
+create or replace function pep.mein_tag(p_m pep.mitarbeiter, p_datum date, p_kollegen boolean default true)
+returns jsonb
+language sql stable
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'datum', to_char(p_datum, 'YYYY-MM-DD'),
+    'geoeffnet', s.geoeffnet,
+    'feiertag', s.feiertag,
+    'bloecke', coalesce((
+      select jsonb_agg(jsonb_build_object('von', to_char(b.von, 'HH24:MI'), 'bis', to_char(b.bis, 'HH24:MI'),
+                                          'bereich_kuerzel', r.kuerzel, 'bereich_name', r.name,
+                                          'pause', r.art = 'pause') order by b.von)
+        from pep.plan_bloecke b
+        join pep.bereiche r on r.id = b.bereich_id
+       where b.mitarbeiter_id = p_m.id and b.datum = p_datum), '[]'::jsonb),
+    'kommentar', (select k.text from pep.plan_kommentare k where k.mitarbeiter_id = p_m.id and k.datum = p_datum),
+    'abwesenheit', (select jsonb_build_object('code', c.code, 'name', c.name, 'stunden', a.stunden,
+                                              'von', to_char(a.von, 'HH24:MI'), 'bis', to_char(a.bis, 'HH24:MI'))
+                      from pep.abwesenheiten a
+                      join pep.abwesenheitscodes c on c.id = a.code_id
+                     where a.mitarbeiter_id = p_m.id and a.datum = p_datum),
+    -- Schalter aus: JSON null, die Kollegenabfrage läuft gar nicht (CASE wertet nur den gewählten Zweig aus)
+    'kollegen', case when p_kollegen then
+                  case when exists (select 1 from pep.plan_bloecke b
+                                      join pep.bereiche r on r.id = b.bereich_id
+                                     where b.mitarbeiter_id = p_m.id and b.datum = p_datum and r.art <> 'pause')
+                       then pep.kollegen_tag(p_m, p_datum) else '[]'::jsonb end
+                end)
+    from pep.tag_status(p_m.filiale_id, p_datum) s
+$$;
+
+-- Freigegebene Wochen der eigenen Filiale ab der laufenden Woche, aufsteigend, höchstens 8:
+-- [{jahr, kw, montag, zuletzt_geaendert}].
+create or replace function public.pep_mein_wochen()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter();
+begin
+  return coalesce((
+    select jsonb_agg(jsonb_build_object('jahr', extract(isoyear from w.montag)::int, 'kw', extract(week from w.montag)::int,
+                                        'montag', to_char(w.montag, 'YYYY-MM-DD'), 'zuletzt_geaendert', w.zuletzt_geaendert)
+                     order by w.montag)
+      from (select f.montag, f.zuletzt_geaendert from pep.wochen_freigaben f
+             where f.filiale_id = v_m.filiale_id and f.montag >= date_trunc('week', pep.heute())::date
+             order by f.montag limit 8) w), '[]'::jsonb);
+end;
+$$;
+
+-- Eigener Plan einer freigegebenen Woche: {jahr, kw, zuletzt_geaendert, tage: [pep.mein_tag Mo–So]}. Nicht
+-- freigegeben, Woche einer anderen Filiale oder eine KW, die es nicht gibt → WOCHE_NICHT_FREIGEGEBEN (ein Code für
+-- alles, kein DATUM_UNGUELTIG: von außen ist nicht zu unterscheiden, ob es die Woche gibt). Die Woche wird in den
+-- Freigaben der eigenen Filiale gesucht, nicht über pep.kw_montag berechnet.
+create or replace function public.pep_mein_plan(p_jahr int, p_kw int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter();
+  v_f pep.wochen_freigaben;
+  -- Schalter der Leitung (Einstellungen → Datenschutz); fehlt die Zeile, sind Kollegen nicht sichtbar (Vorgabe aus)
+  v_koll boolean := coalesce((select (e.wert #>> '{}')::boolean from pep.einstellungen e
+                               where e.filiale_id = v_m.filiale_id and e.schluessel = 'mitarbeiter_kollegen'), false);
+begin
+  select * into v_f from pep.wochen_freigaben f
+   where f.filiale_id = v_m.filiale_id
+     and extract(isoyear from f.montag)::int = p_jahr and extract(week from f.montag)::int = p_kw;
+  if not found then
+    raise exception 'WOCHE_NICHT_FREIGEGEBEN';
+  end if;
+  return jsonb_build_object(
+    'jahr', p_jahr, 'kw', p_kw, 'zuletzt_geaendert', v_f.zuletzt_geaendert,
+    'tage', (select jsonb_agg(pep.mein_tag(v_m, v_f.montag + i, v_koll) order by i) from generate_series(0, 6) i));
+end;
+$$;
+
+-- Eigener Urlaub eines Kalenderjahres: Konto aus pep.urlaub_konto (dieselbe Rechnung wie pep_resturlaub) und die
+-- eigenen Tage mit Code U: {jahr, anspruch, rest_vorjahr, genehmigt, rest, tage: [{datum, stunden}]}.
+create or replace function public.pep_mein_urlaub(p_jahr int)
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter();
+  v_k record;
+begin
+  if p_jahr is null or p_jahr not between 2000 and 2100 then
+    raise exception 'DATUM_UNGUELTIG';
+  end if;
+  select * into v_k from pep.urlaub_konto(v_m.id, p_jahr);
+  return jsonb_build_object(
+    'jahr', p_jahr, 'anspruch', v_k.anspruch, 'rest_vorjahr', v_k.rest_vorjahr, 'genehmigt', v_k.genehmigt,
+    'rest', v_k.rest,
+    'tage', coalesce((
+      select jsonb_agg(jsonb_build_object('datum', to_char(a.datum, 'YYYY-MM-DD'), 'stunden', a.stunden) order by a.datum)
+        from pep.abwesenheiten a
+        join pep.abwesenheitscodes c on c.id = a.code_id
+       where a.mitarbeiter_id = v_m.id and c.code = 'U'
+         and a.datum >= make_date(p_jahr, 1, 1) and a.datum < make_date(p_jahr + 1, 1, 1)), '[]'::jsonb));
+end;
+$$;
+
+-- Eigenes Zeitkonto: saldo = saldo_nach der jüngsten eigenen Buchung (höchste id, wie pep.zeitkonto_buchen rechnet),
+-- stand = spätestes eigenes Buchungsdatum (eine nachträglich gebuchte Woche hat eine höhere id, aber ein früheres
+-- datum); ohne Buchung beide null. wochen = die letzten 6 abgeschlossenen Wochen der Filiale,
+-- neueste zuerst, je soll/ist/diff aus pep.zeitkonto_woche (null ohne Vertrag in der Woche) und saldo = Saldo nach allen
+-- eigenen Buchungen bis zum Sonntag (wie saldo_aktuell in pep_zeitkonto_woche und saldo_nach in
+-- pep.stundenblatt_person; null ohne Buchung bis dahin).
+create or replace function public.pep_mein_zeitkonto()
+returns jsonb
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_m pep.mitarbeiter := pep.ich_mitarbeiter();
+  v_saldo numeric;
+  v_stand date;
+begin
+  select (select k.saldo_nach from pep.zeitkonto_buchungen k where k.mitarbeiter_id = v_m.id order by k.id desc limit 1),
+         (select max(k.datum) from pep.zeitkonto_buchungen k where k.mitarbeiter_id = v_m.id)
+    into v_saldo, v_stand;
+  return jsonb_build_object(
+    'saldo', v_saldo,
+    'stand', to_char(v_stand, 'YYYY-MM-DD'),
+    'wochen', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'montag', to_char(w.montag, 'YYYY-MM-DD'),
+               'soll', z.zk -> 'soll', 'ist', z.zk -> 'ist', 'diff', z.zk -> 'diff',
+               'saldo', (select sum(k.stunden) from pep.zeitkonto_buchungen k
+                          where k.mitarbeiter_id = v_m.id and k.datum <= w.montag + 6))
+             order by w.montag desc)
+        from (select a.montag from pep.wochen_abschluesse a
+               where a.filiale_id = v_m.filiale_id order by a.montag desc limit 6) w
+        -- offset 0: pep.zeitkonto_woche nur einmal je Woche rechnen (wie in pep_zeitkonto_woche).
+        cross join lateral (select pep.zeitkonto_woche(v_m.id, w.montag) as zk offset 0) z), '[]'::jsonb));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- Rechte
 -- ---------------------------------------------------------------------------
 
@@ -7853,9 +8595,35 @@ grant execute on function public.pep_sicherung() to authenticated;
 grant execute on function public.pep_sicherung_pruefen(jsonb) to authenticated;
 grant execute on function public.pep_sicherung_einspielen(jsonb, text) to authenticated;
 
+-- Mitarbeiter-Zugang. pep_zugang_pruefen auch ohne Anmeldung: Die Seite prüft den Link vor der Registrierung; die
+-- Antwort ist nur {gueltig} (keine Namen, keine Filiale).
+revoke all on function public.pep_zugang_pruefen(text) from public, anon, authenticated;
+revoke all on function public.pep_zugang_einladen(bigint) from public, anon, authenticated;
+revoke all on function public.pep_zugang_sperren(bigint, boolean) from public, anon, authenticated;
+revoke all on function public.pep_datenschutz() from public, anon, authenticated;
+revoke all on function public.pep_datenschutz_speichern(text) from public, anon, authenticated;
+revoke all on function public.pep_mein_konto() from public, anon, authenticated;
+revoke all on function public.pep_mein_zustimmen(int) from public, anon, authenticated;
+revoke all on function public.pep_mein_wochen() from public, anon, authenticated;
+revoke all on function public.pep_mein_plan(int, int) from public, anon, authenticated;
+revoke all on function public.pep_mein_urlaub(int) from public, anon, authenticated;
+revoke all on function public.pep_mein_zeitkonto() from public, anon, authenticated;
+grant execute on function public.pep_zugang_pruefen(text) to anon, authenticated;
+grant execute on function public.pep_zugang_einladen(bigint) to authenticated;
+grant execute on function public.pep_zugang_sperren(bigint, boolean) to authenticated;
+grant execute on function public.pep_datenschutz() to authenticated;
+grant execute on function public.pep_datenschutz_speichern(text) to authenticated;
+grant execute on function public.pep_mein_konto() to authenticated;
+grant execute on function public.pep_mein_zustimmen(int) to authenticated;
+grant execute on function public.pep_mein_wochen() to authenticated;
+grant execute on function public.pep_mein_plan(int, int) to authenticated;
+grant execute on function public.pep_mein_urlaub(int) to authenticated;
+grant execute on function public.pep_mein_zeitkonto() to authenticated;
+
 -- Weckruf gegen das Pausieren (Supabase Free pausiert Projekte nach etwa 7 Tagen mit wenig Aktivität).
--- Ein GitHub-Workflow ruft diese Funktion alle zwei Tage ohne Anmeldung auf. Sie ist deshalb die einzige
--- PEP-Funktion, die auch anon ausführen darf: Sie liest keine Tabelle und liefert nur true, gibt also nichts preis.
+-- Ein GitHub-Workflow ruft diese Funktion alle zwei Tage ohne Anmeldung auf. Sie ist deshalb neben
+-- pep_zugang_pruefen die einzige PEP-Funktion, die auch anon ausführen darf: Sie liest keine Tabelle und liefert nur
+-- true, gibt also nichts preis.
 create or replace function public.pep_lebenszeichen() returns boolean
 language sql security definer set search_path = '' as $$ select true $$;
 revoke all on function public.pep_lebenszeichen() from public, authenticated;

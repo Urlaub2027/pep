@@ -205,3 +205,24 @@
 - [ ] **Step 1:** Doku schreiben; Hinweis „Datenschutzentwurf rechtlich ungeprüft“.
 - [ ] **Step 2:** `npm test` grün (Hilfetext-Tests).
 - [ ] **Step 3:** Commit `Doku: Mitarbeiter-Zugang`.
+
+### Task 8: Schalter „Kollegen in der Mitarbeiter-Ansicht“ (Nachtrag 01.11.2026)
+
+Anlass: Rückfrage des Key Users („nur persönliche Schicht oder ganzer Plan?“). Entscheidung dtn: Schalter in den Einstellungen, **Vorgabe „mit Kollegen“** (heutiges Verhalten). **Geändert am 01.11.2026 (Product Owner, Final-Fix): Vorgabe „aus“ – ohne Zeile gilt `false`, Mitarbeiter sehen standardmäßig nur ihre eigenen Zeiten.** „Ganzer Plan wie am Aushang“ (mit Abwesenden) wird nicht angeboten.
+
+**Files:**
+- Modify: `supabase/schema.sql` (`public.pep_einstellung_setzen` Schlüssel-Liste + Prüfung, `public.pep_einstellungen` liefert den Wert, `public.pep_mein_plan`)
+- Modify: `docs/einstellungen-datenschutz.js` (Schalter im selben Abschnitt), `docs/mein.js` / `docs/mein-daten.js` (Zeile „Mit dir eingeteilt“ entfällt bei ausgeschaltetem Schalter), `docs/hilfe-texte.js` (180-Wörter-Grenze beachten)
+- Modify: `tests/mein.test.mjs`, `tests/einstellungen.test.mjs`, `tests/mein-daten.test.mjs`, Browser-Szenario „Mitarbeiter-Ansicht“
+- Modify: `ANLEITUNG.md` (Abschnitt Mitarbeiter-Zugang), Spec §5.2 (ein Satz zum Schalter)
+
+**Interfaces:**
+- Einstellung `mitarbeiter_kollegen` in `pep.einstellungen`, Wert JSON-Boolean; fehlt die Zeile ⇒ `false` (bis zum Final-Fix 01.11.2026: `true`). Setzen nur Leitung über `pep_einstellung_setzen('mitarbeiter_kollegen', true|false)`; andere Werte ⇒ bestehender Fehlercode für ungültige Einstellungswerte der Funktion.
+- `pep_mein_plan`: bei `false` ist `kollegen` an **jedem** Tag `null` (nicht `[]`) – die Datenbank liefert dann keine Kollegennamen aus; bei `true` unverändert (`[]` = niemand sonst eingeteilt).
+- UI: `kollegen === null` ⇒ keine Kollegenzeile; `[]` ⇒ wie bisher.
+
+- [ ] **Step 1: Failing tests**: `mein.test.mjs` – Schalter aus ⇒ `kollegen` überall `null`, `JSON.stringify` enthält „Jo“ nicht; Schalter an bzw. nicht gesetzt ⇒ Jo sichtbar. `einstellungen.test.mjs` – Leitung setzt `true/false`, Wert `"ja"` abgelehnt, Stellvertretung ⇒ `NUR_LEITUNG`. `mein-daten.test.mjs` – Kollegentext bei `null` leer/kein Eintrag.
+- [ ] **Step 2:** `npm test` → rot.
+- [ ] **Step 3:** Schema und Oberfläche umsetzen.
+- [ ] **Step 4:** `npm test` grün; Browser-Szenario „Mitarbeiter-Ansicht“ um „Schalter aus ⇒ keine Kollegenzeile“ erweitern und gefiltert laufen lassen.
+- [ ] **Step 5:** Commit `Mitarbeiter-Ansicht: Schalter für Kollegenanzeige`.

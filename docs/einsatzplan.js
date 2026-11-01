@@ -12,6 +12,7 @@ import {
   lieferBedarf, vorschlagBlock, bisZeiten, pauseZeiten, eingabeStriche, eingabeText, zeitAnzeige, tagKurz,
 } from './plan-raster.js';
 import { oeffneLieferung } from './einstellungen.js';
+import { freigabeZeile } from './plan-freigabe.js';
 import {
   istSpalten, istZellKlassen, zeilenStatus, istAbweichung, statusZelle, abweichungsZelle, istTagBox, offeneBox,
   tagesReiterText, grundDialog, istKnopfLeiste, zukunftKarte, tagBestaetigenDialog, GRUND_ABGESCHLOSSEN,
@@ -300,7 +301,12 @@ function zeichneKopf() {
     element('div', { class: 'werkzeug-zeile' },
       pinselLeiste(),
       element('div', { class: 'ep-knoepfe' }, rahmen.speichert, rahmen.rueckgaengig, knoepfe),
-      kuerzelLegende())));
+      kuerzelLegende()),
+    !istAnsicht() && darfZeichnen()
+      ? freigabeZeile(woche, (frei) => starte(async () => {
+        await aufruf('pep_woche_freigeben', { p_jahr: woche.jahr, p_kw: woche.kw, p_frei: frei });
+        await lade();
+      })) : null));
 }
 
 // Legende der Bereichskürzel (KA = Kasse …), auch für Tablets ohne Maus-Tooltip: „Kürzel“ am Ende der Pinselzeile,

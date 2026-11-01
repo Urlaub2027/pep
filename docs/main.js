@@ -9,6 +9,8 @@ import './einsatzplan.js';
 import './zeitkonto.js';
 import './vorausplanung.js';
 import './start.js';
+import './mein.js';
+import './registrierung.js';
 
 start();
 

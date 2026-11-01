@@ -109,6 +109,9 @@ before(async () => {
   await q(`select public.pep_code_speichern(null, '{"code":"SU","name":"Sonderurlaub","farbe":"#654321","stundenregel":"teiler"}') as r`);
   await q(`select public.pep_einstellung_setzen('zeitkonto_warnfaktor', '1.5'::jsonb)`);
   await q(`select public.pep_schulferien_speichern(null, '2026-12-23', '2027-01-09', 'Weihnachtsferien') as r`);
+  // Datenschutztext in zwei Fassungen (kommt mit; Einladungen, Zugänge und Zustimmungen nicht)
+  await q(`select public.pep_datenschutz_speichern('Datenschutzhinweis') as r`);
+  await q(`select public.pep_datenschutz_speichern('Datenschutzhinweis, zweite Fassung') as r`);
   await q(`select public.pep_abweichung_speichern('2026-12-24', '{"art":"heiligabend","geoeffnet":true,
     "oeffnung_von":"07:00","oeffnung_bis":"14:00","rahmen_von":"06:00","rahmen_bis":"14:30","name":"Heiligabend"}')`);
   // Abwesenheiten: Urlaub, Wiederholung Berufsschule (dienstags)
@@ -220,6 +223,7 @@ test('pep_sicherung: Format, Abschnitte, Anzahlen, Prüfsumme über tabellen; Ei
   assert.equal(sA.konten[A.aushilfe], 'aushilfe');
   for (const [t, zeilen] of Object.entries(sA.tabellen)) assert.equal(sA.anzahl[t], zeilen.length, t);
   assert.equal(sA.anzahl.mitarbeiter, 3);
+  assert.equal(sA.anzahl.datenschutz_texte, 2);
   assert.equal(sA.anzahl.wochen_abschluesse, 2);
   assert.ok(sA.tabellen.zeitkonto_buchungen.some((k) => k.art === 'korrektur'), 'Journal enthält eine Korrektur');
   assert.equal(sA.anzahl.ist_leer, 1);
@@ -264,7 +268,8 @@ test('Vollständigkeit: jede Tabelle des Schemas pep ist gesichert oder ausdrüc
     "select table_name as t from information_schema.tables where table_schema = 'pep' and table_type = 'BASE TABLE'")).rows.map((r) => r.t);
   const gesichert = (await A.db.query('select pep.sicherung_tabellen() as t')).rows[0].t;
   const ausnahmen = (await A.db.query('select pep.sicherung_ausnahmen() as a')).rows[0].a;
-  assert.deepEqual(Object.keys(ausnahmen).sort(), ['benutzer', 'filialen', 'sicherungen', 'zeitkonto_vormerkungen']);
+  assert.deepEqual(Object.keys(ausnahmen).sort(), ['benutzer', 'filialen', 'mitarbeiter_einladungen', 'mitarbeiter_zugaenge',
+    'sicherungen', 'zeitkonto_vormerkungen', 'zustimmungen']);
   for (const [t, grund] of Object.entries(ausnahmen)) assert.ok(grund.length > 10, `Grund für ${t}`);
   for (const t of tabellen) {
     assert.ok(gesichert.includes(t) !== Object.hasOwn(ausnahmen, t),

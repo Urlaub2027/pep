@@ -76,6 +76,19 @@ export async function filiale(db, userId, { name = 'Netto Aschaffenburg', nummer
   return r[0].r.id;
 }
 
+// Registrierung mit einer Mitarbeiter-Einladung der PEP, wie Supabase-Auth sie beim Signup ausführt (Insert in
+// auth.users als supabase_auth_admin, Metadaten {pep_einladung}); liefert die neue user_id.
+export async function registriereMitarbeiter(db, name, code, { domain = 'example.com' } = {}) {
+  await db.exec('set role supabase_auth_admin');
+  try {
+    const r = await db.query('insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id',
+      [`${name}@${domain}`, JSON.stringify({ pep_einladung: code })]);
+    return r.rows[0].id;
+  } finally {
+    await db.exec('reset role');
+  }
+}
+
 // Setzt den Start der IST-Erfassung (Einstellung ist_ab) direkt, ohne Protokoll und ohne Prüfung.
 export async function istAbSetzen(db, filialeId, datum) {
   await db.query("update pep.einstellungen set wert = to_jsonb($2::text) where filiale_id = $1 and schluessel = 'ist_ab'",

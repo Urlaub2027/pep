@@ -70,14 +70,15 @@ export const HILFE = {
       '„Kopieren“ und „Vorlagen“ übertragen einen Tag oder eine Woche. „Krank/ZA“ trägt Krankheit oder Zeitausgleich ein.',
     ],
     gut_zu_wissen: [
-      'Geht ein Strich nicht (z. B. Kompetenz fehlt), steht der Grund oben als Meldung.',
+      'Geht ein Strich nicht, steht der Grund oben als Meldung.',
       'Rot gestreift = unbesetzt, weil die Person abwesend ist. „Ersatz“ zeigt, wer einspringen kann.',
       'Zeilen Kasse/VP: Rot heißt niemand da. VP an der Kasse ohne Ablösung zählt nicht.',
       'Klick auf einen Namen öffnet die Eckdaten.',
       'Vergangene Tage sind schreibgeschützt. „IST erfassen“ wechselt in den Modus IST.',
-      'Am Tablet: waagerecht ziehen malt, senkrecht wischen scrollt.',
+      'Am Tablet: waagerecht malen, senkrecht scrollen.',
       'Was ein Kürzel bedeutet, zeigt „Kürzel“ (aufklappen).',
-      'Kasten „Lieferung & Bedarf“: Rollis eintragen, „Vorschlag“ nennt, wer fehlende Stunden übernehmen kann.',
+      'Kasten „Lieferung & Bedarf“: Rollis eintragen, „Vorschlag“ nennt Helfer.',
+      'Mitarbeiter sehen nur Wochen, die „Woche für Mitarbeiter freigeben“ freigibt.',
     ],
   },
 
@@ -141,6 +142,23 @@ export const HILFE = {
       'Kompetenzen bestimmen, in welchem Bereich jemand eingeplant werden kann.',
       'Wochenvorgaben mit „Pflicht“ sperren im Einsatzplan, die anderen geben nur einen Hinweis.',
       'Der letzte Vertrag eines Mitarbeiters lässt sich nicht löschen.',
+      'Nur Leitung: „Zugang einrichten“ erzeugt einen Link zum Weitergeben. „Sperren“ sperrt den Zugang, „Entsperren“ öffnet ihn wieder.',
+    ],
+  },
+
+  mein: {
+    titel: 'Mein Plan',
+    wozu: 'Hier siehst du deinen Plan der Wochen, die die Leitung freigegeben hat, dazu deinen Resturlaub und dein Zeitkonto. '
+      + 'Du kannst nichts ändern.',
+    schritte: [
+      'Oben die Woche wählen. Jeder Tag zeigt deine Zeiten, Pausen und Abwesenheiten.',
+      'Hat die Leitung es eingeschaltet, steht an deinen Arbeitstagen „Mit dir eingeteilt“: wer an dem Tag mit dir arbeitet.',
+      'Ganz unten „Abmelden“, wenn du fertig bist.',
+    ],
+    gut_zu_wissen: [
+      'Als App nutzen: im Browser-Menü „Zum Home-Bildschirm“ wählen, dann öffnet sich PEP wie eine App.',
+      'Ändert die Leitung eine freigegebene Woche, steht neben der Woche „zuletzt geändert am“.',
+      'Der Saldo im Zeitkonto gilt bis zur zuletzt abgeschlossenen Woche.',
     ],
   },
 
@@ -154,16 +172,17 @@ export const HILFE = {
       'Feiertage stehen unter „Abweichende Tage“. „öffnen …“ macht einen Feiertag zum Öffnungstag.',
       'Urlaubstool: Umfrage mit „aktiv“ einschalten, dann unter „Teilnehmer zuordnen“ „Vorschläge übernehmen“ '
         + 'oder je Zeile wählen und „Speichern“.',
-      'Jede Woche „Sicherung herunterladen“. Die Datei auf dem PC oder USB-Stick aufheben, nie per E-Mail schicken.',
+      'Jede Woche „Sicherung herunterladen“; Datei auf PC/USB-Stick aufheben, nie mailen.',
     ],
     gut_zu_wissen: [
       '„IST-Erfassung ab“ lässt sich nur vor dem ersten „Woche buchen“ ändern.',
-      '„Gutschrift im Zeitkonto“: Die Stunden des Codes zählen wie Arbeitszeit (bei ZA aus).',
-      'Eine Umfrage lässt sich nur in einer Filiale einschalten. Ausschalten behält die Zuordnungen. '
+      '„Gutschrift im Zeitkonto“: Codestunden zählen wie Arbeitszeit (bei ZA aus).',
+      'Eine Umfrage lässt sich nur in einer Filiale einschalten. '
         + 'Umfragen anderer Leitungen erscheinen erst nach deren erster Anmeldung.',
       'Stellvertretung unter „Benutzer“ hinzufügen; sie braucht ein Urlaubstool-Konto.',
-      'Die Sicherung enthält das Protokoll nur der letzten 12 Monate. Einspielen geht nur in eine leere Filiale.',
-      'GitHub weckt die Datenbank alle zwei Tage; nichts zu tun.',
-    ],
+      '„Datenschutz“: Zustimmungstext für Mitarbeiter (ohne ihn kein Zugang) und Schalter für Kollegen, Vorgabe aus.',
+      'Die Sicherung enthält das Protokoll der letzten 12 Monate. Einspielen geht nur in eine leere Filiale.',
+      'GitHub weckt die Datenbank alle zwei Tage.',
+          ],
   },
 };

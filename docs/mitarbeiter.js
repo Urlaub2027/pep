@@ -6,6 +6,7 @@ import {
   zeilenformular, abschnitt, fuehreAus,
 } from './hilfe.js';
 import { aufruf, ich, reiter } from './app.js';
+import { zugangAbschnitt } from './mitarbeiter-zugang.js';
 
 export const VERTRAGSARTEN = {
   vollzeit: 'Vollzeit', teilzeit: 'Teilzeit', minijob: 'Minijob', azubi: 'Azubi', fuehrung: 'F (Führungskraft)',
@@ -137,7 +138,7 @@ function zeichneKarte() {
   } else if (!karte) {
     ziel.replaceChildren(element('div', { class: 'box' }, element('p', {}, 'Bitte einen Mitarbeiter wählen.')));
   } else {
-    ziel.replaceChildren(stammdaten(karte), vertraege(), kompetenzen(), wochenvorgaben(), urlaubsjahre());
+    ziel.replaceChildren(stammdaten(karte), ...(darfSchreiben() ? [zugangAbschnitt(karte, { speichere, aufruf })] : []), vertraege(), kompetenzen(), wochenvorgaben(), urlaubsjahre());
   }
 }
 

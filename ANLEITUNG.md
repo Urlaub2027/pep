@@ -103,7 +103,7 @@ neuen Schema.
 |---|---|
 | Leitung | alles: Mitarbeiter und Reihenfolge, Einstellungen, Abwesenheiten, Urlaubswünsche freigeben, Einsatzplan, IST erfassen und bestätigen, Zeitkonto (Woche buchen, Startsaldo, Korrektur von Hand), Vorausplanung, Drucken, Benutzer verwalten |
 | Stellvertretung | Startseite, Abwesenheiten eintragen, Einsatzplan (Malen, Kommentare, Kopieren, Vorlagen, Krank/ZA, Ersatz), IST erfassen und bestätigen, Zeitkonto ansehen (Journal, Drucken, Excel), Vorausplanung eintragen, Drucken; Mitarbeiter nur ansehen; kein Reiter Einstellungen, keine Freigabe von Urlaubswünschen, kein „Woche buchen“, keine Buchungen im Zeitkonto |
-| Mitarbeiter | noch keine Seite |
+| Mitarbeiter | eigene Handy-Seite (nur lesen): eigener Plan freigegebener Wochen, eigener Urlaub und Zeitkonto; siehe „Mitarbeiter-Zugang“. Kein Zugriff auf die übrigen Reiter |
 
 Weitere Benutzer legt die Leitung unter Einstellungen → Benutzer an. Der Benutzer
 braucht dafür ein Konto im Urlaubstool.
@@ -223,7 +223,8 @@ Verlassen des Feldes gespeichert. Die
     PEP „Diese Umfrage ist schon in einer anderen Filiale eingeschaltet.“ Ausschalten
     kann jede Leitung der Filiale, auch wenn der Organisator nicht mehr dabei ist.
     Die Zuordnungen bleiben dabei erhalten: Wird die Umfrage wieder eingeschaltet, sind
-    sie wieder da, auch die von Hand gemachten.
+    sie wieder da, auch die von Hand gemachten. (Dieser Satz „Ausschalten behält die
+    Zuordnungen.“ steht nicht mehr im Hilfetext der Einstellungen, nur hier.)
     Wer als Leitung in die PEP aufgenommen wird, macht damit nach seiner ersten
     Anmeldung seine Urlaubstool-Umfragen für die anderen Leitungen der Filiale sichtbar.
   - **Teilnehmer zuordnen, Schritt für Schritt:**
@@ -505,6 +506,61 @@ Farben, im Druckdialog „Hintergrundgrafiken“ einschalten.
     Einsatzplan (Modus IST) über „Wocheneinsatz-IST drucken“.
 - **Zeitkonto → Journal als Excel:** alle Buchungen eines Zeitraums (vorbelegt:
   01.01. bis heute) als .xlsx; das Datum ist eine echte Datumsspalte (TT.MM.JJJJ).
+
+### Mitarbeiter-Zugang
+
+Mitarbeiter sehen auf dem Handy, wann sie arbeiten, dazu ihren eigenen Urlaub und ihr
+Zeitkonto. Einrichten und freigeben tut die Filialleitung.
+
+Standardmäßig sehen Mitarbeiter nur ihre eigenen Zeiten. Die Leitung kann unter
+Einstellungen → Benutzer & Sicherung → Datenschutz einschalten („Mitarbeiter sehen Kollegen
+am selben Tag“): Dann steht an den Tagen, an denen jemand selbst arbeitet, auch, wer mit
+eingeteilt ist (Abwesende nie). Ausgeschaltet liefert die Datenbank keine Kollegennamen aus.
+
+**Voraussetzung (einmalig, durch den Betreiber):** Im SQL-Editor von Supabase zuerst das
+Schema des Urlaubstools, dann das von PEP einspielen (siehe README); in Supabase muss die
+E-Mail-Bestätigung ausgeschaltet und die Registrierung erlaubt bleiben. **Auch bei einer
+bestehenden Installation** muss das **aktualisierte** Schema des Urlaubstools (Urlaub2027/urlaub,
+Branch `pep-mitarbeiter-einladung`, Commit 14b2ed4 oder neuer) erneut eingespielt werden – sonst
+scheitert jede Registrierung, die Person sieht „Link ungültig“.
+
+1. **Datenschutztext hinterlegen.** Einstellungen → Benutzer & Sicherung → Datenschutztext
+   eingeben, „Speichern“. „Entwurf einfügen“ setzt einen Vorschlag ein. ⚠️ **Der Entwurf
+   ist rechtlich nicht geprüft** und muss vor dem Einsatz von Personalabteilung bzw.
+   Datenschutz geprüft werden. Ohne Text gibt es keinen Zugang. Jede Änderung ist eine neue
+   Version: Alle müssen dann beim nächsten Öffnen erneut zustimmen.
+2. **Zugang einrichten.** Mitarbeiter → Karte der Person → Abschnitt „Zugang“ →
+   „Zugang einrichten“. Es erscheint ein Einladungslink (Kopieren oder Teilen). Er gilt
+   **7 Tage** und **nur einmal**. Der Link bleibt sichtbar, solange er gültig ist und die
+   Karte offen bleibt. Er geht an die Person selbst, z. B. per Messenger.
+3. **Die Person registriert sich** über den Link (Passwort wählen) und bestätigt den
+   Datenschutztext. Erst dann sieht sie ihre Seite. Die Karte zeigt „Datenschutz bestätigt
+   am …“.
+4. **Wochen freigeben.** Einsatzplan → unter der Wochenleiste „Woche für Mitarbeiter
+   freigeben“ (Leitung und Stellvertretung). Mitarbeiter sehen nur freigegebene Wochen.
+   „Freigabe zurücknehmen“ blendet die Woche wieder aus. **Änderungen nach der Freigabe
+   sind sofort sichtbar**; die Mitarbeiter sehen dann an der Woche „zuletzt geändert am …“.
+
+**Passwort vergessen:** Auf der Karte „Neuer Link“, wieder an die Person senden. Ein neuer
+Link ersetzt den vorherigen offenen Link. Das alte Konto funktioniert weiter, bis der neue
+Link eingelöst ist; danach gilt nur das neue.
+
+**Sperren:** Karte → „Sperren“. Die Person kann sich nicht mehr anmelden, offene Links
+werden ungültig. Solange der Zugang gesperrt ist, gibt es nur „Entsperren“ (kein neuer Link).
+Nach dem Entsperren ist ein früherer Link nicht wieder gültig; bei Bedarf „Neuer Link“.
+**Deaktivierte** Mitarbeiter und solche **nach dem Austritt** verlieren den Zugang
+automatisch; die Karte zeigt dann „ruht (inaktiv oder ausgetreten)“ und keinen „Neuer Link“.
+
+**Nach einer Sicherung:** Zugänge, Einladungen und Zustimmungen stehen **nicht** in der
+Sicherungsdatei (Datenschutztext und Freigaben schon). Nach dem Einspielen alle
+Mitarbeiter neu einladen; sie stimmen erneut zu.
+
+**Als App aufs Handy:** iPhone (Safari): Teilen → „Zum Home-Bildschirm“. Android (Chrome):
+Menü → „App installieren“. Dann öffnet sich PEP wie eine App.
+
+**Was Mitarbeiter sehen:** den eigenen Plan der freigegebenen Wochen, den eigenen Urlaub
+und den eigenen Zeitkonto-Saldo; nur mit eingeschaltetem Schalter außerdem an den Tagen, an
+denen sie selbst arbeiten, Namen und Zeit, wer sonst eingeteilt ist. **Nicht:** wer abwesend ist und warum, Stunden oder Urlaub der Kollegen.
 
 ## 4. Handprüf-Checkliste
 
@@ -798,7 +854,6 @@ Einspielen bucht PEP keine automatischen Korrekturen.
   bis jemand ihn ändert.
 - Freie Samstage im Jahr zählen erst ab dem Eintritt (bzw. ab 01.01.).
 - Eine Wiederholung bei den Abwesenheiten lässt sich nur löschen, nicht ändern.
-- Der Reiter für die Rolle „Mitarbeiter“ fehlt noch.
 
 **IST und Zeitkonto (Stufe 2)**
 - Die Spalte „Spät“ zählt nur die Stunden ab „Späte Schicht ab“. Einen Zeitzuschlag

@@ -8,6 +8,7 @@ import {
 } from './hilfe.js';
 import { aufruf, ich, reiter, zeigeAnsicht, aktualisiereIch } from './app.js';
 import { zeichneSicherung } from './sicherung.js';
+import { zeichneDatenschutz } from './einstellungen-datenschutz.js';
 
 const ARTEN_ABWEICHUNG = [
   ['feiertag', 'Feiertag'], ['heiligabend', 'Heiligabend'], ['silvester', 'Silvester'],
@@ -47,6 +48,7 @@ let feiertage = [];
 let umfragen = [];
 let zuordnung = [];
 let mitarbeiter = [];
+let datenschutz = null; // Antwort von pep_datenschutz
 const boxen = {}; // Abschnittsname → Container
 let zurSicherung = false; // nach dem Laden zum Abschnitt „Sicherung“ springen (Hinweis auf der Startseite)
 
@@ -57,7 +59,7 @@ const TEILE = [
   ['lieferung', 'Lieferung', ['warengruppen', 'liefermuster']],
   ['regeln', 'Regeln & Zeitkonto', ['parameter', 'ist']],
   ['urlaub', 'Urlaubstool', ['urlaub']],
-  ['benutzer', 'Benutzer & Sicherung', ['benutzer', 'sicherung']],
+  ['benutzer', 'Benutzer & Sicherung', ['benutzer', 'datenschutz', 'sicherung']],
 ];
 const TEIL_SCHLUESSEL = 'pep-einstellungen-teil';
 let teil = (() => { try { return localStorage.getItem(TEIL_SCHLUESSEL); } catch { return null; } })();
@@ -78,6 +80,7 @@ const tagIso = (wert) => String(wert).slice(0, 10);
 // ---------------------------------------------------------------- Laden und Speichern
 
 async function ladeDaten() { daten = await aufruf('pep_einstellungen'); }
+async function ladeDatenschutz() { datenschutz = await aufruf('pep_datenschutz'); }
 async function ladeUrlaub() {
   [umfragen, zuordnung, mitarbeiter] = await Promise.all(
     [aufruf('pep_urlaub_umfragen'), aufruf('pep_urlaub_zuordnung'), aufruf('pep_mitarbeiter_liste')]);
@@ -104,7 +107,7 @@ async function zeigen() {
     zeigeTeil();
   }
   try {
-    await Promise.all([ladeDaten(), ladeUrlaub(), aufruf('pep_feiertage', { p_jahr: jahr }).then((f) => { feiertage = f; })]);
+    await Promise.all([ladeDaten(), ladeUrlaub(), ladeDatenschutz(), aufruf('pep_feiertage', { p_jahr: jahr }).then((f) => { feiertage = f; })]);
   } catch (fehler) {
     if (!fehler.behandelt) meldung(fehlerText(fehler.message));
     return;
@@ -507,6 +510,18 @@ function zeichneBenutzer() {
   boxen.benutzer.replaceChildren(abschnitt('Benutzer', daten.benutzer.map(zeile), formular));
 }
 
+function zeichneDatenschutzAbschnitt() {
+  zeichneDatenschutz(boxen.datenschutz, datenschutz, {
+    darfSchreiben: darfSchreiben(), aufruf, neuLaden: async () => { await ladeDatenschutz(); zeichneDatenschutzAbschnitt(); },
+    kollegen: daten.werte.mitarbeiter_kollegen === true, // Vorgabe aus
+    kollegenSetzen: async (wert) => {
+      await fuehreAus(() => aufruf('pep_einstellung_setzen', { p_schluessel: 'mitarbeiter_kollegen', p_wert: wert }),
+        ladeDaten);
+      zeichneDatenschutzAbschnitt(); // auch bei Fehler: Schalter zeigt wieder den gespeicherten Stand
+    },
+  });
+}
+
 // ---------------------------------------------------------------- Sicherung (Stufe 2, nur Leitung)
 
 function zeichneSicherungAbschnitt() {
@@ -528,7 +543,7 @@ const ZEICHNER = {
   rahmen: zeichneRahmen, abweichungen: zeichneAbweichungen, bereiche: zeichneBereiche, codes: zeichneCodes,
   warengruppen: zeichneWarengruppen, liefermuster: zeichneLiefermuster,
   parameter: zeichneParameter, ist: zeichneIst, schulferien: zeichneSchulferien, urlaub: zeichneUrlaub, benutzer: zeichneBenutzer,
-  sicherung: zeichneSicherungAbschnitt,
+  datenschutz: zeichneDatenschutzAbschnitt, sicherung: zeichneSicherungAbschnitt,
 };
 
 reiter.einstellungen = { zeigen };

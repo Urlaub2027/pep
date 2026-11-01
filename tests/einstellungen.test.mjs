@@ -33,7 +33,7 @@ test('Grundausstattung: 7 Rahmen, So geschlossen, 9 Codes, 19 Einstellungen', as
   assert.deepEqual(e.codes.map((c) => c.code), ['U', 'KM', 'BS', 'ZA', 'AF', 'BV', 'FT', 'NV', 'T']);
   assert.equal(e.codes.find((c) => c.code === 'BS').stundenregel, 'tatsaechlich');
   assert.equal(e.codes.find((c) => c.code === 'NV').stundenregel, 'keine');
-  assert.equal(Object.keys(e.werte).length, 19);
+  assert.equal(Object.keys(e.werte).length, 20); // 19 gespeicherte + mitarbeiter_kollegen (Vorgabe, nur berechnet)
   assert.equal(e.werte.abwesenheit_teiler, 6);
   assert.equal(e.werte.spaet_grenze, '18:00');
   assert.equal(e.werte.kassierleistung_eur_halbe_h, 900);
@@ -122,6 +122,18 @@ test('Einstellung setzen und lesen; unbekannter Schlüssel → EINSTELLUNG_UNBEK
   await wirft(db.query('select pep.einstellung($1, $2)', [fil, 'gibt_es_nicht']), 'EINSTELLUNG_FEHLT');
   await setze('ruhezeit_h', 11);
   await setze('spaet_grenze', '18:00');
+});
+
+test('Schalter mitarbeiter_kollegen: Vorgabe false, Leitung setzt true/false, andere Werte WERT_UNGUELTIG, Stellvertretung NUR_LEITUNG', async () => {
+  const setze = (nutzer, w) => aufruf(nutzer, 'select public.pep_einstellung_setzen($1, $2::jsonb)', ['mitarbeiter_kollegen', JSON.stringify(w)]);
+  assert.strictEqual((await alle()).werte.mitarbeiter_kollegen, false); // Zeile fehlt ⇒ wirksam false
+  await setze(leitung, true);
+  assert.strictEqual((await alle()).werte.mitarbeiter_kollegen, true);
+  await setze(leitung, false);
+  assert.strictEqual((await alle()).werte.mitarbeiter_kollegen, false);
+  for (const w of ['ja', 1, null]) await wirft(setze(leitung, w), 'WERT_UNGUELTIG');
+  await wirft(setze(stellv, false), 'NUR_LEITUNG');
+  await db.query("delete from pep.einstellungen where filiale_id = $1 and schluessel = 'mitarbeiter_kollegen'", [fil]);
 });
 
 test('grundausstattung nach Umbenennen: kein neues U/KA, Anzahlen unverändert', async () => {

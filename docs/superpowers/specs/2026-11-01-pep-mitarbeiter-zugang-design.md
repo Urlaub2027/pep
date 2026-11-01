@@ -1,6 +1,7 @@
 # PEP – Mitarbeiter-Zugang (Design)
 
-Stand 01.11.2026. Grundlage: PEP_HANDOFF.md „Stufe 3 – Mitarbeiter-Seite“, Wunsch der
+Stand: umgesetzt auf Branch mitarbeiter-zugang (01.11.2026).
+Entwurf vom 01.11.2026. Grundlage: PEP_HANDOFF.md „Stufe 3 – Mitarbeiter-Seite“, Wunsch der
 Filialleitung (31.10.2026) und Gespräch mit dtn am 01.11.2026.
 Kennzeichnung: **[dtn]** = so gesagt oder bestätigt, **[meine Wahl]** = von mir
 entschieden, vom Builder nicht zu ändern ohne Rückfrage.
@@ -145,6 +146,14 @@ Name und Arbeitszeit(en) der Kollegen, die an diesem Tag **eingeplant** sind.
   eine gekürzte Schicht nichts.
 - Keine Bereiche, Kommentare, Stunden, Verträge der Kollegen **[meine Wahl]**.
 - Nur für freigegebene Wochen, nur die eigene Filiale.
+- Nur an Tagen, an denen der Mitarbeiter selbst arbeitet (mindestens ein eigener Block,
+  der keine Pause ist); sonst `[]`. Das entscheidet die Datenbank (`pep.mein_tag`), nicht
+  die Seite. Nur aktive Kollegen, die an dem Tag nicht ausgetreten sind.
+- Schalter `mitarbeiter_kollegen` (Einstellungen → Datenschutz, nur Leitung, **Vorgabe aus**,
+  Entscheidung des Product Owners 01.11.2026; fehlt die Einstellung, gilt `false`): Aus ⇒
+  `kollegen` ist an jedem Tag `null`, die Datenbank liefert keine Kollegennamen aus (nicht
+  nur die Oberfläche blendet sie aus). Standardmäßig sehen Mitarbeiter also nur ihre
+  eigenen Zeiten.
 
 ### 5.3 Eigener Urlaub und eigenes Zeitkonto [dtn]
 - Urlaub: genommene und eingetragene Urlaubstage des laufenden Jahres, Resturlaub –

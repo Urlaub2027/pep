@@ -1092,3 +1092,34 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
 .ep-vorschlag td { padding: 0 var(--a1) var(--a2); }
 .ep-vorschlag .knopf { min-height: 32px; padding: 0 var(--a3); font-size: 0.85rem; }
 .ep-link { color: var(--text); font-weight: 600; }
+
+.zugang-link { flex: 1 1 22rem; min-width: 0; }
+.datenschutz-text { width: 100%; min-height: 16rem; }
+.ep-freigabe { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a1) var(--a3); margin: var(--a2) 0 0; }
+
+/* Mitarbeiter-Ansicht (mein.js, registrierung.js): schmale Spalte fürs Handy, nichts läuft über den Rand */
+#ansicht-mein, #ansicht-zustimmung { max-width: 640px; margin: 0 auto; }
+#ansicht-mein h2 { margin: 0; }
+.mein-box { padding: var(--a4); }
+.mein-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: var(--a2) var(--a3); margin-bottom: var(--a3); }
+.mein-wochenwahl { flex: 1 1 12rem; min-width: 0; min-height: var(--knopf-hoehe); font: inherit; }
+.mein-wochenkopf { margin: 0 0 var(--a2); font-size: 1rem; }
+.mein-geaendert { font-weight: 400; font-size: 0.85rem; color: var(--text-2); }
+.mein-tag { margin-bottom: var(--a2); padding: var(--a3) var(--a4); background: var(--flaeche); border-radius: var(--radius); box-shadow: var(--schatten-1); border-left: 4px solid var(--netto-gelb); overflow-wrap: anywhere; }
+.mein-tag.zu { border-left-color: var(--linie-stark); }
+.mein-tag h3 { margin: 0 0 var(--a1); font-size: 1rem; }
+.mein-zeile { margin: 0; }
+.mein-zeile.zeit { font-weight: 600; }
+.mein-zeile.abwesenheit { color: var(--netto-rot); font-weight: 600; }
+.mein-zeile.leer, .mein-zeile.kommentar { color: var(--text-2); }
+.mein-kollegen { margin: var(--a1) 0 0; font-size: 0.9rem; }
+.mein-kacheln { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: var(--a2); margin: var(--a4) 0; }
+.mein-kachel { padding: var(--a3) var(--a4); background: var(--flaeche); border-radius: var(--radius); box-shadow: var(--schatten-1); }
+.mein-kachel h3 { margin: 0; font-size: 0.9rem; color: var(--text-2); }
+.mein-wert { margin: var(--a1) 0 0; font-size: 1.25rem; font-weight: 700; }
+.mein-zusatz { margin: 0; font-size: 0.85rem; color: var(--text-2); }
+.mein-text { margin: var(--a3) 0; max-height: 50vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; padding: var(--a3); border: 1px solid var(--linie); border-radius: var(--radius); }
+.mein-app { font-size: 0.85rem; color: var(--text-2); }
+.mein-knoepfe { display: flex; flex-wrap: wrap; gap: var(--a2); }
+.mein-zurueck { text-align: center; }
+.kopf { flex-wrap: wrap; }
