@@ -155,6 +155,20 @@ test('Kollegen: Jo mit Zeiten; Kai, Lea, Ola tauchen nirgends im JSON auf', asyn
   assert.ok((await db.query(`select 1 from pep.abwesenheiten where mitarbeiter_id = $1 and datum = '2026-11-10'`, [lea])).rows.length);
 });
 
+test('Schalter mitarbeiter_kollegen: aus ⇒ kollegen überall null, kein Kollegenname im JSON; an/ungesetzt ⇒ sichtbar', async () => {
+  const setze = (w) => als(db, 'authenticated', leitung, 'select public.pep_einstellung_setzen($1, $2::jsonb)', ['mitarbeiter_kollegen', JSON.stringify(w)]);
+  assert.ok(JSON.stringify(await mein.plan(idaU, 2026, 46)).includes('Test, Jo')); // Vorgabe (Zeile fehlt): mit Kollegen
+  await setze(false);
+  const aus = await mein.plan(idaU, 2026, 46);
+  assert.equal(aus.tage.length, 7);
+  for (const t of aus.tage) assert.strictEqual(t.kollegen, null, t.datum);
+  assert.ok(!JSON.stringify(aus).includes('Jo'));
+  assert.ok(aus.tage[1].bloecke.length > 0); // der eigene Plan bleibt
+  await setze(true);
+  assert.ok(JSON.stringify(await mein.plan(idaU, 2026, 46)).includes('Test, Jo'));
+  await db.query("delete from pep.einstellungen where filiale_id = $1 and schluessel = 'mitarbeiter_kollegen'", [fil]);
+});
+
 test('pep_mein_wochen nur freigegebene ab laufender Woche, aufsteigend, höchstens 8', async () => {
   assert.deepEqual(await mein.wochen(idaU), [
     { jahr: 2026, kw: 46, montag: '2026-11-09', zuletzt_geaendert: null },

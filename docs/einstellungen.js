@@ -513,6 +513,12 @@ function zeichneBenutzer() {
 function zeichneDatenschutzAbschnitt() {
   zeichneDatenschutz(boxen.datenschutz, datenschutz, {
     darfSchreiben: darfSchreiben(), aufruf, neuLaden: async () => { await ladeDatenschutz(); zeichneDatenschutzAbschnitt(); },
+    kollegen: daten.werte.mitarbeiter_kollegen !== false,
+    kollegenSetzen: async (wert) => {
+      await fuehreAus(() => aufruf('pep_einstellung_setzen', { p_schluessel: 'mitarbeiter_kollegen', p_wert: wert }),
+        ladeDaten);
+      zeichneDatenschutzAbschnitt(); // auch bei Fehler: Schalter zeigt wieder den gespeicherten Stand
+    },
   });
 }
 

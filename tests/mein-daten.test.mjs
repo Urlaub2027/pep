@@ -43,6 +43,7 @@ test('Kollegentext: Name mit Zeiten, mehrere Zeiträume, leer', () => {
     { name: 'Ida', zeiten: [{ von: '12:00', bis: '20:00' }] },
   ]), 'Jo 08:00–12:00, 13:00–16:00; Ida 12:00–20:00');
   assert.equal(kollegenText([]), '');
+  assert.equal(kollegenText(null), ''); // Schalter aus: die Datenbank liefert null
 });
 
 test('Saldo: Vorzeichen, Stand als Woche ab, ohne Buchung', () => {

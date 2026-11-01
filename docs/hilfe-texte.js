@@ -152,7 +152,7 @@ export const HILFE = {
       + 'Du kannst nichts ändern.',
     schritte: [
       'Oben die Woche wählen. Jeder Tag zeigt deine Zeiten, Pausen und Abwesenheiten.',
-      'Unter den Zeiten steht „Mit dir eingeteilt“: Wer an dem Tag mit dir arbeitet.',
+      'Unter den Zeiten kann „Mit dir eingeteilt“ stehen: Wer an dem Tag mit dir arbeitet (die Leitung kann das ausschalten).',
       'Ganz unten „Abmelden“, wenn du fertig bist.',
     ],
     gut_zu_wissen: [

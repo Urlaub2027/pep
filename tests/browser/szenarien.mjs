@@ -2909,6 +2909,19 @@ await szenario('Mitarbeiter-Ansicht: Registrierung über den Link, Zustimmung, W
     gleich(await anzahl('#ansicht-mein .mein-tag'), 7, 'KW 48: sieben Tageskarten');
     pruefe((await tagTexte('2026-11-23')).includes('Nicht eingeteilt'), 'KW 48: nicht eingeteilt', await tagTexte('2026-11-23'));
     await ohneQuerscroll('Wochenansicht KW 48');
+    // Schalter „Kollegen“ aus (Leitung): keine Kollegenzeile, Kollegenname nirgends im DOM
+    await ruf('pep_einstellung_setzen', { p_schluessel: 'mitarbeiter_kollegen', p_wert: false });
+    try {
+      await c.navigiere(`${s.adresse}/browser/?d=4`);
+      await c.warteAuf(() => document.querySelector('#ansicht-mein .mein-tag'), { text: 'Wochenansicht ohne Kollegen', ms: 20000 });
+      await ruhe();
+      pruefe((await tagTexte('2026-11-17')).includes('08:00–12:00 KA'), 'Schalter aus: eigene Zeiten bleiben', await tagTexte('2026-11-17'));
+      gleich(await anzahl('#ansicht-mein .mein-kollegen'), 0, 'Schalter aus: keine Kollegenzeile');
+      const dom = await c.werte(() => document.getElementById('ansicht-mein').innerHTML);
+      pruefe(!dom.includes(kollegName) && !dom.includes('Mit dir eingeteilt'), 'Schalter aus: Kollegenname nicht im DOM', kollegName);
+    } finally {
+      await ruf('pep_einstellung_setzen', { p_schluessel: 'mitarbeiter_kollegen', p_wert: true });
+    }
     // Abmelden
     await c.klick({ text: 'Abmelden', in: '#ansicht-mein', sel: 'button', genau: true });
     await c.warteAuf(() => !document.getElementById('ansicht-login').hidden, { text: 'Login' });

@@ -512,6 +512,11 @@ Farben, im Druckdialog „Hintergrundgrafiken“ einschalten.
 Mitarbeiter sehen auf dem Handy, wann sie arbeiten, dazu ihren eigenen Urlaub und ihr
 Zeitkonto. Einrichten und freigeben tut die Filialleitung.
 
+Unter den eigenen Zeiten steht standardmäßig, wer am selben Tag mit eingeteilt ist. Die
+Leitung kann das unter Einstellungen → Benutzer & Sicherung → Datenschutz ausschalten
+(„Mitarbeiter sehen Kollegen am selben Tag“): Dann liefert die Datenbank keine Kollegennamen
+mehr aus.
+
 **Voraussetzung (einmalig, durch den Betreiber):** Im SQL-Editor von Supabase zuerst das
 Schema des Urlaubstools, dann das von PEP einspielen (siehe README); in Supabase muss die
 E-Mail-Bestätigung ausgeschaltet und die Registrierung erlaubt bleiben.

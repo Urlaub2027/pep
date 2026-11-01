@@ -1075,8 +1075,10 @@ begin
                           from pep.rahmen r where r.filiale_id = v_f), '[]'::jsonb),
     'abweichungen', coalesce((select jsonb_agg(to_jsonb(a) - 'filiale_id' order by a.datum)
                                 from pep.tag_abweichungen a where a.filiale_id = v_f), '[]'::jsonb),
-    'werte', coalesce((select jsonb_object_agg(e.schluessel, e.wert)
-                         from pep.einstellungen e where e.filiale_id = v_f), '{}'::jsonb),
+    -- mitarbeiter_kollegen: fehlt die Zeile, gilt true (Vorgabe: Kollegen sichtbar)
+    'werte', jsonb_build_object('mitarbeiter_kollegen', true)
+             || coalesce((select jsonb_object_agg(e.schluessel, e.wert)
+                            from pep.einstellungen e where e.filiale_id = v_f), '{}'::jsonb),
     'codes', coalesce((select jsonb_agg(to_jsonb(c) - 'filiale_id' order by c.position, c.id)
                          from pep.abwesenheitscodes c where c.filiale_id = v_f), '[]'::jsonb),
     'bereiche', coalesce((select jsonb_agg(to_jsonb(b) - 'filiale_id' order by b.position, b.id)
@@ -1245,7 +1247,7 @@ begin
        'ruhezeit_u18_h', 'max_tag_h', 'max_tag_u18_h', 'max_woche_u18_h', 'spaet_grenze',
        'u18_fruehestens', 'u18_spaetestens', 'freie_samstage_monat', 'freie_samstage_jahr',
        'wochen_toleranz_h', 'zeitkonto_warnfaktor', 'stundenleistung_eur_h', 'kassierleistung_eur_halbe_h',
-       'ist_ab') then
+       'ist_ab', 'mitarbeiter_kollegen') then
     raise exception 'EINSTELLUNG_UNBEKANNT';
   end if;
 
@@ -1266,6 +1268,11 @@ begin
     end;
     if extract(isodow from v_datum) <> 1 then
       raise exception 'KEIN_MONTAG';
+    end if;
+  elsif p_schluessel = 'mitarbeiter_kollegen' then
+    -- Schalter der Mitarbeiter-Ansicht: nur JSON-true/false (false ⇒ pep_mein_plan liefert keine Kollegennamen)
+    if v_typ <> 'boolean' then
+      raise exception 'WERT_UNGUELTIG';
     end if;
   elsif p_schluessel in ('spaet_grenze', 'u18_fruehestens', 'u18_spaetestens') then
     if v_typ <> 'string' or (p_wert #>> '{}') !~ '^([01][0-9]|2[0-3]):[0-5][0-9]$' then
@@ -8237,7 +8244,8 @@ $$;
 
 -- Ein Tag des eigenen Plans: Öffnung (pep.tag_status), eigene Blöcke mit Bereich und Pausen, eigener Kommentar, eigene
 -- Abwesenheit (höchstens eine je Tag) und die Kollegen (pep.kollegen_tag).
-create or replace function pep.mein_tag(p_m pep.mitarbeiter, p_datum date)
+drop function if exists pep.mein_tag(pep.mitarbeiter, date); -- Fassung ohne p_kollegen
+create or replace function pep.mein_tag(p_m pep.mitarbeiter, p_datum date, p_kollegen boolean default true)
 returns jsonb
 language sql stable
 set search_path = ''
@@ -8259,7 +8267,8 @@ as $$
                       from pep.abwesenheiten a
                       join pep.abwesenheitscodes c on c.id = a.code_id
                      where a.mitarbeiter_id = p_m.id and a.datum = p_datum),
-    'kollegen', pep.kollegen_tag(p_m, p_datum))
+    -- Schalter aus: JSON null, die Kollegenabfrage läuft gar nicht (CASE wertet nur den gewählten Zweig aus)
+    'kollegen', case when p_kollegen then pep.kollegen_tag(p_m, p_datum) end)
     from pep.tag_status(p_m.filiale_id, p_datum) s
 $$;
 
@@ -8297,6 +8306,9 @@ as $$
 declare
   v_m pep.mitarbeiter := pep.ich_mitarbeiter();
   v_f pep.wochen_freigaben;
+  -- Schalter der Leitung (Einstellungen → Datenschutz); fehlt die Zeile, sind Kollegen sichtbar
+  v_koll boolean := coalesce((select (e.wert #>> '{}')::boolean from pep.einstellungen e
+                               where e.filiale_id = v_m.filiale_id and e.schluessel = 'mitarbeiter_kollegen'), true);
 begin
   select * into v_f from pep.wochen_freigaben f
    where f.filiale_id = v_m.filiale_id
@@ -8306,7 +8318,7 @@ begin
   end if;
   return jsonb_build_object(
     'jahr', p_jahr, 'kw', p_kw, 'zuletzt_geaendert', v_f.zuletzt_geaendert,
-    'tage', (select jsonb_agg(pep.mein_tag(v_m, v_f.montag + i) order by i) from generate_series(0, 6) i));
+    'tage', (select jsonb_agg(pep.mein_tag(v_m, v_f.montag + i, v_koll) order by i) from generate_series(0, 6) i));
 end;
 $$;
 

@@ -62,7 +62,7 @@ function tagKarte(tag) {
   return element('article', { class: `mein-tag${tag.geoeffnet ? '' : ' zu'}`, 'data-datum': tag.datum },
     element('h3', {}, tagKopf(tag.datum)),
     tagZeilen(tag).map((z) => element('p', { class: `mein-zeile ${z.art}` }, z.text)),
-    arbeitet && tag.kollegen.length
+    arbeitet && tag.kollegen?.length // null: Leitung hat die Kollegenanzeige ausgeschaltet
       ? element('p', { class: 'mein-kollegen' }, element('strong', {}, 'Mit dir eingeteilt: '), kollegenText(tag.kollegen))
       : null);
 }

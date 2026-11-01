@@ -146,6 +146,9 @@ Name und Arbeitszeit(en) der Kollegen, die an diesem Tag **eingeplant** sind.
   eine gekürzte Schicht nichts.
 - Keine Bereiche, Kommentare, Stunden, Verträge der Kollegen **[meine Wahl]**.
 - Nur für freigegebene Wochen, nur die eigene Filiale.
+- Schalter `mitarbeiter_kollegen` (Einstellungen → Datenschutz, nur Leitung, Vorgabe an
+  **[dtn]**): Aus ⇒ `kollegen` ist an jedem Tag `null`, die Datenbank liefert keine
+  Kollegennamen aus (nicht nur die Oberfläche blendet sie aus).
 
 ### 5.3 Eigener Urlaub und eigenes Zeitkonto [dtn]
 - Urlaub: genommene und eingetragene Urlaubstage des laufenden Jahres, Resturlaub –
