@@ -2,6 +2,7 @@
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import { neueDatenbank, als, pepBenutzer, filiale } from './helfer.mjs';
+import { aufrufe, leseAufrufe } from './rechte-aufrufe.mjs';
 
 let db, leitung, stellv, azubi, ohne, fil, ma, jo, vorlage, sicherung, wg;
 
@@ -42,12 +43,15 @@ const pepFunktionen = async () => (await db.query(`
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname like 'pep\_%' order by p.proname`)).rows;
 
+const ANON = ['pep_lebenszeichen', 'pep_zugang_pruefen'];
+
 test('Rechte: jede public.pep_*-Funktion ist security definer mit search_path, anon ohne, angemeldet mit Ausführungsrecht', async () => {
   const fns = await pepFunktionen();
   assert.ok(fns.length > 30);
   for (const f of fns) {
-    // Einzige Ausnahme: der Weckruf gegen das Pausieren (GitHub Actions ruft ihn ohne Anmeldung auf, s. u.).
-    assert.equal(f.anon, f.name === 'pep_lebenszeichen', `anon: ${f.name}`);
+    // Ausnahmen: der Weckruf gegen das Pausieren (GitHub Actions ruft ihn ohne Anmeldung auf, s. u.) und die Prüfung
+    // eines Einladungscodes vor der Registrierung (nur {gueltig}, tests/zugang.test.mjs).
+    assert.equal(f.anon, ANON.includes(f.name), `anon: ${f.name}`);
     assert.equal(f.angemeldet, true, `angemeldet: ${f.name}`);
     assert.equal(f.prosecdef, true, `security definer: ${f.name}`);
     assert.ok((f.proconfig ?? []).some((c) => /^search_path=/.test(c)), `search_path: ${f.name}`);
@@ -60,7 +64,7 @@ const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mita
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
   'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_bedarf_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
   'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche', 'pep_zeitkonto_journal', 'pep_stundenblatt',
-  'pep_sicherung_pruefen'];
+  'pep_sicherung_pruefen', 'pep_datenschutz'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',
@@ -72,70 +76,12 @@ const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loesche
 // Weckruf: ohne Anmeldung aufrufbar, ohne Rollenprüfung, ohne Daten; eigener Test am Dateiende.
 const OHNE_ANMELDUNG = ['pep_lebenszeichen'];
 const OHNE_FILIALE_ERLAUBT = ['pep_filiale_anlegen'];
+// Eigene Prüfung statt pep.ich(): Einladungscode (anon) und die Funktionen des Mitarbeiter-Kontos (pep.ich_mitarbeiter);
+// abgedeckt in tests/zugang.test.mjs.
+const EIGENE_PRUEFUNG = ['pep_zugang_pruefen', 'pep_mein_konto', 'pep_mein_zustimmen'];
 
-// Plausible Dummy-Aufrufe (Mitarbeiter-Id echt, damit ein fehlender Rechtecheck sichtbar etwas ändern würde).
-const aufrufe = () => ({
-  pep_filiale_anlegen: `select public.pep_filiale_anlegen('X', '1', 'BY')`,
-  pep_mitarbeiter_speichern: `select public.pep_mitarbeiter_speichern(null, '{"name":"X, Y"}')`,
-  pep_vertrag_speichern: `select public.pep_vertrag_speichern(${ma}, '{"vertragsart":"teilzeit","wochenstunden":30,"gueltig_ab":"2026-01-01"}')`,
-  pep_vertrag_loeschen: `select public.pep_vertrag_loeschen(1)`,
-  pep_kompetenz_setzen: `select public.pep_kompetenz_setzen(${ma}, 1, true)`,
-  pep_wochenvorgabe_speichern: `select public.pep_wochenvorgabe_speichern(${ma}, '{}')`,
-  pep_wochenvorgabe_loeschen: `select public.pep_wochenvorgabe_loeschen(1)`,
-  pep_urlaubsjahr_speichern: `select public.pep_urlaubsjahr_speichern(${ma}, 2027, 30, 0)`,
-  pep_rahmen_speichern: `select public.pep_rahmen_speichern(1, '{}')`,
-  pep_abweichung_speichern: `select public.pep_abweichung_speichern('2027-05-01', '{}')`,
-  pep_abweichung_loeschen: `select public.pep_abweichung_loeschen('2027-05-01')`,
-  pep_einstellung_setzen: `select public.pep_einstellung_setzen('x', '1')`,
-  pep_code_speichern: `select public.pep_code_speichern(null, '{"code":"ZZ","name":"Test"}')`,
-  pep_bereich_speichern: `select public.pep_bereich_speichern(null, '{"kuerzel":"ZZ","name":"Test"}')`,
-  // Nur Leitung. Echte Warengruppe: ohne Rechtecheck würde sie umbenannt, das Muster geändert (und protokolliert).
-  pep_warengruppe_speichern: `select public.pep_warengruppe_speichern(${wg}, '{"name":"Zzz"}')`,
-  pep_liefer_muster_setzen: `select public.pep_liefer_muster_setzen(2, '{"lkw":"08:30"}')`,
-  // Leitung oder Stellvertretung; geöffneter Tag (Mo 03.05.2027): ohne Rechtecheck entstünde ein Tageswert.
-  pep_liefer_tag_setzen: `select public.pep_liefer_tag_setzen('2027-05-03', '{"lkw":"08:30"}')`,
-  pep_schulferien_speichern: `select public.pep_schulferien_speichern(null, '2027-04-05', '2027-04-16', 'Test')`,
-  pep_schulferien_loeschen: `select public.pep_schulferien_loeschen(1)`,
-  pep_benutzer_setzen: `select public.pep_benutzer_setzen('vize', 'leitung')`,
-  pep_benutzer_entfernen: `select public.pep_benutzer_entfernen('${stellv}')`,
-  pep_abwesenheit_setzen: `select public.pep_abwesenheit_setzen(${ma}, 1, '2027-05-03', '2027-05-03', null, null, null, null)`,
-  pep_abwesenheit_loeschen: `select public.pep_abwesenheit_loeschen(${ma}, '2027-05-03', '2027-05-03')`,
-  pep_wiederholung_speichern: `select public.pep_wiederholung_speichern(${ma}, '{"code_id":1,"wochentag":2,"von_datum":"2027-05-01","bis_datum":"2027-06-30","stunden":8}')`,
-  pep_wiederholung_loeschen: `select public.pep_wiederholung_loeschen(1)`,
-  pep_urlaub_umfrage_schalten: `select public.pep_urlaub_umfrage_schalten(1, true)`,
-  pep_urlaub_zuordnung_setzen: `select public.pep_urlaub_zuordnung_setzen(1, ${ma})`,
-  pep_urlaub_freigeben: `select public.pep_urlaub_freigeben(${ma}, null, null, '{"umfrage_id":1,"urlaub_mitarbeiter_id":1,"art":"kw","kw":12,"datum":null}', null)`,
-  pep_urlaub_ablehnen: `select public.pep_urlaub_ablehnen(${ma}, '{"umfrage_id":1,"urlaub_mitarbeiter_id":1,"art":"kw","kw":12,"datum":null}', null)`,
-  pep_freigabe_zuruecknehmen: `select public.pep_freigabe_zuruecknehmen(1)`,
-  pep_plan_malen: `select public.pep_plan_malen(${ma}, '2027-05-03', '08:00', '12:00', 2)`,
-  pep_plan_zeile_setzen: `select public.pep_plan_zeile_setzen(${ma}, '2027-05-03', '[{"von":"08:00","bis":"12:00","bereich_id":2}]')`,
-  pep_kommentar_setzen: `select public.pep_kommentar_setzen(${ma}, '2027-05-03', 'Test')`,
-  // Ida und Jo sind die einzigen aktiven Mitarbeiter: ohne Rechtecheck würde die Position geschrieben.
-  pep_mitarbeiter_reihenfolge: `select public.pep_mitarbeiter_reihenfolge(array[${ma}, ${jo}]::bigint[])`,
-  // Kopieren und Laden schreiben je geöffnetem Zieltag einen Protokolleintrag, auch ohne passende Blöcke.
-  pep_tag_kopieren: `select public.pep_tag_kopieren('2027-05-03', array['2027-05-10']::date[], 'ersetzen')`,
-  pep_woche_kopieren: `select public.pep_woche_kopieren(2027, 18, '[{"jahr":2027,"kw":19}]', 'ersetzen')`,
-  pep_vorlage_speichern: `select public.pep_vorlage_speichern('Test', 'tag', '2027-05-03')`,
-  pep_vorlage_laden: `select public.pep_vorlage_laden(${vorlage}, '2027-05-10', 'ersetzen')`,
-  pep_vorlage_loeschen: `select public.pep_vorlage_loeschen(${vorlage})`,
-  pep_schnell_abwesend: `select public.pep_schnell_abwesend(${ma}, 'ZA', '2027-05-04', '2027-05-04')`,
-  pep_ersatz_uebernehmen: `select public.pep_ersatz_uebernehmen(${ma}, '2027-05-03', ${jo})`,
-  // Schreibt Planumsatz und Vorgabe der Woche (und ein Protokoll): ohne Rechtecheck wäre das sichtbar.
-  pep_woche_speichern: `select public.pep_woche_speichern(2027, 18, '{"planumsatz":61000,"stundenvorgabe_manuell":240}')`,
-  // IST an einem vergangenen Montag (Ida hat seit 01.01.2026 Vertrag): ohne Rechtecheck entstünden IST-Blöcke
-  // bzw. ein ist_tage-Eintrag.
-  pep_ist_malen: `select public.pep_ist_malen(${ma}, '2026-03-02', '08:00', '12:00', 2, null)`,
-  pep_ist_zeile_setzen: `select public.pep_ist_zeile_setzen(${ma}, '2026-03-02', '[{"von":"08:00","bis":"12:00","bereich_id":2}]', null)`,
-  pep_ist_bestaetigen: `select public.pep_ist_bestaetigen('2026-03-02', array[${ma}]::bigint[])`,
-  // Nur Leitung. Abschluss einer vergangenen Woche (ohne Rechtecheck: IST_OFFEN, also ebenfalls kein Treffer für FEHLER);
-  // Buchung für Ida: ohne Rechtecheck entstünde eine Journalzeile.
-  pep_wochenabschluss: `select public.pep_wochenabschluss(2026, 10)`,
-  pep_zeitkonto_buchen: `select public.pep_zeitkonto_buchen(${ma}, 'manuell', 5, 'Test', '2026-03-02')`,
-  // Nur Leitung. Sichern schreibt pep.sicherungen und das Protokoll; Einspielen mit der echten Datei und richtiger
-  // Bestätigung (ohne Rechtecheck: FILIALE_NICHT_LEER, also kein Treffer für FEHLER).
-  pep_sicherung: 'select public.pep_sicherung()',
-  pep_sicherung_einspielen: `select public.pep_sicherung_einspielen('${JSON.stringify(sicherung).replaceAll("'", "''")}'::jsonb, '2558')`,
-});
+// Dummy-Aufrufe aller Funktionen: tests/rechte-aufrufe.mjs (auch von tests/zugang.test.mjs genutzt).
+const ids = () => ({ ma, jo, stellv, wg, vorlage, sicherung });
 
 const zaehlen = async () => {
   const tabellen = (await db.query(
@@ -146,17 +92,19 @@ const zaehlen = async () => {
 };
 
 test('jede schreibende pep_*-Funktion ist abgedeckt (neue Funktion → hier eintragen)', async () => {
-  const schreibend = (await pepFunktionen()).map((f) => f.name).filter((n) => !NUR_LESEN.includes(n) && !OHNE_ANMELDUNG.includes(n));
-  const karte = aufrufe();
+  const schreibend = (await pepFunktionen()).map((f) => f.name).filter((n) => !NUR_LESEN.includes(n) && !OHNE_ANMELDUNG.includes(n) && !EIGENE_PRUEFUNG.includes(n));
+  const karte = aufrufe(ids());
   for (const n of schreibend) assert.ok(karte[n], `kein Dummy-Aufruf für ${n}`);
   for (const n of Object.keys(karte)) assert.ok(schreibend.includes(n), `${n} ist nicht (mehr) schreibend/vorhanden`);
-  for (const n of NUR_LESEN) assert.ok((await pepFunktionen()).some((f) => f.name === n), `${n} fehlt`);
+  for (const n of [...NUR_LESEN, ...EIGENE_PRUEFUNG]) assert.ok((await pepFunktionen()).some((f) => f.name === n), `${n} fehlt`);
+  // Jede lesende Funktion hat auch einen Aufruf (tests/zugang.test.mjs ruft sie alle als Mitarbeiter-Konto auf).
+  assert.deepEqual(Object.keys(leseAufrufe(ids())).sort(), [...NUR_LESEN].sort());
 });
 
 test('schreibende Funktionen: Stellvertretung, Rolle mitarbeiter, Leitung ohne Filiale scheitern, nichts ändert sich', async () => {
   const FEHLER = /NUR_LEITUNG|KEIN_ZUGRIFF|KEINE_FILIALE/;
   const vorher = await zaehlen();
-  const karte = aufrufe();
+  const karte = aufrufe(ids());
   for (const [name, sql] of Object.entries(karte)) {
     if (!AUCH_STELLVERTRETUNG.includes(name)) {
       await assert.rejects(aufruf(stellv, sql), FEHLER, `Stellvertretung: ${name}`);
@@ -244,12 +192,12 @@ test('pep_sicherung_pruefen: Stellvertretung und Rolle mitarbeiter → NUR_LEITU
   await aufruf(leitung, sql);
 });
 
-test('Weckruf: pep_lebenszeichen liefert anon true, liest keine Tabelle, sonst bleibt anon überall gesperrt', async () => {
+test('Weckruf: pep_lebenszeichen liefert anon true, liest keine Tabelle, sonst bleibt anon überall gesperrt (außer pep_zugang_pruefen)', async () => {
   const r = await als(db, 'anon', null, 'select public.pep_lebenszeichen() as r');
   assert.equal(r[0].r, true);
   const fns = await pepFunktionen();
   const offen = fns.filter((f) => f.anon).map((f) => f.name);
-  assert.deepEqual(offen, ['pep_lebenszeichen']);
+  assert.deepEqual(offen, ANON);
   const q = (await db.query(`select prosrc from pg_proc where proname = 'pep_lebenszeichen'`)).rows[0].prosrc;
   assert.doesNotMatch(q, /from/i, 'darf keine Tabelle lesen');
 });

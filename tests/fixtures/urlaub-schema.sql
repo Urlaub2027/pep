@@ -1,4 +1,4 @@
--- Eingefrorene Kopie von Urlaub2027/urlaub supabase/schema.sql, Commit 97333f5 (24.10.2026). Nur für Tests.
+-- Eingefrorene Kopie von Urlaub2027/urlaub supabase/schema.sql, Commit 14b2ed4 (01.11.2026). Nur für Tests.
 -- Urlaubswünsche – Datenbank (Stand 3: Fragen-Baukasten)
 --
 -- Einmal komplett im Supabase SQL-Editor ausführen – bei einer neuen Installation
@@ -2636,7 +2636,8 @@ as $$
 $$;
 
 -- Läuft bei jedem neuen Konto (auch /auth/v1/signup). Ohne gültige Einladung
--- schlägt das Anlegen des Kontos fehl.
+-- schlägt das Anlegen des Kontos fehl. Ausnahme: Mitarbeiter-Einladungen der PEP
+-- (Metadaten-Schlüssel pep_einladung, nur wenn das PEP-Schema in dieser Datenbank liegt).
 create or replace function urlaub.neuer_benutzer()
 returns trigger
 language plpgsql
@@ -2648,6 +2649,12 @@ declare
   v_name text := btrim(coalesce(new.raw_user_meta_data ->> 'anzeigename', ''));
   v_e    urlaub.einladungen;
 begin
+  -- Fachregel-Duplikat: Gegenstück in Urlaub2027/pep supabase/schema.sql (pep.neuer_mitarbeiter),
+  -- dort prüft die PEP den Code.
+  if new.raw_user_meta_data ? 'pep_einladung'
+     and to_regclass('pep.mitarbeiter_einladungen') is not null then
+    return new;
+  end if;
   if v_code is null then
     raise exception 'EINLADUNG_FEHLT';
   end if;
