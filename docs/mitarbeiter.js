@@ -7,6 +7,7 @@ import {
 } from './hilfe.js';
 import { aufruf, ich, reiter } from './app.js';
 import { zugangAbschnitt } from './mitarbeiter-zugang.js';
+import { urlaubTagesstunden, tageZuStunden, stundenZuTage } from './urlaub-tage.js';
 
 export const VERTRAGSARTEN = {
   vollzeit: 'Vollzeit', teilzeit: 'Teilzeit', minijob: 'Minijob', azubi: 'Azubi', fuehrung: 'F (Führungskraft)',
@@ -17,6 +18,7 @@ let liste = [];
 let bereiche = [];
 let auswahl = null; // Mitarbeiter-ID, 'neu' oder null
 let karte = null;
+let teiler = null; // Abwesenheits-Teiler aus pep_einstellungen (Urlaubsjahre in Tagen)
 let zurKarte = false; // nach dem Sprung aus dem Einsatzplan die Karte ins Bild holen (schmal: Karte unter der Liste)
 
 const darfSchreiben = () => ich?.rolle === 'leitung';
@@ -63,7 +65,9 @@ export function waehleMitarbeiter(id) {
 }
 
 async function zeigen() {
-  bereiche = await aufruf('pep_bereiche');
+  let einstellungen;
+  [bereiche, einstellungen] = await Promise.all([aufruf('pep_bereiche'), aufruf('pep_einstellungen')]);
+  teiler = einstellungen?.werte?.abwesenheit_teiler ?? null;
   await ladeListe();
   if (!auswahl && liste.length) auswahl = liste[0].id;
   zeichneListe();
@@ -260,18 +264,47 @@ function wochenvorgaben() {
 
 // ---- Urlaubsjahre
 
+// Eingabe in Tagen, gespeichert in Stunden (Tage × Wochenstunden ÷ Abwesenheits-Teiler, docs/urlaub-tage.js); die
+// Stunden stehen live daneben. Ohne Vertrag zum Jahresbeginn (und ohne im Jahr) bleibt die Eingabe in Stunden.
 function urlaubsjahre() {
   const zeile = (u) => {
     const jahr = eingabe('number', u.jahr ?? new Date().getFullYear() + 1, { step: '1', min: '2000', max: '2100' });
     if (u.jahr) jahr.disabled = true;
-    const anspruch = eingabe('number', u.anspruch_stunden, { step: '0.5', min: '0' });
-    const rest = eingabe('number', u.rest_vorjahr_stunden ?? 0, { step: '0.5', min: '0' });
+    const tagesstunden = () => urlaubTagesstunden(karte.vertraege, Number(jahr.value), teiler);
+    const t0 = tagesstunden();
+    const anfang = (h) => (t0 ? stundenZuTage(h, t0) : h);
+    const anspruch = eingabe('number', anfang(u.anspruch_stunden), { step: '0.5', min: '0', class: 'ma-urlaub-anspruch' });
+    const rest = eingabe('number', anfang(u.rest_vorjahr_stunden ?? 0), { step: '0.5', min: '0', class: 'ma-urlaub-rest' });
+    const start = { anspruch: anspruch.value, rest: rest.value };
+    // Unverändertes Feld: gespeicherte Stunden zurückgeben, damit Rundung über Tage nichts verschiebt.
+    const stunden = (feldEin, startWert, gespeichert) => {
+      const t = tagesstunden();
+      if (feldEin.value === startWert && gespeichert != null && t === t0) return Number(gespeichert);
+      const z = zahl(feldEin.value);
+      return z == null || !t ? z : tageZuStunden(z, t);
+    };
+    const lA = element('span', {});
+    const lR = element('span', {});
+    const umrechnung = element('span', { class: 'hinweis ma-urlaub-stunden' });
+    const aktualisiere = () => {
+      const t = tagesstunden();
+      lA.textContent = t ? 'Anspruch (Tage)' : 'Anspruch (h)';
+      lR.textContent = t ? 'Rest Vorjahr (Tage)' : 'Rest Vorjahr (h)';
+      const a = stunden(anspruch, start.anspruch, u.anspruch_stunden);
+      const r = stunden(rest, start.rest, u.rest_vorjahr_stunden ?? 0);
+      umrechnung.textContent = t
+        ? `= ${stundenDE(a ?? 0)} h Anspruch + ${stundenDE(r ?? 0)} h Rest (${stundenDE(t)} h je Tag)`
+        : 'Kein Vertrag in diesem Jahr: Eingabe in Stunden.';
+    };
+    for (const e of [jahr, anspruch, rest]) e.addEventListener('input', aktualisiere);
+    aktualisiere();
     const senden = () => speichere(() => aufruf('pep_urlaubsjahr_speichern', {
       p_mitarbeiter_id: karte.id, p_jahr: Number(jahr.value),
-      p_anspruch: zahl(anspruch.value), p_rest_vorjahr: zahl(rest.value),
+      p_anspruch: stunden(anspruch, start.anspruch, u.anspruch_stunden),
+      p_rest_vorjahr: stunden(rest, start.rest, u.rest_vorjahr_stunden ?? 0),
     }));
-    return zeilenformular(senden, feld('Jahr', jahr), feld('Anspruch (h)', anspruch),
-      feld('Rest Vorjahr (h)', rest), knopfSpeichern(u.jahr ? 'Speichern' : 'Jahr anlegen'));
+    return zeilenformular(senden, feld('Jahr', jahr), element('label', { class: 'feld' }, lA, anspruch),
+      element('label', { class: 'feld' }, lR, rest), umrechnung, knopfSpeichern(u.jahr ? 'Speichern' : 'Jahr anlegen'));
   };
   return abschnitt('Urlaubsjahre', karte.urlaubsjahre.map(zeile), darfSchreiben() ? zeile({}) : null);
 }

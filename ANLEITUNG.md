@@ -162,7 +162,9 @@ Stammdaten (Name, Personalnummer, Geburtsdatum, Eintritt/Austritt, aktiv, Notiz)
 **Verträge** (Gültig ab, Art, Wochenstunden, bei Führung die Zeitkonto-Grenze; pro
 Datum nur einer, der letzte lässt sich nicht löschen), **Kompetenzen** (Haken je Bereich/Funktion), **Wochenvorgaben**
 (Wochentag, nicht verfügbar / nur zwischen, Pflicht, Gültigkeit) und **Urlaubsjahre**
-(Anspruch und Rest aus dem Vorjahr in Stunden).
+(Anspruch und Rest aus dem Vorjahr **in Tagen**; daneben stehen die Stunden, gespeichert wird in
+Stunden: Tage × Wochenstunden ÷ Abwesenheits-Teiler, z. B. 36 Tage × 37,5 h ÷ 6 = 225 h. Es zählt der Vertrag
+am 01.01. des Jahres, sonst der erste im Jahr. Ohne Vertrag im Jahr bleibt die Eingabe in Stunden).
 
 **Reihenfolge im Einsatzplan** (nur Leitung): Mit ▲ und ▼ neben einem aktiven
 Mitarbeiter in der Liste tauscht er den Platz mit dem Nachbarn. Jeder Klick wird
@@ -602,7 +604,7 @@ gegen Supabase geprüft werden. Die Tests laufen gegen eine nachgebildete Datenb
    Vertrag mit gleichem Datum: Fehler VERTRAG_DOPPELT; letzten Vertrag löschen: LETZTER_VERTRAG.
 3. Kompetenz Kasse haken: Badge in der Liste; abhaken entfernt es.
 4. Wochenvorgabe Sa, nicht verfügbar, Pflicht: Zeile erscheint; Löschen geht.
-5. Urlaubsjahr 2027, 180 h, Rest 0: Zeile mit gesperrtem Jahr; Ändern speichert.
+5. Urlaubsjahr 2027, 36 Tage (Vollzeit 37,5 h → 225 h daneben), Rest 0: Zeile mit gesperrtem Jahr; Ändern speichert.
 6. Seite neu laden: alles da. Mitarbeiter inaktiv: grau, am Listenende.
 7. Als Stellvertretung: lesbar, aber keine Speichern-/Löschen-Knöpfe und kein ▲/▼.
 8. Breite unter 900 px: Liste über Karte; breiter: nebeneinander.
