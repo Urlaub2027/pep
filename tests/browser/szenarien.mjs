@@ -1166,6 +1166,21 @@ await szenario('Druck Einsatzplan: Tagesplan, Wochenplan, Tagespläne, Excel', a
   gleich(await anzahl('#ansicht-druck .fb-pause'), seitenSoll * 12, 'Formblatt: je Tag zwei Pausenzeilen');
   gleich(await text('#ansicht-druck .fb-titel'), 'Personaleinsatzplanung (PEP) (Aufbewahrungsfrist: 2 Jahre)', 'Formblatt: Titel');
   gleich(await text('#ansicht-druck .fb-kopf th'), 'Woche: 46', 'Formblatt: Woche');
+  // Linien wie das Papier: alle schwarz und mindestens 1px (0,5pt verschwand in der Druckvorschau), dick (2px) zwischen
+  // den Mitarbeitern, rechts der Beschriftung, über jedem Tag und außen. Die Regeln stehen in @media print: messen
+  // mit emulierter Druckdarstellung.
+  await c.sende('Emulation.setEmulatedMedia', { media: 'print' });
+  const linien = await c.werte(() => {
+    const st = (sel, seite) => getComputedStyle(document.querySelector(`#ansicht-druck ${sel}`))[`border${seite}Width`];
+    return {
+      innen: st('.fb-tag .fb-zeit', 'Right'), ma: st('.fb-tag .fb-std', 'Right'), name: st('.fb-name', 'Right'),
+      kopfStd: st('.fb-spaltenkopf .fb-std', 'Right'), label: st('.fb-pause .fb-label', 'Right'),
+      tag: st('.fb-tag .fb-zeit', 'Top'), pause: st('.fb-pause .fb-zeit', 'Top'), aussen: st('.fb-tabelle', 'Left'),
+    };
+  });
+  gleich(linien, { innen: '1px', ma: '2px', name: '2px', kopfStd: '2px', label: '2px', tag: '2px', pause: '1px', aussen: '2px' },
+    'Formblatt: Linienstärken wie das Papierformular');
+  await c.sende('Emulation.setEmulatedMedia', { media: '' });
   gleich(await text('#ansicht-druck .fb-kopf th:nth-child(2)'), 'Filiale: 2558 Aschaffenburg', 'Formblatt: Filiale ohne „Netto“');
   const pdf3 = await c.sende('Page.printToPDF', { landscape: true, printBackground: true, preferCSSPageSize: true });
   writeFileSync(`${FOTOS}formblatt-pep.pdf`, Buffer.from(pdf3.data, 'base64'));

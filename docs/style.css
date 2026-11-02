@@ -1081,9 +1081,10 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-c-sb-abw { width: 24mm; }
   .dr-c-sb-kw { width: 20mm; }
 
-  /* Formblatt Minijob (Papierformular „PEP: geringfügig Beschäftigte“): A4 quer, eine Seite je 8 Mitarbeiter */
+  /* Formblatt PEP (Papierformular „Personaleinsatzplanung (PEP)“): A4 quer, eine Seite je 8 Mitarbeiter */
   .fb-titel { margin-bottom: 2mm; font-size: 10pt; font-weight: 700; }
-  .fb-tabelle th, .fb-tabelle td { border: 0.5pt solid #000; font-size: 8pt; white-space: pre-line; }
+  .fb-tabelle { border: 2px solid #000; }
+  .fb-tabelle th, .fb-tabelle td { border: 1px solid #000; font-size: 8pt; white-space: pre-line; }
   .fb-tabelle tbody th { background: none; font-weight: 700; }
   .fb-tabelle tr { height: 7.2mm; }
   .fb-tabelle tr.fb-pause { height: 5.8mm; }
@@ -1092,9 +1093,10 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .fb-tabelle tr.fb-kopf th { font-size: 10pt; }
   .fb-tabelle tr.fb-spaltenkopf th { font-weight: 400; text-align: center; font-size: 7pt; }
   .fb-tabelle .fb-name { font-weight: 700; }
-  .fb-tabelle tr.fb-tag th, .fb-tabelle tr.fb-gesamt th { border-top: 1.2pt solid #000; }
-  .fb-tabelle tr.fb-tag td, .fb-tabelle tr.fb-gesamt td { border-top: 1.2pt solid #000; }
-  .fb-tabelle .fb-std { border-right: 1.2pt solid #000; }
+  /* dick wie auf dem Papier: über Kopf, jedem Tag und den Gesamtstunden; mind. 1px (0,5pt verschwand in der Vorschau) */
+  .fb-tabelle tr.fb-tag > *, .fb-tabelle tr.fb-gesamt > *, .fb-tabelle tr.fb-kopf > * { border-top: 2px solid #000; }
+  /* dick zwischen den Mitarbeitern und rechts der Beschriftung */
+  .fb-tabelle .fb-std, .fb-tabelle .fb-ma, .fb-tabelle .fb-label { border-right: 2px solid #000; }
   .fb-c-label { width: 15mm; }
   .fb-c-std { width: 9mm; }
   .fb-unterschriften { margin-top: 8mm; }

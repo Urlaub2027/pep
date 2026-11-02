@@ -352,10 +352,10 @@ function formblatt(woche) {
     const zeilen = [];
     tage.forEach((t, i) => {
       zeilen.push(element('tr', { class: 'fb-tag' },
-        element('th', { colspan: 2 }, WOCHENTAG_LANG[t.wochentag - 1]),
+        element('th', { colspan: 2, class: 'fb-label' }, WOCHENTAG_LANG[t.wochentag - 1]),
         paar(spalten, (s) => s.tage[i]?.zeit ?? '', (s) => zahl(s.tage[i]?.std))));
       [0, 1].forEach((p) => zeilen.push(element('tr', { class: 'fb-pause' },
-        element('th', {}), element('th', { class: 'fb-pause-label' }, 'Pause'),
+        element('th', {}), element('th', { class: 'fb-label fb-pause-label' }, 'Pause'),
         paar(spalten, (s) => s.tage[i]?.pausen[p] ?? '', () => ''))));
     });
     return element('div', { class: 'dr-seite fb-seite' },
@@ -364,17 +364,17 @@ function formblatt(woche) {
         element('colgroup', {}, element('col', { class: 'fb-c-label' }), element('col', { class: 'fb-c-label' }),
           spalten.map(() => [element('col', {}), element('col', { class: 'fb-c-std' })])),
         element('tbody', {},
-          element('tr', { class: 'fb-kopf' }, element('th', { colspan: 2 }, `Woche: ${woche.kw}`),
+          element('tr', { class: 'fb-kopf' }, element('th', { colspan: 2, class: 'fb-label' }, `Woche: ${woche.kw}`),
             element('th', { colspan: FORMBLATT_SPALTEN * 2 }, `Filiale: ${filiale}`)),
-          element('tr', {}, element('th', { colspan: 2 }, 'Name:'),
-            spalten.map((s) => element('td', { colspan: 2, class: 'fb-name' }, s.name))),
-          element('tr', {}, element('th', { colspan: 2 }, 'Tätigkeit:'),
-            spalten.map((s) => element('td', { colspan: 2 }, s.taetigkeit))),
+          element('tr', {}, element('th', { colspan: 2, class: 'fb-label' }, 'Name:'),
+            spalten.map((s) => element('td', { colspan: 2, class: 'fb-ma fb-name' }, s.name))),
+          element('tr', {}, element('th', { colspan: 2, class: 'fb-label' }, 'Tätigkeit:'),
+            spalten.map((s) => element('td', { colspan: 2, class: 'fb-ma' }, s.taetigkeit))),
           // Wie auf dem Papier: links Min./Max. Std. (leer, von Hand), daneben die Spaltenköpfe Zeit/Std.
-          element('tr', { class: 'fb-spaltenkopf' }, element('th', {}, 'Min. Std.'), element('th', {}, 'Max. Std.'),
-            spalten.map(() => [element('th', {}, 'Zeit'), element('th', {}, 'Std.')])),
+          element('tr', { class: 'fb-spaltenkopf' }, element('th', {}, 'Min. Std.'), element('th', { class: 'fb-label' }, 'Max. Std.'),
+            spalten.map(() => [element('th', { class: 'fb-zeit' }, 'Zeit'), element('th', { class: 'fb-std' }, 'Std.')])),
           zeilen,
-          element('tr', { class: 'fb-gesamt' }, element('th', { colspan: 2 }, 'Gesamtstunden:'),
+          element('tr', { class: 'fb-gesamt' }, element('th', { colspan: 2, class: 'fb-label' }, 'Gesamtstunden:'),
             paar(spalten, () => '', (s) => (s.name ? zahl(s.gesamt) : ''))))),
       element('div', { class: 'dr-unterschriften fb-unterschriften' },
         element('div', { class: 'dr-unterschrift' }, 'Unterschrift ML'),
