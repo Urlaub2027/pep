@@ -493,12 +493,12 @@ Jede Zelle trägt Kürzel **und** Farbe, damit Schwarz-Weiß lesbar bleibt. Fehl
 Farben, im Druckdialog „Hintergrundgrafiken“ einschalten.
 - **Einsatzplan → Drucken:** Wochenplan, Tagesplan des gewählten Tags, Tagespläne der
   ganzen Woche, „Excel (Wochenplan)“ lädt eine .xlsx-Datei herunter.
-  **„Formblatt Minijob“** füllt das Papierformular „Personaleinsatzplanung (PEP):
-  geringfügig Beschäftigte“ für die angezeigte Woche aus: alle Mitarbeiter mit Vertragsart
-  Minijob, 8 je Seite, Mo–Sa Zeit und Stunden ohne Pause, die Pausen in den zwei
+  **„Formblatt PEP“** füllt das Papierformular „Personaleinsatzplanung (PEP)“ für die
+  angezeigte Woche aus: alle Mitarbeiter der Woche in der Reihenfolge des Einsatzplans,
+  8 je Seite, Mo–Sa Zeit und Stunden ohne Pause, die Pausen in den zwei
   Pausenzeilen (weitere in der zweiten), Abwesenheit als Code (z. B. „U“), Gesamtstunden.
   Min./Max. Std. bleiben leer (von Hand). Filiale als „Nummer Name“ ohne vorangestelltes „Netto“. Die Woche wählt man im
-  Einsatzplan; als PDF über „Als PDF speichern“ im Druckdialog. Ohne Minijobber kommt ein
+  Einsatzplan; als PDF über „Als PDF speichern“ im Druckdialog. Ohne Mitarbeiter kommt ein
   leeres Formular zum Ausfüllen von Hand.
 - **Abwesenheiten → Drucken:** der angezeigte Monat oder „Resturlaub <Jahr>“.
 - **Zeitkonto → Drucken:**

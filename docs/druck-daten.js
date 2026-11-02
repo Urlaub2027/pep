@@ -121,7 +121,8 @@ export function wochenplanBlatt(woche) {
   };
 }
 
-// Formblatt „PEP: geringfügig Beschäftigte“ (Papierformular der Filiale): nur Vertragsart Minijob, 8 Spalten je Seite.
+// Formblatt „Personaleinsatzplanung (PEP)“ (Papierformular der Filiale): alle Mitarbeiter der Woche in ihrer
+// Reihenfolge, 8 Spalten je Seite.
 // Je Mitarbeiter Tätigkeit (Bereiche der Woche ohne Pause; Min./Max. Std. bleiben leer, die füllt die Leitung von Hand),
 // je Tag Mo–Sa: Zeit (wie im Wochenplan, Pausen eingeschlossen), Stunden ohne Pause, Pausen in zwei Zeilen
 // (weitere hängen an der zweiten). Eine Abwesenheit steht als Code in der Zeit, wie bisher von Hand („U“).
@@ -130,7 +131,7 @@ export const FORMBLATT_SPALTEN = 8;
 export function formblattSeiten(woche) {
   const pausen = pauseIds(woche);
   const reihenfolge = (woche.bereiche ?? []).filter((b) => b.art !== 'pause');
-  const spalten = (woche.mitarbeiter ?? []).filter((m) => m.vertragsart === 'minijob').map((m) => {
+  const spalten = (woche.mitarbeiter ?? []).map((m) => {
     const eigene = (woche.bloecke ?? []).filter((b) => b.mitarbeiter_id === m.id && !b.unbesetzt);
     const benutzt = new Set(eigene.map((b) => b.bereich_id));
     const tage = woche.tage.slice(0, 6).map((t) => {

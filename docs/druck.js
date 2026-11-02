@@ -335,11 +335,10 @@ function stundenblatt(daten) {
   });
 }
 
-// ---------------------------------------------------------------- Formblatt Minijob
+// ---------------------------------------------------------------- Formblatt PEP
 
-// Nachbau des Papierformulars „Personaleinsatzplanung (PEP): geringfügig Beschäftigte“: Spalten je Mitarbeiter
-// (Zeit/Std.), Zeilen Mo–Sa mit je zwei Pausenzeilen, Gesamtstunden, Unterschriften ML/VL. Ohne Minijobber eine
-// leere Seite zum Ausfüllen von Hand. Filiale als „<Nummer> <Name>“ aus den Filialdaten.
+// Nachbau des Papierformulars „Personaleinsatzplanung (PEP)“: Spalten je Mitarbeiter (Zeit/Std.), Zeilen Mo–Sa mit je
+// zwei Pausenzeilen, Gesamtstunden, Unterschriften ML/VL. Ohne Mitarbeiter eine leere Seite zum Ausfüllen von Hand. Filiale als „<Nummer> <Name>“ aus den Filialdaten.
 function formblatt(woche) {
   const seiten = formblattSeiten(woche);
   // Wie auf dem Papier „1234 Musterstadt“: ohne vorangestelltes „Netto“ aus dem Filialnamen.
@@ -360,7 +359,7 @@ function formblatt(woche) {
         paar(spalten, (s) => s.tage[i]?.pausen[p] ?? '', () => ''))));
     });
     return element('div', { class: 'dr-seite fb-seite' },
-      element('div', { class: 'fb-titel' }, 'Personaleinsatzplanung (PEP): geringfügig Beschäftigte (Aufbewahrungsfrist: 2 Jahre)'),
+      element('div', { class: 'fb-titel' }, 'Personaleinsatzplanung (PEP) (Aufbewahrungsfrist: 2 Jahre)'),
       element('table', { class: 'dr-tabelle fb-tabelle' },
         element('colgroup', {}, element('col', { class: 'fb-c-label' }), element('col', { class: 'fb-c-label' }),
           spalten.map(() => [element('col', {}), element('col', { class: 'fb-c-std' })])),
@@ -458,7 +457,7 @@ export function druckAuswahlPlan(kontext) {
     { text: 'Wochenplan', aktion: () => {}, danach: () => drucke('woche', { woche }) },
     ...(tag?.geoeffnet ? [{ text: `Tagesplan ${tagKurz(datum)}`, sekundaer: true, aktion: () => {}, danach: () => drucke('tag', { woche, datum }) }] : []),
     { text: 'Tagespläne der Woche', sekundaer: true, aktion: () => {}, danach: () => drucke('tage', { woche }) },
-    { text: 'Formblatt Minijob', sekundaer: true, aktion: () => {}, danach: () => drucke('formblatt', { woche }) },
+    { text: 'Formblatt PEP', sekundaer: true, aktion: () => {}, danach: () => drucke('formblatt', { woche }) },
     { text: 'Excel (Wochenplan)', sekundaer: true, aktion: () => exportiereWochenplan(woche) },
   ]);
 }

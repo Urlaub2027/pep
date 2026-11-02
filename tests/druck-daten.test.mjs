@@ -423,20 +423,20 @@ test('Excel: Texte stehen in sharedStrings, nicht inline; Datumszellen bleiben Z
   assert.match(roh, /<c r="A2" s="3"><v>46327<\/v><\/c>/, 'Datum unverändert als Zahl mit Stil 3');
 });
 
-// Formblatt „PEP geringfügig Beschäftigte“: nur Minijob, je Spalte ein Mitarbeiter, Mo–Sa mit Zeit, Stunden ohne
-// Pause und bis zu zwei Pausenzeilen; 8 Spalten je Seite wie das Papierformular.
-function minijobWoche(anzahl = 2) {
+// Formblatt „Personaleinsatzplanung (PEP)“ (Papierformular der Filiale): alle Mitarbeiter der Woche in ihrer
+// Reihenfolge, je Spalte einer, Mo–Sa mit Zeit, Stunden ohne Pause und bis zu zwei Pausenzeilen; 8 Spalten je Seite.
+function formblattWoche(anzahl = 2) {
   const w = woche();
-  const mj = Array.from({ length: anzahl }, (_, i) => ({
-    id: 100 + i, name: `Mini, ${i + 1}`, personalnummer: null, vertragsart: 'minijob',
+  const extra = Array.from({ length: anzahl }, (_, i) => ({
+    id: 100 + i, name: `Extra, ${i + 1}`, personalnummer: null, vertragsart: i % 2 ? 'minijob' : 'teilzeit',
     wochenstunden: 8,
   }));
   const b = (id, mid, datum, von, bis, bereich) => ({ id, mitarbeiter_id: mid, datum, von, bis, bereich_id: bereich, unbesetzt: false });
   return {
     ...w,
-    mitarbeiter: [...w.mitarbeiter, ...mj],
+    mitarbeiter: [...w.mitarbeiter, ...extra],
     bloecke: [...w.bloecke,
-      // Mini 1: Mo 08:00–16:00 mit zwei Pausen, Mi geteilt 08–10 + 16–18 (TroSo)
+      // Extra 1: Mo 08:00–16:00 mit zwei Pausen, Mi geteilt 08–10 + 16–18 (TroSo)
       b(900, 100, TAGE[0], '08:00', '10:00', KA), b(901, 100, TAGE[0], '10:00', '10:15', PA),
       b(902, 100, TAGE[0], '10:15', '12:00', KA), b(903, 100, TAGE[0], '12:00', '12:30', PA),
       b(904, 100, TAGE[0], '12:30', '16:00', KA),
@@ -446,12 +446,15 @@ function minijobWoche(anzahl = 2) {
     abwesenheiten: [...(w.abwesenheiten ?? []), { mitarbeiter_id: 100, datum: TAGE[1], code: 'U', stunden: 4 }],
   };
 }
+const spalte = (seiten, name) => seiten.flat().find((s) => s.name === name);
 
-test('Formblatt: nur Minijobber, Spalte mit Name, Tätigkeit, Tage Mo–Sa, Gesamtstunden; Min/Max bleiben leer', () => {
-  const seiten = formblattSeiten(minijobWoche());
+test('Formblatt: alle Mitarbeiter der Woche (jede Vertragsart) in ihrer Reihenfolge; Name, Tätigkeit, Tage Mo–Sa, Gesamtstunden', () => {
+  const seiten = formblattSeiten(formblattWoche());
   assert.equal(seiten.length, 1);
-  assert.deepEqual(seiten[0].map((s) => s.name), ['Mini, 1', 'Mini, 2']);
-  const [m1, m2] = seiten[0];
+  assert.deepEqual(seiten[0].map((s) => s.name),
+    ['Test, Anna', 'Muster, Ben', 'Beispiel, Cem', 'Probe, Dana', 'Extra, 1', 'Extra, 2']);
+  const m1 = spalte(seiten, 'Extra, 1');
+  const m2 = spalte(seiten, 'Extra, 2');
   assert.equal(m1.taetigkeit, 'Kasse, TroSo');
   assert.ok(!('min' in m1) && !('max' in m1), 'Min/Max füllt die Leitung von Hand');
   assert.equal(m1.tage.length, 6, 'Montag bis Samstag, kein Sonntag');
@@ -465,17 +468,16 @@ test('Formblatt: nur Minijobber, Spalte mit Name, Tätigkeit, Tage Mo–Sa, Gesa
 });
 
 test('Formblatt: mehr als zwei Pausen landen in der zweiten Pausenzeile', () => {
-  const w = minijobWoche(1);
+  const w = formblattWoche(1);
   w.bloecke.push({ id: 950, mitarbeiter_id: 100, datum: TAGE[4], von: '08:00', bis: '08:15', bereich_id: PA, unbesetzt: false },
     { id: 951, mitarbeiter_id: 100, datum: TAGE[4], von: '08:15', bis: '10:00', bereich_id: KA, unbesetzt: false },
     { id: 952, mitarbeiter_id: 100, datum: TAGE[4], von: '10:00', bis: '10:15', bereich_id: PA, unbesetzt: false },
     { id: 953, mitarbeiter_id: 100, datum: TAGE[4], von: '10:15', bis: '11:00', bereich_id: KA, unbesetzt: false },
     { id: 954, mitarbeiter_id: 100, datum: TAGE[4], von: '11:00', bis: '11:15', bereich_id: PA, unbesetzt: false });
-  assert.deepEqual(formblattSeiten(w)[0][0].tage[4].pausen, ['08:00–08:15', '10:00–10:15, 11:00–11:15']);
+  assert.deepEqual(spalte(formblattSeiten(w), 'Extra, 1').tage[4].pausen, ['08:00–08:15', '10:00–10:15, 11:00–11:15']);
 });
 
-test('Formblatt: 8 Spalten je Seite, ohne Minijobber keine Seite', () => {
-  const seiten = formblattSeiten(minijobWoche(9));
-  assert.deepEqual(seiten.map((s) => s.length), [8, 1]);
-  assert.deepEqual(formblattSeiten(woche()), []);
+test('Formblatt: 8 Spalten je Seite, ohne Mitarbeiter keine Seite', () => {
+  assert.deepEqual(formblattSeiten(formblattWoche(9)).map((s) => s.length), [8, 5]);
+  assert.deepEqual(formblattSeiten({ ...woche(), mitarbeiter: [] }), []);
 });
