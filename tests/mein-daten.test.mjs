@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { tagZeilen, arbeitetAn, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText,
-  installArt, istIos } from '../docs/mein-daten.js';
+  installArt, istIos, urlaubZusatz } from '../docs/mein-daten.js';
 
 const tag = (ueberschreibe = {}) => ({
   datum: '2026-11-10', geoeffnet: true, feiertag: null, bloecke: [], kommentar: null, abwesenheit: null, kollegen: [],
@@ -93,4 +93,13 @@ test('App installieren: iPhone und iPad erkennen (iPad meldet sich als Mac mit T
   assert.equal(istIos('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 5), true);
   assert.equal(istIos('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'MacIntel', 0), false);
   assert.equal(istIos('Mozilla/5.0 (Linux; Android 14; SM-S911B)', 'Linux armv8l', 5), false);
+});
+
+test('Urlaub-Zusatz: Rest Vorjahr nur, wenn vorhanden, damit Anspruch + Rest − genehmigt = Resturlaub aufgeht', () => {
+  assert.equal(urlaubZusatz({ anspruch: 160, rest_vorjahr: 20, genehmigt: 140 }),
+    'Anspruch 160 h + Rest Vorjahr 20 h, genehmigt 140 h');
+  assert.equal(urlaubZusatz({ anspruch: 160, rest_vorjahr: 7.5, genehmigt: 0 }),
+    'Anspruch 160 h + Rest Vorjahr 7,5 h, genehmigt 0 h');
+  assert.equal(urlaubZusatz({ anspruch: 160, rest_vorjahr: 0, genehmigt: 40 }), 'Anspruch 160 h, genehmigt 40 h');
+  assert.equal(urlaubZusatz({ anspruch: 160, rest_vorjahr: null, genehmigt: 40 }), 'Anspruch 160 h, genehmigt 40 h');
 });

@@ -5,7 +5,7 @@ import { $, element, meldung, fehlerText } from './hilfe.js';
 import { aufruf, reiter, zeigeAnsicht, abmelden } from './app.js';
 import { heuteDatum } from './zeit.js';
 import { installBereich } from './app-installieren.js';
-import { tagZeilen, arbeitetAn, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText } from './mein-daten.js';
+import { tagZeilen, arbeitetAn, kollegenText, saldoText, stundenKurz, tagKopf, wochenText, geaendertText, urlaubZusatz } from './mein-daten.js';
 
 let konto = null; // Antwort von pep_mein_konto
 let wochen = []; // freigegebene Wochen
@@ -103,8 +103,7 @@ function kachel(titel, wert, zusatz) {
 
 function kacheln(urlaub, zeitkonto) {
   return element('div', { class: 'mein-kacheln' },
-    kachel(`Resturlaub ${urlaub.jahr}`, stundenKurz(urlaub.rest),
-      `Anspruch ${stundenKurz(urlaub.anspruch)}, genehmigt ${stundenKurz(urlaub.genehmigt)}`),
+    kachel(`Resturlaub ${urlaub.jahr}`, stundenKurz(urlaub.rest), urlaubZusatz(urlaub)),
     kachel('Zeitkonto', saldoText(zeitkonto.saldo, zeitkonto.stand)));
 }
 

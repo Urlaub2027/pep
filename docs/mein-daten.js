@@ -48,6 +48,12 @@ export function kollegenText(kollegen) {
 }
 
 // Eine Wochenbuchung trägt das Datum des Montags; „stand“ ist also kein Tag, sondern eine Woche.
+// Zeile unter dem Resturlaub (pep_mein_urlaub): mit Rest Vorjahr, sonst ginge Anspruch − genehmigt = Rest nicht auf.
+export function urlaubZusatz(urlaub) {
+  const rest = Number(urlaub.rest_vorjahr) > 0 ? ` + Rest Vorjahr ${stundenKurz(urlaub.rest_vorjahr)}` : '';
+  return `Anspruch ${stundenKurz(urlaub.anspruch)}${rest}, genehmigt ${stundenKurz(urlaub.genehmigt)}`;
+}
+
 export function saldoText(saldo, stand) {
   if (saldo == null) return 'noch keine Buchung';
   const n = rund(saldo);
