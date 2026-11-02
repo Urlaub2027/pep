@@ -70,8 +70,11 @@ test('Stufe-1-Datenbank mit Planblöcken → neues Schema zweimal: Daten bleiben
   for (const t of Object.keys(vorher)) assert.deepEqual(await lesen(t), vorher[t], t);
   // Plan-Antwort unverändert (pep_einsatzplan_woche läuft jetzt über pep.woche_antwort), bis auf das neue Feld ist_ab:
   // die bestehende Filiale bekommt beim Einspielen den Montag der laufenden Woche als Start der IST-Erfassung.
-  // Ebenso die Schlüssel warengruppen und lieferung (Lieferung & Bedarf) und freigabe, die der alte Stand nicht kennt.
+  // Ebenso die Schlüssel warengruppen und lieferung (Lieferung & Bedarf) und freigabe, die der alte Stand nicht kennt,
+  // und je Mitarbeiter max_stunden_woche (Formblatt Minijob; ohne Wochenvorgabe null).
   const { ist_ab: istAb, warengruppen, lieferung, freigabe, ...wocheNachher } = await planWoche();
+  assert.ok(wocheNachher.mitarbeiter.every((m) => m.max_stunden_woche === null), 'max_stunden_woche ohne Vorgabe null');
+  wocheNachher.mitarbeiter = wocheNachher.mitarbeiter.map(({ max_stunden_woche: _, ...m }) => m);
   assert.deepEqual(wocheNachher, wocheVorher);
   assert.equal(istAb, '2026-11-02');
   // Lieferung & Bedarf: die bestehende Filiale bekommt die Startausstattung (Trockensortiment → Bereich TS, 45 min)

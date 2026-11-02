@@ -121,6 +121,43 @@ export function wochenplanBlatt(woche) {
   };
 }
 
+// Formblatt „PEP: geringfügig Beschäftigte“ (Papierformular der Filiale): nur Vertragsart Minijob, 8 Spalten je Seite.
+// Je Mitarbeiter Tätigkeit (Bereiche der Woche ohne Pause), Min. = Vertragsstunden, Max. = Wochengrenze der Vorgaben,
+// je Tag Mo–Sa: Zeit (wie im Wochenplan, Pausen eingeschlossen), Stunden ohne Pause, Pausen in zwei Zeilen
+// (weitere hängen an der zweiten). Eine Abwesenheit steht als Code in der Zeit, wie bisher von Hand („U“).
+export const FORMBLATT_SPALTEN = 8;
+
+export function formblattSeiten(woche) {
+  const pausen = pauseIds(woche);
+  const reihenfolge = (woche.bereiche ?? []).filter((b) => b.art !== 'pause');
+  const spalten = (woche.mitarbeiter ?? []).filter((m) => m.vertragsart === 'minijob').map((m) => {
+    const eigene = (woche.bloecke ?? []).filter((b) => b.mitarbeiter_id === m.id && !b.unbesetzt);
+    const benutzt = new Set(eigene.map((b) => b.bereich_id));
+    const tage = woche.tage.slice(0, 6).map((t) => {
+      const seg = eigene.filter((b) => b.datum === t.datum);
+      const abw = (woche.abwesenheiten ?? []).find((a) => a.mitarbeiter_id === m.id && a.datum === t.datum);
+      const zeiten = zeitenText(seg);
+      const p = seg.filter((s) => pausen.has(s.bereich_id)).sort(nachBeginn).map((s) => zeitspanne(s.von, s.bis));
+      return {
+        zeit: [abw?.code, zeiten].filter(Boolean).join('\n'),
+        std: zeiten ? rund(tagesStunden(seg, pausen)) : null,
+        pausen: p.length > 2 ? [p[0], p.slice(1).join(', ')] : p,
+      };
+    });
+    return {
+      name: m.name,
+      taetigkeit: reihenfolge.filter((b) => benutzt.has(b.id)).map((b) => b.name).join(', '),
+      min: m.wochenstunden == null ? null : Number(m.wochenstunden),
+      max: m.max_stunden_woche == null ? null : Number(m.max_stunden_woche),
+      tage,
+      gesamt: summe(tage.map((t) => t.std)),
+    };
+  });
+  const seiten = [];
+  for (let i = 0; i < spalten.length; i += FORMBLATT_SPALTEN) seiten.push(spalten.slice(i, i + FORMBLATT_SPALTEN));
+  return seiten;
+}
+
 // Abwesenheitsmonat aus pep_abwesenheiten: je Mitarbeiter und Tag Code, Stunden (bzw. Uhrzeit) und Code-Farbe;
 // Zeilensumme, Tagessummen und Monatssumme. Offene oder abgelehnte Urlaubswünsche gehören nicht in den Ausdruck.
 export function monatZeilen(daten) {

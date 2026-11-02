@@ -452,3 +452,17 @@ test('fremde Filiale: Mitarbeiter → MITARBEITER_NICHT_GEFUNDEN, Bereich → BE
   // Die Wochenliste der anderen Filiale enthält keine Mitarbeiter dieser Filiale
   assert.ok(!(await woche(2026, 46, chef2)).mitarbeiter.some((m) => m.id === a));
 });
+
+test('pep_einsatzplan_woche: max_stunden_woche = kleinste Wochengrenze der in der Woche gültigen Vorgaben, sonst null', async () => {
+  const mit = await ma('Test, Grenze');
+  const ohne = await ma('Test, Ohne');
+  await vorgabe(mit, { art: 'nicht_verfuegbar', max_stunden_woche: 12 });
+  await vorgabe(mit, { art: 'nicht_verfuegbar', wochentag: 6, max_stunden_woche: 9.5 });
+  // endet vor der Woche (KW 46 beginnt Mo 09.11.) bzw. beginnt danach: zählt nicht
+  await vorgabe(mit, { gueltig_von: '2026-10-01', gueltig_bis: '2026-11-08', art: 'nicht_verfuegbar', max_stunden_woche: 5 });
+  await vorgabe(mit, { gueltig_von: '2026-11-16', art: 'nicht_verfuegbar', max_stunden_woche: 4 });
+  await vorgabe(ohne, { art: 'nicht_verfuegbar', max_stunden_tag: 6 });
+  const w = await woche();
+  assert.equal(Number(w.mitarbeiter.find((m) => m.id === mit).max_stunden_woche), 9.5);
+  assert.equal(w.mitarbeiter.find((m) => m.id === ohne).max_stunden_woche, null);
+});

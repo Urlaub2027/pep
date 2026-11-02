@@ -1080,6 +1080,25 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-c-sb-zeit { width: 18mm; }
   .dr-c-sb-abw { width: 24mm; }
   .dr-c-sb-kw { width: 20mm; }
+
+  /* Formblatt Minijob (Papierformular „PEP: geringfügig Beschäftigte“): A4 quer, eine Seite je 8 Mitarbeiter */
+  .fb-titel { margin-bottom: 2mm; font-size: 10pt; font-weight: 700; }
+  .fb-tabelle th, .fb-tabelle td { border: 0.5pt solid #000; font-size: 8pt; white-space: pre-line; }
+  .fb-tabelle tbody th { background: none; font-weight: 700; }
+  .fb-tabelle tr { height: 7.2mm; }
+  .fb-tabelle tr.fb-pause { height: 5.8mm; }
+  .fb-tabelle tr.fb-pause td, .fb-tabelle .fb-pause-label { font-size: 7pt; font-weight: 400; }
+  .fb-tabelle .fb-pause-label { text-align: right; }
+  .fb-tabelle tr.fb-kopf th { font-size: 10pt; }
+  .fb-tabelle tr.fb-spaltenkopf th { font-weight: 400; text-align: center; font-size: 7pt; }
+  .fb-tabelle .fb-name { font-weight: 700; }
+  .fb-tabelle tr.fb-tag th, .fb-tabelle tr.fb-gesamt th { border-top: 1.2pt solid #000; }
+  .fb-tabelle tr.fb-tag td, .fb-tabelle tr.fb-gesamt td { border-top: 1.2pt solid #000; }
+  .fb-tabelle .fb-std { border-right: 1.2pt solid #000; }
+  .fb-c-label { width: 15mm; }
+  .fb-c-std { width: 9mm; }
+  .fb-unterschriften { margin-top: 8mm; }
+  .fb-fuss { margin-top: 2mm; font-size: 6.5pt; color: #444; }
 }
 
 /* Kasten „Lieferung & Bedarf“ (einsatzplan.js) */

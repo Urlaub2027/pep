@@ -1153,6 +1153,21 @@ await szenario('Druck Einsatzplan: Tagesplan, Wochenplan, Tagespläne, Excel', a
   } catch (e) {
     pruefe(false, `xlsx gültig: ${e.message}`);
   }
+  // Formblatt Minijob: Papierformular-Nachbau, nur Minijobber, 8 Spalten (leere auffüllen), Mo–Sa mit je 2 Pausenzeilen
+  await drucken('Formblatt Minijob', '#ansicht-druck .fb-tabelle');
+  const namen = (await texte('#ansicht-druck .fb-name')).filter(Boolean);
+  pruefe(namen.includes('Aushilfe, Nico') && !namen.includes('Test, Anna'), 'Formblatt: nur Minijobber', namen);
+  gleich(await anzahl('#ansicht-druck .fb-name'), 8, 'Formblatt: 8 Spalten');
+  gleich(await anzahl('#ansicht-druck .fb-tag'), 6, 'Formblatt: Montag bis Samstag');
+  gleich(await anzahl('#ansicht-druck .fb-pause'), 12, 'Formblatt: je Tag zwei Pausenzeilen');
+  gleich(await text('#ansicht-druck .fb-kopf th'), 'Woche: 46', 'Formblatt: Woche');
+  gleich(await text('#ansicht-druck .fb-kopf th:nth-child(2)'), 'Filiale: 2558 Aschaffenburg', 'Formblatt: Filiale ohne „Netto“');
+  const pdf3 = await c.sende('Page.printToPDF', { landscape: true, printBackground: true, preferCSSPageSize: true });
+  writeFileSync(`${FOTOS}formblatt-minijob.pdf`, Buffer.from(pdf3.data, 'base64'));
+  // pdfSeiten steht weiter unten (top-level const, hier noch nicht initialisiert): Seiten direkt zählen
+  gleich((Buffer.from(pdf3.data, 'base64').toString('latin1').match(/\/Type\s*\/Page(?!s)/g) ?? []).length, 1,
+    'Formblatt: eine Seite');
+  await druckAufraeumen();
 });
 
 // ---------------------------------------------------------------- Mitarbeiter
