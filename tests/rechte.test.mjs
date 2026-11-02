@@ -64,7 +64,7 @@ const NUR_LESEN = ['pep_ich', 'pep_bereiche', 'pep_mitarbeiter_liste', 'pep_mita
   'pep_feiertage', 'pep_abwesenheiten', 'pep_urlaub_umfragen', 'pep_urlaub_zuordnung', 'pep_einsatzplan_woche',
   'pep_pruefung_zeitraum', 'pep_vorlagen', 'pep_ersatz_kandidaten', 'pep_bedarf_kandidaten', 'pep_eckdaten', 'pep_vorausplanung', 'pep_resturlaub',
   'pep_startseite', 'pep_ist_woche', 'pep_zeitkonto_woche', 'pep_zeitkonto_journal', 'pep_stundenblatt',
-  'pep_sicherung_pruefen', 'pep_datenschutz'];
+  'pep_sicherung_pruefen', 'pep_datenschutz', 'pep_filiale_logo'];
 // Auch für die Stellvertretung erlaubt.
 const AUCH_STELLVERTRETUNG = ['pep_abwesenheit_setzen', 'pep_abwesenheit_loeschen',
   'pep_wiederholung_speichern', 'pep_wiederholung_loeschen',

@@ -493,12 +493,14 @@ Jede Zelle trägt Kürzel **und** Farbe, damit Schwarz-Weiß lesbar bleibt. Fehl
 Farben, im Druckdialog „Hintergrundgrafiken“ einschalten.
 - **Einsatzplan → Drucken:** Wochenplan, Tagesplan des gewählten Tags, Tagespläne der
   ganzen Woche, „Excel (Wochenplan)“ lädt eine .xlsx-Datei herunter.
-  **„Formblatt PEP“** füllt das Papierformular „Personaleinsatzplanung (PEP)“ für die
+  **„PEP Mitarbeiter“** füllt das Papierformular „Personaleinsatzplanung (PEP)“ für die
   angezeigte Woche aus: alle Mitarbeiter der Woche in der Reihenfolge des Einsatzplans,
   8 je Seite, Mo–Sa Zeit und Stunden ohne Pause, die Pausen in den zwei
   Pausenzeilen (weitere in der zweiten), Abwesenheit als Code (z. B. „U“), Gesamtstunden.
   Min./Max. Std. bleiben leer (von Hand). Filiale als „Nummer Name“ ohne vorangestelltes „Netto“. Die Woche wählt man im
-  Einsatzplan; als PDF über „Als PDF speichern“ im Druckdialog. Ohne Mitarbeiter kommt ein
+  Einsatzplan; als PDF über „Als PDF speichern“ im Druckdialog. Das Logo oben rechts lädt die Leitung unter Einstellungen → Filiale &
+  Zeiten → „Logo für PEP Mitarbeiter“ hoch (PNG/JPG, wird verkleinert, liegt nur in der
+  Datenbank, nicht im Repo); ohne Logo bleibt die Ecke leer. Ohne Mitarbeiter kommt ein
   leeres Formular zum Ausfüllen von Hand.
 - **Abwesenheiten → Drucken:** der angezeigte Monat oder „Resturlaub <Jahr>“.
 - **Zeitkonto → Drucken:**

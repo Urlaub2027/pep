@@ -9,6 +9,7 @@ import {
 import { aufruf, ich, reiter, zeigeAnsicht, aktualisiereIch } from './app.js';
 import { zeichneSicherung } from './sicherung.js';
 import { zeichneDatenschutz } from './einstellungen-datenschutz.js';
+import { zeichneLogo } from './einstellungen-logo.js';
 
 const ARTEN_ABWEICHUNG = [
   ['feiertag', 'Feiertag'], ['heiligabend', 'Heiligabend'], ['silvester', 'Silvester'],
@@ -49,12 +50,13 @@ let umfragen = [];
 let zuordnung = [];
 let mitarbeiter = [];
 let datenschutz = null; // Antwort von pep_datenschutz
+let logo = null; // Antwort von pep_filiale_logo (data-URL oder null)
 const boxen = {}; // Abschnittsname → Container
 let zurSicherung = false; // nach dem Laden zum Abschnitt „Sicherung“ springen (Hinweis auf der Startseite)
 
 // Unterreiter: Schlüssel, Beschriftung, Abschnitte (Namen aus ZEICHNER). Der gewählte Teil wird im Browser gemerkt.
 const TEILE = [
-  ['zeiten', 'Filiale & Zeiten', ['rahmen', 'abweichungen', 'schulferien']],
+  ['zeiten', 'Filiale & Zeiten', ['rahmen', 'abweichungen', 'schulferien', 'logo']],
   ['bereiche', 'Bereiche & Codes', ['bereiche', 'codes']],
   ['lieferung', 'Lieferung', ['warengruppen', 'liefermuster']],
   ['regeln', 'Regeln & Zeitkonto', ['parameter', 'ist']],
@@ -81,6 +83,7 @@ const tagIso = (wert) => String(wert).slice(0, 10);
 
 async function ladeDaten() { daten = await aufruf('pep_einstellungen'); }
 async function ladeDatenschutz() { datenschutz = await aufruf('pep_datenschutz'); }
+async function ladeLogo() { logo = await aufruf('pep_filiale_logo'); }
 async function ladeUrlaub() {
   [umfragen, zuordnung, mitarbeiter] = await Promise.all(
     [aufruf('pep_urlaub_umfragen'), aufruf('pep_urlaub_zuordnung'), aufruf('pep_mitarbeiter_liste')]);
@@ -107,7 +110,7 @@ async function zeigen() {
     zeigeTeil();
   }
   try {
-    await Promise.all([ladeDaten(), ladeUrlaub(), ladeDatenschutz(), aufruf('pep_feiertage', { p_jahr: jahr }).then((f) => { feiertage = f; })]);
+    await Promise.all([ladeDaten(), ladeUrlaub(), ladeDatenschutz(), ladeLogo(), aufruf('pep_feiertage', { p_jahr: jahr }).then((f) => { feiertage = f; })]);
   } catch (fehler) {
     if (!fehler.behandelt) meldung(fehlerText(fehler.message));
     return;
@@ -510,6 +513,12 @@ function zeichneBenutzer() {
   boxen.benutzer.replaceChildren(abschnitt('Benutzer', daten.benutzer.map(zeile), formular));
 }
 
+function zeichneLogoAbschnitt() {
+  zeichneLogo(boxen.logo, logo, {
+    darfSchreiben: darfSchreiben(), aufruf, neuLaden: async () => { await ladeLogo(); zeichneLogoAbschnitt(); },
+  });
+}
+
 function zeichneDatenschutzAbschnitt() {
   zeichneDatenschutz(boxen.datenschutz, datenschutz, {
     darfSchreiben: darfSchreiben(), aufruf, neuLaden: async () => { await ladeDatenschutz(); zeichneDatenschutzAbschnitt(); },
@@ -543,7 +552,7 @@ const ZEICHNER = {
   rahmen: zeichneRahmen, abweichungen: zeichneAbweichungen, bereiche: zeichneBereiche, codes: zeichneCodes,
   warengruppen: zeichneWarengruppen, liefermuster: zeichneLiefermuster,
   parameter: zeichneParameter, ist: zeichneIst, schulferien: zeichneSchulferien, urlaub: zeichneUrlaub, benutzer: zeichneBenutzer,
-  datenschutz: zeichneDatenschutzAbschnitt, sicherung: zeichneSicherungAbschnitt,
+  datenschutz: zeichneDatenschutzAbschnitt, sicherung: zeichneSicherungAbschnitt, logo: zeichneLogoAbschnitt,
 };
 
 reiter.einstellungen = { zeigen };

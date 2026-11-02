@@ -73,6 +73,8 @@ export const aufrufe = ({ ma, jo, stellv, wg, vorlage, sicherung }) => ({
   pep_zugang_einladen: `select public.pep_zugang_einladen(${ma})`,
   pep_zugang_sperren: `select public.pep_zugang_sperren(${ma}, true)`,
   pep_datenschutz_speichern: `select public.pep_datenschutz_speichern('Test')`,
+  // Nur Leitung; ohne Rechtecheck hinge danach ein Logo an der Filiale.
+  pep_filiale_logo_speichern: `select public.pep_filiale_logo_speichern('data:image/png;base64,AAAA')`,
 });
 
 // Nur lesende Funktionen (NUR_LESEN in tests/rechte.test.mjs), je ein gültiger Aufruf.
@@ -101,4 +103,5 @@ export const leseAufrufe = ({ ma, sicherung }) => ({
   pep_stundenblatt: `select public.pep_stundenblatt(${ma}, '2026-03-02', '2026-03-08')`,
   pep_sicherung_pruefen: `select public.pep_sicherung_pruefen('${JSON.stringify(sicherung).replaceAll("'", "''")}'::jsonb)`,
   pep_datenschutz: 'select public.pep_datenschutz()',
+  pep_filiale_logo: 'select public.pep_filiale_logo()',
 });

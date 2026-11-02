@@ -293,6 +293,7 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 /* Unterreiter der Einstellungen (über den Abschnitten) */
 .einst-teile { margin-bottom: var(--a3); }
+.einst-logo { display: block; max-height: 80px; max-width: 320px; margin: var(--a1) 0 var(--a2); object-fit: contain; border: 1px solid var(--linie); background: #fff; }
 
 .farbfeld {
   display: inline-block;
@@ -1082,7 +1083,9 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-c-sb-kw { width: 20mm; }
 
   /* Formblatt PEP (Papierformular „Personaleinsatzplanung (PEP)“): A4 quer, eine Seite je 8 Mitarbeiter */
-  .fb-titel { margin-bottom: 2mm; font-size: 10pt; font-weight: 700; }
+  .fb-titelzeile { display: flex; justify-content: space-between; align-items: flex-end; gap: 6mm; margin-bottom: 2mm; }
+  .fb-titel { font-size: 10pt; font-weight: 700; }
+  .fb-logo { max-height: 14mm; max-width: 50mm; object-fit: contain; }
   .fb-tabelle { border: 2px solid #000; }
   .fb-tabelle th, .fb-tabelle td { border: 1px solid #000; font-size: 8pt; white-space: pre-line; }
   .fb-tabelle tbody th { background: none; font-weight: 700; }
