@@ -3290,10 +3290,6 @@ begin
                'personalnummer', m.personalnummer,
                'vertragsart', v.vertragsart,
                'wochenstunden', v.wochenstunden,
-               -- Kleinste Wochengrenze der in dieser Woche gültigen Vorgaben (Formblatt Minijob: „Max. Std.“), sonst null.
-               'max_stunden_woche', (select min(w.max_stunden_woche) from pep.wochenvorgaben w
-                                      where w.mitarbeiter_id = m.id and w.gueltig_von <= v_so
-                                        and (w.gueltig_bis is null or w.gueltig_bis >= v_mo)),
                'kompetenzen', coalesce((select jsonb_agg(k.bereich_id order by k.bereich_id)
                                           from pep.kompetenzen k where k.mitarbeiter_id = m.id), '[]'::jsonb),
                'vp', exists (select 1 from pep.kompetenzen k

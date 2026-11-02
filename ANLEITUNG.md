@@ -497,8 +497,7 @@ Farben, im Druckdialog „Hintergrundgrafiken“ einschalten.
   geringfügig Beschäftigte“ für die angezeigte Woche aus: alle Mitarbeiter mit Vertragsart
   Minijob, 8 je Seite, Mo–Sa Zeit und Stunden ohne Pause, die Pausen in den zwei
   Pausenzeilen (weitere in der zweiten), Abwesenheit als Code (z. B. „U“), Gesamtstunden.
-  Min. Std. = Vertragsstunden, Max. Std. = kleinste Wochengrenze aus den Wochenvorgaben.
-  Filiale als „Nummer Name“ ohne vorangestelltes „Netto“. Die Woche wählt man im
+  Min./Max. Std. bleiben leer (von Hand). Filiale als „Nummer Name“ ohne vorangestelltes „Netto“. Die Woche wählt man im
   Einsatzplan; als PDF über „Als PDF speichern“ im Druckdialog. Ohne Minijobber kommt ein
   leeres Formular zum Ausfüllen von Hand.
 - **Abwesenheiten → Drucken:** der angezeigte Monat oder „Resturlaub <Jahr>“.

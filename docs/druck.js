@@ -344,7 +344,7 @@ function formblatt(woche) {
   const seiten = formblattSeiten(woche);
   // Wie auf dem Papier „1234 Musterstadt“: ohne vorangestelltes „Netto“ aus dem Filialnamen.
   const filiale = [ich?.filiale?.nummer, ich?.filiale?.name?.replace(/^Netto\s+/i, '')].filter(Boolean).join(' ');
-  const leer = { name: '', taetigkeit: '', min: null, max: null, tage: [], gesamt: null };
+  const leer = { name: '', taetigkeit: '', tage: [], gesamt: null };
   const tage = woche.tage.slice(0, 6);
   const paar = (spalten, a, b, klasse = '') => spalten.map((s) => [
     element('td', { class: `fb-zeit ${klasse}`.trim() }, a(s)), element('td', { class: `fb-std zahl ${klasse}`.trim() }, b(s))]);
@@ -371,9 +371,8 @@ function formblatt(woche) {
             spalten.map((s) => element('td', { colspan: 2, class: 'fb-name' }, s.name))),
           element('tr', {}, element('th', { colspan: 2 }, 'Tätigkeit:'),
             spalten.map((s) => element('td', { colspan: 2 }, s.taetigkeit))),
-          element('tr', {}, element('th', {}, 'Min. Std.'), element('th', {}, 'Max. Std.'),
-            spalten.map((s) => [element('td', { class: 'zahl' }, zahl(s.min)), element('td', { class: 'zahl' }, zahl(s.max))])),
-          element('tr', { class: 'fb-spaltenkopf' }, element('th', { colspan: 2 }),
+          // Wie auf dem Papier: links Min./Max. Std. (leer, von Hand), daneben die Spaltenköpfe Zeit/Std.
+          element('tr', { class: 'fb-spaltenkopf' }, element('th', {}, 'Min. Std.'), element('th', {}, 'Max. Std.'),
             spalten.map(() => [element('th', {}, 'Zeit'), element('th', {}, 'Std.')])),
           zeilen,
           element('tr', { class: 'fb-gesamt' }, element('th', { colspan: 2 }, 'Gesamtstunden:'),

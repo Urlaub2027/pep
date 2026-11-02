@@ -429,7 +429,7 @@ function minijobWoche(anzahl = 2) {
   const w = woche();
   const mj = Array.from({ length: anzahl }, (_, i) => ({
     id: 100 + i, name: `Mini, ${i + 1}`, personalnummer: null, vertragsart: 'minijob',
-    wochenstunden: 8, max_stunden_woche: i === 0 ? 12 : null,
+    wochenstunden: 8,
   }));
   const b = (id, mid, datum, von, bis, bereich) => ({ id, mitarbeiter_id: mid, datum, von, bis, bereich_id: bereich, unbesetzt: false });
   return {
@@ -447,15 +447,13 @@ function minijobWoche(anzahl = 2) {
   };
 }
 
-test('Formblatt: nur Minijobber, Spalte mit Name, Tätigkeit, Min/Max, Tage Mo–Sa, Gesamtstunden', () => {
+test('Formblatt: nur Minijobber, Spalte mit Name, Tätigkeit, Tage Mo–Sa, Gesamtstunden; Min/Max bleiben leer', () => {
   const seiten = formblattSeiten(minijobWoche());
   assert.equal(seiten.length, 1);
   assert.deepEqual(seiten[0].map((s) => s.name), ['Mini, 1', 'Mini, 2']);
   const [m1, m2] = seiten[0];
   assert.equal(m1.taetigkeit, 'Kasse, TroSo');
-  assert.equal(m1.min, 8);
-  assert.equal(m1.max, 12);
-  assert.equal(m2.max, null);
+  assert.ok(!('min' in m1) && !('max' in m1), 'Min/Max füllt die Leitung von Hand');
   assert.equal(m1.tage.length, 6, 'Montag bis Samstag, kein Sonntag');
   assert.deepEqual(m1.tage[0], { zeit: '08:00–16:00', std: 7.25, pausen: ['10:00–10:15', '12:00–12:30'] });
   assert.deepEqual(m1.tage[1], { zeit: 'U', std: null, pausen: [] }, 'Abwesenheit als Code wie von Hand');
