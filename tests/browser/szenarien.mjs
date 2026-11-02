@@ -1155,7 +1155,7 @@ await szenario('Druck Einsatzplan: Tagesplan, Wochenplan, Tagespläne, Excel', a
   }
   // Formblatt PEP: Papierformular-Nachbau, alle Mitarbeiter der Woche (wie die Zeilen im Raster), 8 Spalten je Seite
   // (leere auffüllen), Mo–Sa mit je 2 Pausenzeilen, eine Seite je angefangene 8
-  await drucken('Formblatt PEP', '#ansicht-druck .fb-tabelle');
+  await drucken('PEP Mitarbeiter', '#ansicht-druck .fb-tabelle');
   const seitenSoll = Math.ceil(zeilenRaster / 8);
   const namen = (await texte('#ansicht-druck .fb-name')).filter(Boolean);
   gleich(namen.length, zeilenRaster, 'Formblatt: alle Mitarbeiter der Woche');
@@ -1316,6 +1316,49 @@ await szenario('Einstellungen: Rahmen, Bereich, Code, Parameter, Schulferien, Ab
     [{ art: 'heiligabend', geoeffnet: true, ob: '14:00' }], 'DB Abweichung 24.12.');
   const m = await meldungen();
   pruefe(!m.fehler, 'keine Fehlermeldung', m.fehler);
+});
+
+await szenario('Einstellungen: Logo hochladen (verkleinert), Formblatt zeigt es, entfernen', async () => {
+  await reiter('einstellungen');
+  const box = await einstellungsAbschnitt('Logo für PEP Mitarbeiter');
+  gleich(await text(`${box} p:not(.hinweis)`), 'Kein Logo hinterlegt.', 'ohne Logo');
+  // Testbild 1000×500 (kein echtes Logo) per DataTransfer in das Dateifeld, wie eine gewählte Datei
+  await c.werte(async (sel) => {
+    const leinwand = Object.assign(document.createElement('canvas'), { width: 1000, height: 500 });
+    const g = leinwand.getContext('2d');
+    g.fillStyle = '#ffe500'; g.fillRect(0, 0, 1000, 500); g.fillStyle = '#000'; g.fillRect(100, 100, 300, 300);
+    const blob = await new Promise((r) => leinwand.toBlob(r, 'image/png'));
+    const dt = new DataTransfer();
+    dt.items.add(new File([blob], 'logo.png', { type: 'image/png' }));
+    const feld = document.querySelector(`${sel} input[type="file"]`);
+    feld.files = dt.files;
+    feld.dispatchEvent(new Event('change'));
+  }, box);
+  await c.warteAuf((s) => document.querySelector(`${s} img.einst-logo`)?.complete, { text: 'Logo-Vorschau' }, box);
+  gleich((await meldungen()).toast, 'Gespeichert.', 'Toast Logo');
+  const db = (await sql("select length(logo) as n, left(logo, 22) as anfang from pep.filialen"))[0];
+  gleich(db.anfang, 'data:image/png;base64,', 'DB: PNG als data-URL');
+  pruefe(db.n < 400000, 'DB: Logo klein genug', db.n);
+  gleich(await c.werte((s) => { const i = document.querySelector(`${s} img.einst-logo`); return [i.naturalWidth, i.naturalHeight]; }, box),
+    [400, 200], 'verkleinert auf 200 px Höhe');
+  // Formblatt: Logo oben rechts
+  await epTag(MO);
+  await druckStub();
+  await c.klick({ text: 'Drucken', in: '#ansicht-einsatzplan .ep-knoepfe', sel: 'button', genau: true });
+  await warteDialog('Drucken');
+  await dKnopf('PEP Mitarbeiter');
+  await c.warteAuf(() => document.querySelector('#ansicht-druck .fb-logo')?.complete, { text: 'Logo im Formblatt' });
+  await c.warteAuf(() => window.__gedruckt === 1, { text: 'erst nach dem Bild gedruckt' });
+  gleich(await anzahl('#ansicht-druck .fb-logo'), await anzahl('#ansicht-druck .fb-seite'), 'Logo auf jeder Seite');
+  const pdf = await c.sende('Page.printToPDF', { landscape: true, printBackground: true, preferCSSPageSize: true });
+  writeFileSync(`${FOTOS}formblatt-pep-logo.pdf`, Buffer.from(pdf.data, 'base64'));
+  await druckAufraeumen();
+  // Entfernen: danach wieder ohne Logo (auch für die folgenden Szenarien)
+  await reiter('einstellungen');
+  const box2 = await einstellungsAbschnitt('Logo für PEP Mitarbeiter');
+  await c.klick({ text: 'Logo entfernen', in: box2, sel: 'button', genau: true });
+  await c.warteAuf((s) => !document.querySelector(`${s} img.einst-logo`), { text: 'Logo entfernt' }, box2);
+  gleich(await sql('select logo from pep.filialen'), [{ logo: null }], 'DB: Logo entfernt');
 });
 
 // ---------------------------------------------------------------- Zusätzliche Risiken

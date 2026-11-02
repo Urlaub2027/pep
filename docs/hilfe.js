@@ -90,6 +90,7 @@ const FEHLER = {
   STUNDEN_UNGUELTIG: 'Die Stunden sind ungültig.',
   TEILNEHMER_NICHT_GEFUNDEN: 'Diesen Teilnehmer gibt es nicht (mehr).',
   TEXT_LEER: 'Bitte einen Text eingeben.',
+  BILD_UNGUELTIG: 'Das Bild ist ungültig oder zu groß. Bitte eine PNG- oder JPG-Datei wählen.',
   TEXT_ZU_LANG: 'Der Text ist zu lang (höchstens 200 Zeichen).',
   UEBERLAPPUNG: 'Dieser Mitarbeiter ist zu dieser Zeit schon eingeplant.',
   UMFRAGE_NICHT_GEFUNDEN: 'Diese Umfrage gibt es nicht (mehr).',

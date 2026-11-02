@@ -41,6 +41,10 @@ create table if not exists pep.filialen (
   bundesland  text not null,
   angelegt_am timestamptz not null default now()
 );
+-- Logo für das Formblatt PEP (PNG/JPEG als data-URL). Liegt bewusst hier und nicht im öffentlichen Repo; nicht Teil der
+-- Sicherung (die überträgt Name, Nummer, Bundesland).
+alter table pep.filialen add column if not exists logo text
+  check (logo is null or (length(logo) <= 400000 and logo ~ '^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$'));
 
 create table if not exists pep.benutzer (
   user_id     uuid primary key references urlaub.organisatoren (user_id) on delete cascade,
@@ -8167,6 +8171,42 @@ begin
 end;
 $$;
 
+-- Logo der Filiale für das Formblatt PEP: lesen Leitung und Stellvertretung (beide drucken), null ohne Logo.
+create or replace function public.pep_filiale_logo()
+returns text
+language plpgsql stable
+security definer
+set search_path = ''
+as $$
+begin
+  return (select f.logo from pep.filialen f where f.id = (pep.leitung_oder_stellvertretung()).filiale_id);
+end;
+$$;
+
+-- Logo speichern (nur Leitung): PNG/JPEG als data-URL bis 400.000 Zeichen, leer oder null löscht. Das Protokoll hält nur
+-- fest, ob vorher/nachher ein Logo da war, nicht das Bild.
+create or replace function public.pep_filiale_logo_speichern(p_bild text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_b   pep.benutzer := pep.leitung();
+  v_neu text := nullif(btrim(coalesce(p_bild, '')), '');
+  v_alt text;
+begin
+  if v_neu is not null and (length(v_neu) > 400000
+                            or v_neu !~ '^data:image/(png|jpeg);base64,[A-Za-z0-9+/]+={0,2}$') then
+    raise exception 'BILD_UNGUELTIG';
+  end if;
+  select logo into v_alt from pep.filialen where id = v_b.filiale_id for update;
+  update pep.filialen set logo = v_neu where id = v_b.filiale_id;
+  perform pep.protokolliere(v_b.filiale_id, 'logo', 'filialen', v_b.filiale_id::text,
+    jsonb_build_object('logo', v_alt is not null), jsonb_build_object('logo', v_neu is not null));
+end;
+$$;
+
 -- Ruft die Seite nach der Anmeldung auf: null, wenn das Konto kein Mitarbeiter-Konto ist (dann gilt pep_ich); sonst
 -- Name, Filiale und ob die Datenschutzbestätigung fehlt. Gesperrt oder nicht mehr beschäftigt → KEIN_ZUGRIFF.
 create or replace function public.pep_mein_konto()
@@ -8602,6 +8642,8 @@ revoke all on function public.pep_zugang_einladen(bigint) from public, anon, aut
 revoke all on function public.pep_zugang_sperren(bigint, boolean) from public, anon, authenticated;
 revoke all on function public.pep_datenschutz() from public, anon, authenticated;
 revoke all on function public.pep_datenschutz_speichern(text) from public, anon, authenticated;
+revoke all on function public.pep_filiale_logo() from public, anon, authenticated;
+revoke all on function public.pep_filiale_logo_speichern(text) from public, anon, authenticated;
 revoke all on function public.pep_mein_konto() from public, anon, authenticated;
 revoke all on function public.pep_mein_zustimmen(int) from public, anon, authenticated;
 revoke all on function public.pep_mein_wochen() from public, anon, authenticated;
@@ -8613,6 +8655,8 @@ grant execute on function public.pep_zugang_einladen(bigint) to authenticated;
 grant execute on function public.pep_zugang_sperren(bigint, boolean) to authenticated;
 grant execute on function public.pep_datenschutz() to authenticated;
 grant execute on function public.pep_datenschutz_speichern(text) to authenticated;
+grant execute on function public.pep_filiale_logo() to authenticated;
+grant execute on function public.pep_filiale_logo_speichern(text) to authenticated;
 grant execute on function public.pep_mein_konto() to authenticated;
 grant execute on function public.pep_mein_zustimmen(int) to authenticated;
 grant execute on function public.pep_mein_wochen() to authenticated;

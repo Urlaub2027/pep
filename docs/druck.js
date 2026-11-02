@@ -339,7 +339,7 @@ function stundenblatt(daten) {
 
 // Nachbau des Papierformulars „Personaleinsatzplanung (PEP)“: Spalten je Mitarbeiter (Zeit/Std.), Zeilen Mo–Sa mit je
 // zwei Pausenzeilen, Gesamtstunden, Unterschriften ML/VL. Ohne Mitarbeiter eine leere Seite zum Ausfüllen von Hand. Filiale als „<Nummer> <Name>“ aus den Filialdaten.
-function formblatt(woche) {
+function formblatt(woche, logo = null) {
   const seiten = formblattSeiten(woche);
   // Wie auf dem Papier „1234 Musterstadt“: ohne vorangestelltes „Netto“ aus dem Filialnamen.
   const filiale = [ich?.filiale?.nummer, ich?.filiale?.name?.replace(/^Netto\s+/i, '')].filter(Boolean).join(' ');
@@ -359,7 +359,10 @@ function formblatt(woche) {
         paar(spalten, (s) => s.tage[i]?.pausen[p] ?? '', () => ''))));
     });
     return element('div', { class: 'dr-seite fb-seite' },
-      element('div', { class: 'fb-titel' }, 'Personaleinsatzplanung (PEP) (Aufbewahrungsfrist: 2 Jahre)'),
+      // Logo oben rechts wie auf dem Papier; es liegt in der Datenbank (Einstellungen → Filiale & Zeiten), nicht im Repo.
+      element('div', { class: 'fb-titelzeile' },
+        element('div', { class: 'fb-titel' }, 'Personaleinsatzplanung (PEP) (Aufbewahrungsfrist: 2 Jahre)'),
+        logo ? element('img', { class: 'fb-logo', src: logo, alt: 'Logo' }) : null),
       element('table', { class: 'dr-tabelle fb-tabelle' },
         element('colgroup', {}, element('col', { class: 'fb-c-label' }), element('col', { class: 'fb-c-label' }),
           spalten.map(() => [element('col', {}), element('col', { class: 'fb-c-std' })])),
@@ -391,7 +394,7 @@ const BAUER = {
   tag: ({ woche, datum }) => [tagesplan(woche, datum)],
   tage: ({ woche }) => woche.tage.filter((t) => t.geoeffnet).map((t) => tagesplan(woche, t.datum)),
   woche: ({ woche }) => [wochenplan(woche)],
-  formblatt: ({ woche }) => formblatt(woche),
+  formblatt: ({ woche, logo }) => formblatt(woche, logo),
   monat: (daten) => [abwesenheitsMonat(daten)],
   resturlaub: (daten) => [resturlaub(daten)],
   wochenist: (daten) => [wochenIst(daten)],
@@ -418,7 +421,10 @@ function raeumeAuf() {
 export function drucke(art, daten) {
   baueDruck(art, daten);
   window.addEventListener('afterprint', raeumeAuf, { once: true });
-  window.print();
+  // Bilder (Logo im Formblatt) erst fertig dekodieren, sonst fehlen sie im Druck; ohne Bild wie bisher sofort.
+  const bilder = [...$('ansicht-druck').querySelectorAll('img')];
+  if (!bilder.length) { window.print(); return; }
+  Promise.all(bilder.map((b) => b.decode().catch(() => {}))).then(() => window.print());
 }
 
 // Lädt Blätter als Excel-Datei herunter (Blob und a.download wie Urlaubsvertretung/docs/admin-hilfe.js).
@@ -450,6 +456,7 @@ export function druckAuswahlPlan(kontext) {
   const { woche, datum } = kontext;
   if (!woche) return;
   const tag = woche.tage.find((t) => t.datum === datum);
+  let logo = null;
   dialog(`Drucken – KW ${woche.kw}`, [
     element('p', { class: 'hinweis' }, 'Der Ausdruck ist A4 quer. Im Druckdialog „Hintergrundgrafiken“ einschalten, '
       + 'falls die Bereichsfarben fehlen; die Kürzel sind auch ohne Farbe lesbar.'),
@@ -457,7 +464,9 @@ export function druckAuswahlPlan(kontext) {
     { text: 'Wochenplan', aktion: () => {}, danach: () => drucke('woche', { woche }) },
     ...(tag?.geoeffnet ? [{ text: `Tagesplan ${tagKurz(datum)}`, sekundaer: true, aktion: () => {}, danach: () => drucke('tag', { woche, datum }) }] : []),
     { text: 'Tagespläne der Woche', sekundaer: true, aktion: () => {}, danach: () => drucke('tage', { woche }) },
-    { text: 'Formblatt PEP', sekundaer: true, aktion: () => {}, danach: () => drucke('formblatt', { woche }) },
+    // Das Logo wird erst beim Klick geladen (kann einige 100 KB groß sein); Fehler erscheinen im Dialog.
+    { text: 'PEP Mitarbeiter', sekundaer: true, aktion: async () => { logo = await aufruf('pep_filiale_logo'); },
+      danach: () => drucke('formblatt', { woche, logo }) },
     { text: 'Excel (Wochenplan)', sekundaer: true, aktion: () => exportiereWochenplan(woche) },
   ]);
 }
