@@ -1251,6 +1251,33 @@ await szenario('Mitarbeiter: Reihenfolge ▲/▼, Stammdaten, Kompetenz, Vertrag
 
 // ---------------------------------------------------------------- Einstellungen
 
+await szenario('Mitarbeiter: Urlaubsjahr in Tagen, Stunden daneben, gespeichert in Stunden', async () => {
+  await reiter('mitarbeiter');
+  await c.klick({ text: 'Muster, Ben', in: '#ma-liste', sel: '.ma-eintrag' });
+  await ruhe();
+  const ben = (await sql("select id from pep.mitarbeiter where name = 'Muster, Ben'"))[0].id;
+  const box = await kartenBox('Urlaubsjahre');
+  const form = `${box} form:first-of-type`;
+  // Testdaten: 37,5 h, Anspruch 225 h → 36 Tage zu 6,25 h (Teiler 6)
+  gleich(await c.werte((f) => document.querySelector(`${f} .ma-urlaub-anspruch`).value, form), '36', 'Anspruch in Tagen');
+  gleich(await text(`${form} .ma-urlaub-stunden`), '= 225,00 h Anspruch + 0,00 h Rest (6,25 h je Tag)', 'Stunden daneben');
+  pruefe((await text(form)).includes('Anspruch (Tage)'), 'Beschriftung in Tagen');
+  await c.setzeWert(`${form} .ma-urlaub-rest`, '2');
+  gleich(await text(`${form} .ma-urlaub-stunden`), '= 225,00 h Anspruch + 12,50 h Rest (6,25 h je Tag)', 'Stunden rechnen live mit');
+  await c.werte((f) => document.querySelector(f).scrollIntoView({ block: 'center' }), form);
+  await c.foto(`${FOTOS}mitarbeiter-urlaubsjahr-tage.png`);
+  await c.klick({ text: 'Speichern', in: form, sel: 'button', genau: true });
+  await ruhe();
+  gleich(await sql('select anspruch_stunden::float as a, rest_vorjahr_stunden::float as r from pep.urlaubsjahre where mitarbeiter_id = $1 and jahr = 2026', [ben]),
+    [{ a: 225, r: 12.5 }], 'DB: in Stunden gespeichert, Anspruch unverändert');
+  // zurück auf 0, damit spätere Szenarien (Resturlaub) dieselben Zahlen sehen
+  const box2 = await kartenBox('Urlaubsjahre');
+  await c.setzeWert(`${box2} form:first-of-type .ma-urlaub-rest`, '0');
+  await c.klick({ text: 'Speichern', in: `${box2} form:first-of-type`, sel: 'button', genau: true });
+  await ruhe();
+  gleich(await sql('select rest_vorjahr_stunden::float as r from pep.urlaubsjahre where mitarbeiter_id = $1 and jahr = 2026', [ben]), [{ r: 0 }], 'DB: Rest wieder 0');
+});
+
 await szenario('Einstellungen: Rahmen, Bereich, Code, Parameter, Schulferien, Abweichung', async () => {
   await reiter('einstellungen');
   const boxSel = einstellungsAbschnitt; // wechselt in den passenden Unterreiter
