@@ -11,7 +11,7 @@ import { plusTage, heuteDatum } from './zeit.js';
 import { tagKurz } from './plan-raster.js';
 import {
   tagesplanZeilen, wochenplanZeilen, monatZeilen, resturlaubZeilen, wochenplanBlatt,
-  wochenIstZeilen, stundenblattSeiten, journalTabelle,
+  wochenIstZeilen, stundenblattSeiten, journalTabelle, formblattSeiten, FORMBLATT_SPALTEN,
 } from './druck-daten.js';
 import { vorzeichen } from './zeitkonto-daten.js';
 
@@ -335,12 +335,63 @@ function stundenblatt(daten) {
   });
 }
 
+// ---------------------------------------------------------------- Formblatt PEP
+
+// Nachbau des Papierformulars „Personaleinsatzplanung (PEP)“: Spalten je Mitarbeiter (Zeit/Std.), Zeilen Mo–Sa mit je
+// zwei Pausenzeilen, Gesamtstunden, Unterschriften ML/VL. Ohne Mitarbeiter eine leere Seite zum Ausfüllen von Hand. Filiale als „<Nummer> <Name>“ aus den Filialdaten.
+function formblatt(woche) {
+  const seiten = formblattSeiten(woche);
+  // Wie auf dem Papier „1234 Musterstadt“: ohne vorangestelltes „Netto“ aus dem Filialnamen.
+  const filiale = [ich?.filiale?.nummer, ich?.filiale?.name?.replace(/^Netto\s+/i, '')].filter(Boolean).join(' ');
+  const leer = { name: '', taetigkeit: '', tage: [], gesamt: null };
+  const tage = woche.tage.slice(0, 6);
+  const paar = (spalten, a, b, klasse = '') => spalten.map((s) => [
+    element('td', { class: `fb-zeit ${klasse}`.trim() }, a(s)), element('td', { class: `fb-std zahl ${klasse}`.trim() }, b(s))]);
+  const seite = (liste) => {
+    const spalten = [...liste, ...Array(FORMBLATT_SPALTEN - liste.length).fill(leer)];
+    const zeilen = [];
+    tage.forEach((t, i) => {
+      zeilen.push(element('tr', { class: 'fb-tag' },
+        element('th', { colspan: 2 }, WOCHENTAG_LANG[t.wochentag - 1]),
+        paar(spalten, (s) => s.tage[i]?.zeit ?? '', (s) => zahl(s.tage[i]?.std))));
+      [0, 1].forEach((p) => zeilen.push(element('tr', { class: 'fb-pause' },
+        element('th', {}), element('th', { class: 'fb-pause-label' }, 'Pause'),
+        paar(spalten, (s) => s.tage[i]?.pausen[p] ?? '', () => ''))));
+    });
+    return element('div', { class: 'dr-seite fb-seite' },
+      element('div', { class: 'fb-titel' }, 'Personaleinsatzplanung (PEP) (Aufbewahrungsfrist: 2 Jahre)'),
+      element('table', { class: 'dr-tabelle fb-tabelle' },
+        element('colgroup', {}, element('col', { class: 'fb-c-label' }), element('col', { class: 'fb-c-label' }),
+          spalten.map(() => [element('col', {}), element('col', { class: 'fb-c-std' })])),
+        element('tbody', {},
+          element('tr', { class: 'fb-kopf' }, element('th', { colspan: 2 }, `Woche: ${woche.kw}`),
+            element('th', { colspan: FORMBLATT_SPALTEN * 2 }, `Filiale: ${filiale}`)),
+          element('tr', {}, element('th', { colspan: 2 }, 'Name:'),
+            spalten.map((s) => element('td', { colspan: 2, class: 'fb-name' }, s.name))),
+          element('tr', {}, element('th', { colspan: 2 }, 'Tätigkeit:'),
+            spalten.map((s) => element('td', { colspan: 2 }, s.taetigkeit))),
+          // Wie auf dem Papier: links Min./Max. Std. (leer, von Hand), daneben die Spaltenköpfe Zeit/Std.
+          element('tr', { class: 'fb-spaltenkopf' }, element('th', {}, 'Min. Std.'), element('th', {}, 'Max. Std.'),
+            spalten.map(() => [element('th', {}, 'Zeit'), element('th', {}, 'Std.')])),
+          zeilen,
+          element('tr', { class: 'fb-gesamt' }, element('th', { colspan: 2 }, 'Gesamtstunden:'),
+            paar(spalten, () => '', (s) => (s.name ? zahl(s.gesamt) : ''))))),
+      element('div', { class: 'dr-unterschriften fb-unterschriften' },
+        element('div', { class: 'dr-unterschrift' }, 'Unterschrift ML'),
+        element('div', { class: 'dr-unterschrift' }, 'Unterschrift VL')),
+      element('p', { class: 'dr-fuss fb-fuss' }, `KW ${woche.kw}/${woche.jahr}: ${datumDE(woche.montag)} – `
+        + `${datumDE(plusTage(woche.montag, 5))} · aus der PEP erstellt am ${erstelltAm()}`));
+  };
+  return seiten.length ? seiten.map(seite) : [seite([])];
+}
+
 // ---------------------------------------------------------------- Ablauf
 
 const BAUER = {
   tag: ({ woche, datum }) => [tagesplan(woche, datum)],
   tage: ({ woche }) => woche.tage.filter((t) => t.geoeffnet).map((t) => tagesplan(woche, t.datum)),
   woche: ({ woche }) => [wochenplan(woche)],
+  formblatt: ({ woche }) => formblatt(woche),
   monat: (daten) => [abwesenheitsMonat(daten)],
   resturlaub: (daten) => [resturlaub(daten)],
   wochenist: (daten) => [wochenIst(daten)],
@@ -406,6 +457,7 @@ export function druckAuswahlPlan(kontext) {
     { text: 'Wochenplan', aktion: () => {}, danach: () => drucke('woche', { woche }) },
     ...(tag?.geoeffnet ? [{ text: `Tagesplan ${tagKurz(datum)}`, sekundaer: true, aktion: () => {}, danach: () => drucke('tag', { woche, datum }) }] : []),
     { text: 'Tagespläne der Woche', sekundaer: true, aktion: () => {}, danach: () => drucke('tage', { woche }) },
+    { text: 'Formblatt PEP', sekundaer: true, aktion: () => {}, danach: () => drucke('formblatt', { woche }) },
     { text: 'Excel (Wochenplan)', sekundaer: true, aktion: () => exportiereWochenplan(woche) },
   ]);
 }

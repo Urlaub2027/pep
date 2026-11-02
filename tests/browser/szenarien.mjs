@@ -1153,6 +1153,26 @@ await szenario('Druck Einsatzplan: Tagesplan, Wochenplan, Tagespläne, Excel', a
   } catch (e) {
     pruefe(false, `xlsx gültig: ${e.message}`);
   }
+  // Formblatt PEP: Papierformular-Nachbau, alle Mitarbeiter der Woche (wie die Zeilen im Raster), 8 Spalten je Seite
+  // (leere auffüllen), Mo–Sa mit je 2 Pausenzeilen, eine Seite je angefangene 8
+  await drucken('Formblatt PEP', '#ansicht-druck .fb-tabelle');
+  const seitenSoll = Math.ceil(zeilenRaster / 8);
+  const namen = (await texte('#ansicht-druck .fb-name')).filter(Boolean);
+  gleich(namen.length, zeilenRaster, 'Formblatt: alle Mitarbeiter der Woche');
+  pruefe(namen.includes('Aushilfe, Nico') && namen.includes('Test, Anna'), 'Formblatt: jede Vertragsart', namen);
+  gleich(await anzahl('#ansicht-druck .fb-seite'), seitenSoll, 'Formblatt: Seite je angefangene 8');
+  gleich(await anzahl('#ansicht-druck .fb-name'), seitenSoll * 8, 'Formblatt: 8 Spalten je Seite');
+  gleich(await anzahl('#ansicht-druck .fb-tag'), seitenSoll * 6, 'Formblatt: Montag bis Samstag');
+  gleich(await anzahl('#ansicht-druck .fb-pause'), seitenSoll * 12, 'Formblatt: je Tag zwei Pausenzeilen');
+  gleich(await text('#ansicht-druck .fb-titel'), 'Personaleinsatzplanung (PEP) (Aufbewahrungsfrist: 2 Jahre)', 'Formblatt: Titel');
+  gleich(await text('#ansicht-druck .fb-kopf th'), 'Woche: 46', 'Formblatt: Woche');
+  gleich(await text('#ansicht-druck .fb-kopf th:nth-child(2)'), 'Filiale: 2558 Aschaffenburg', 'Formblatt: Filiale ohne „Netto“');
+  const pdf3 = await c.sende('Page.printToPDF', { landscape: true, printBackground: true, preferCSSPageSize: true });
+  writeFileSync(`${FOTOS}formblatt-pep.pdf`, Buffer.from(pdf3.data, 'base64'));
+  // pdfSeiten steht weiter unten (top-level const, hier noch nicht initialisiert): Seiten direkt zählen
+  gleich((Buffer.from(pdf3.data, 'base64').toString('latin1').match(/\/Type\s*\/Page(?!s)/g) ?? []).length, seitenSoll,
+    'Formblatt: keine Seite läuft über');
+  await druckAufraeumen();
 });
 
 // ---------------------------------------------------------------- Mitarbeiter
