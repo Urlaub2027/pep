@@ -81,6 +81,9 @@ ANLEITUNG.md, Abschnitt „Urlaubstool“.
 **erst das Schema, dann mergen**, dann in der Seite Strg+F5. Das Schema ersetzt an
 `pep.plan_bloecke` und `pep.ist_bloecke` die Prüfung „nur :00/:30“ durch „:00, :15, :30, :45“
 (benannt `…_viertelstunde`) und rechnet Regelprüfung, Abdeckung und Sperren je Viertelstunde.
+Das Raster der Seite bleibt halbstündig (angeschnittene Halbstunde halb gefüllt); die
+Viertelstunde kommt über „Zeit eingeben“ (Beginn/Ende 15 min früher/später). Diese
+Oberfläche braucht keine weitere Schema-Änderung.
 Die alte Seite läuft mit dem neuen Schema weiter (ihre Striche liegen auf halben Stunden); die
 neue Seite mit dem alten Schema meldet bei :15/:45 „Uhrzeiten nur in halben Stunden“.
 Öffnungszeiten, Rahmen, Abwesenheiten mit Uhrzeit, Zeitvorgaben, LKW-Zeit und die

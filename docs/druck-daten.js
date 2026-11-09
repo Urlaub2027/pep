@@ -3,7 +3,7 @@
 // mit pep_zeitkonto_woche (Wocheneinsatz-IST), pep_stundenblatt und pep_zeitkonto_journal (Excel).
 // Stunden folgen F2/F4: unbesetzte Abschnitte und Pausen zählen nicht; Soll und Differenz wie die Seitenleiste
 // des Einsatzplans (wochenSummen aus plan-raster.js).
-import { minuten, viertelstunden, zeitspanne, stundenText, plusTage } from './zeit.js';
+import { minuten, halbstunden, zeitspanne, stundenText, plusTage } from './zeit.js';
 import { zellen as rasterZellen, tagesStunden, wochenSummen, tagKurz } from './plan-raster.js';
 import { stundenAnzeige } from './kalender.js';
 import { WOCHENTAGE } from './hilfe.js';
@@ -73,11 +73,11 @@ export function wochenplanZeilen(woche) {
   });
 }
 
-// Tagesplan: nur Mitarbeiter mit Blöcken (auch unbesetzten, die im Raster markiert sind); je Viertelstunde der
+// Tagesplan: nur Mitarbeiter mit Blöcken (auch unbesetzten, die im Raster markiert sind); je Halbstunde der
 // Rahmenzeit Kürzel und Bereichsfarbe. Abwesende (ganz oder teilweise) stehen gesondert mit Code.
 export function tagesplanZeilen(woche, datum) {
   const tag = (woche.tage ?? []).find((t) => t.datum === datum);
-  const spalten = tag?.geoeffnet ? viertelstunden(tag.rahmen_von, tag.rahmen_bis) : [];
+  const spalten = tag?.geoeffnet ? halbstunden(tag.rahmen_von, tag.rahmen_bis) : [];
   const pausen = pauseIds(woche);
   const bereiche = new Map((woche.bereiche ?? []).map((b) => [b.id, b]));
   const zeilen = [];
@@ -94,6 +94,10 @@ export function tagesplanZeilen(woche, datum) {
           kuerzel: bereiche.get(z.bereich_id)?.kuerzel ?? '?',
           farbe: bereiche.get(z.bereich_id)?.farbe ?? null,
           unbesetzt: z.unbesetzt,
+          // Viertelstunde angeschnitten (15-Minuten-Takt): halbe Zelle, ggf. mit zweitem Bereich
+          ...(z.teil ? { teil: z.teil } : {}),
+          ...(z.zweite ? { zweite: { kuerzel: bereiche.get(z.zweite.bereich_id)?.kuerzel ?? '?',
+            farbe: z.zweite.unbesetzt ? null : bereiche.get(z.zweite.bereich_id)?.farbe ?? null } } : {}),
         } : null)),
       });
     }

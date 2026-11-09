@@ -25,3 +25,12 @@ Festgehalten aus dem Gespräch mit dtn, ergänzend zu PEP_HANDOFF.md.
   Zeitvorgaben, LKW-Zeit und Einstellungs-Uhrzeiten bleiben bei halben Stunden (jede
   halbe Stunde ist auch eine Viertelstunde). „VP gebunden“ gilt weiter ab mehr als
   30 min am Stück, also jetzt schon ab 45 min (vorher erst ab 60 min).
+- **Nachtrag 09.11.2026: Raster wieder halbstündig, Viertelstunde per Klick (wie bei
+  Tegut).** Das Viertelstunden-Raster war auf dem Tablet zu fummelig (Zellen zu klein).
+  Jetzt: Raster in halben Stunden mit den alten Zellbreiten, angeschnittene Halbstunde
+  halb gefüllt; im Fenster „Zeit eingeben“ Beginn/Ende 15 min früher/später (auch im
+  IST). Die Begründung oben („ein Strich hätte den Beginn still verschoben“) war falsch:
+  Ein Strich ändert nur sein eigenes von/bis (`pep_plan_malen`), ein 7:45-Beginn
+  außerhalb bleibt. Die Abdeckungszeilen rechnen je Viertelstunde und zeigen je halbe
+  Stunde die schlechtere Viertelstunde, damit sie zur Regelprüfung passen. Schema
+  unverändert.

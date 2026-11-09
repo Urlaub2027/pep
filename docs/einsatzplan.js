@@ -1,4 +1,4 @@
-// Reiter „Einsatzplan“: Tagesraster in Viertelstunden, Malen per Ziehen (Pointer-Events), Rückgängig,
+// Reiter „Einsatzplan“: Tagesraster in halben Stunden, Malen per Ziehen (Pointer-Events), Rückgängig,
 // Abdeckung Kasse/VP, Seitenleiste mit Regelprüfung, Wochenstunden und Lieferung & Bedarf.
 // Blöcke kommen als Abschnitte (F2): dieselbe id kann mehrfach vorkommen, je Abschnitt eigenes `unbesetzt`.
 // Modus „IST“ (G8, ?modus=ist): dieselbe Mal-, Warteschlangen- und Rückgängig-Logik mit pep_ist_* statt pep_plan_*;
@@ -6,10 +6,10 @@
 import { $, meldung, fehlerText, element, datumDE, WOCHENTAGE, textfarbe, feld, auswahlfeld } from './hilfe.js';
 import { dialog } from './dialog.js';
 import { aufruf, ich, reiter, zeigeAnsicht } from './app.js';
-import { minuten, uhrzeit, viertelstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum, montagDerKw } from './zeit.js';
+import { minuten, uhrzeit, halbstunden, plusTage, isoWoche, kwVorZurueck, zeitspanne, heuteDatum, montagDerKw } from './zeit.js';
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden, rueckgaengigStapel, rund, kurz,
-  lieferBedarf, vorschlagBlock, bisZeiten, pauseZeiten, eingabeStriche, eingabeText, zeitAnzeige, tagKurz,
+  lieferBedarf, vorschlagBlock, bisZeiten, pauseZeiten, eingabeStriche, eingabeText, zeitAnzeige, tagKurz, vonZeiten, viertelStrich,
 } from './plan-raster.js';
 import { oeffneLieferung } from './einstellungen.js';
 import { freigabeZeile } from './plan-freigabe.js';
@@ -34,7 +34,7 @@ aktionen.bedarf = (bereichId) => bedarfDialog(planKontext(), bereichId);
 const VERTRAG_KURZ = { vollzeit: 'VZ', teilzeit: 'TZ', minijob: 'MJ', azubi: 'AZ', fuehrung: 'F' };
 const VERGANGEN_TEXT = 'Vergangene Tage sind schreibgeschützt. Die tatsächlichen Zeiten stehen im Modus „IST“.';
 const PINSEL_SCHLUESSEL = 'pep-einsatzplan-pinsel';
-const MIN_ZELLE_PX = 14; // Viertelstunde (28 px je halbe Stunde, früher 24); reicht die Breite nicht, scrollt nur der Raster-Container
+const MIN_ZELLE_PX = 24; // halbe Stunde; reicht die Breite nicht, scrollt nur der Raster-Container
 const FESTE_SPALTEN_PX = 168 + 52 + 170; // Name, Stunden, Kommentar (wie die col-Breiten in style.css)
 
 // Adresse: ?tag=JJJJ-MM-TT oder ?jahr=&kw= wählen die Woche, ?heute= ersetzt das heutige Datum (Vorschau).
@@ -78,7 +78,7 @@ const darfMalen = () => (istAnsicht() ? darfZeichnen() && tag()?.ist_erlaubt && 
   : darfZeichnen() && tag()?.geoeffnet && !tag().vergangen);
 const amTag = (liste) => (liste ?? []).filter((b) => b.datum === datum);
 const spalten = () => (istAnsicht() ? istSpalten(tag(), [...amTag(woche.bloecke), ...amTag(woche.plan_bloecke)], erweitert)
-  : tag()?.geoeffnet ? viertelstunden(tag().rahmen_von, tag().rahmen_bis) : []);
+  : tag()?.geoeffnet ? halbstunden(tag().rahmen_von, tag().rahmen_bis) : []);
 const bereichVon = (id) => woche.bereiche.find((b) => b.id === id);
 const pauseIds = () => new Set(woche.bereiche.filter((b) => b.art === 'pause').map((b) => b.id));
 const segmenteVon = (mid, d = datum) => woche.bloecke.filter((b) => b.mitarbeiter_id === mid && b.datum === d);
@@ -260,7 +260,7 @@ function pinselLeiste() {
   }, ...inhalt);
   return element('div', { class: 'chip-gruppe ep-pinsel', role: 'group', 'aria-label': 'Pinsel' },
     bereiche.map((b) => chip(String(b.id), b.name, farbfeld(b.farbe), b.kuerzel)),
-    chip('radieren', 'Radieren: gezogene Viertelstunden leeren', farbfeld(null, 'leer'), 'Radieren'));
+    chip('radieren', 'Radieren: gezogene halbe Stunden leeren', farbfeld(null, 'leer'), 'Radieren'));
 }
 
 function aktionsKnopf(name, text) {
@@ -411,8 +411,8 @@ function zeile(m, sp, oeffnung) {
   const stunden = tagesStunden(segmente, pauseIds());
   const ganztagsAbwesend = a?.sperrt && !a.von && !segmente.length;
   const stdText = segmente.length ? kurz(stunden) : '–';
-  // Plan: Klick auf die Stunden öffnet „Zeit eingeben“ (von/bis statt ziehen), wo auch gemalt werden darf.
-  tr.append(namensZelle(m), element('td', { class: 'ep-std zahl' }, darfMalen() && !istAnsicht() && !ganztagsAbwesend
+  // Klick auf die Stunden öffnet „Zeit eingeben“ (von/bis statt ziehen, ±15 min), wo auch gemalt werden darf; auch im IST.
+  tr.append(namensZelle(m), element('td', { class: 'ep-std zahl' }, darfMalen() && !ganztagsAbwesend
     ? element('button', { type: 'button', class: 'ep-std-knopf', title: `Zeit eingeben: ${m.name}`, onclick: () => zeitEingeben(m) }, stdText)
     : stdText));
   if (ganztagsAbwesend) {
@@ -443,7 +443,15 @@ function zeile(m, sp, oeffnung) {
       const beginn = !vorher || vorher.block_id !== z.block_id || vorher.unbesetzt !== z.unbesetzt;
       td.classList.add('belegt');
       if (z.unbesetzt) td.classList.add('unbesetzt');
-      else if (b?.farbe) { td.style.backgroundColor = b.farbe; td.style.color = textfarbe(b.farbe); }
+      else if (z.teil || z.zweite) {
+        // Viertelstunde angeschnitten: halbe Zelle in der Bereichsfarbe, die andere Hälfte leer oder der zweite Bereich
+        const zweite = z.zweite && !z.zweite.unbesetzt ? bereichVon(z.zweite.bereich_id)?.farbe ?? 'transparent' : 'transparent';
+        const eigene = b?.farbe ?? 'transparent';
+        const [links, rechts] = z.teil === 'hinten' ? ['transparent', eigene] : [eigene, z.zweite ? zweite : 'transparent'];
+        td.style.backgroundImage = `linear-gradient(to right, ${links} 50%, ${rechts} 50%)`;
+        td.classList.add('ep-halb');
+        if (b?.farbe) td.style.color = textfarbe(b.farbe);
+      } else if (b?.farbe) { td.style.backgroundColor = b.farbe; td.style.color = textfarbe(b.farbe); }
       if (beginn) {
         td.classList.add('ep-start');
         td.append(element('span', { class: 'ep-kz' }, b?.kuerzel ?? '?'));
@@ -452,7 +460,11 @@ function zeile(m, sp, oeffnung) {
         }
       }
       const block = segmente.find((x) => x.id === z.block_id);
-      titel.push(b ? `${b.kuerzel} ${b.name}${block ? ` ${zeitspanne(block.von.slice(0, 5), block.bis.slice(0, 5))}` : ''}` : '', z.unbesetzt ? `unbesetzt (${a?.code ?? 'abwesend'})` : '',
+      const zweiterBlock = z.zweite ? segmente.find((x) => x.id === z.zweite.block_id) : null;
+      const zb = z.zweite ? bereichVon(z.zweite.bereich_id) : null;
+      titel.push(b ? `${b.kuerzel} ${b.name}${block ? ` ${zeitspanne(block.von.slice(0, 5), block.bis.slice(0, 5))}` : ''}` : '',
+        zb ? `${zb.kuerzel} ${zb.name}${zweiterBlock ? ` ${zeitspanne(zweiterBlock.von.slice(0, 5), zweiterBlock.bis.slice(0, 5))}` : ''}` : '',
+        z.unbesetzt ? `unbesetzt (${a?.code ?? 'abwesend'})` : '',
         vorschlag ? 'Vorschlag aus dem Plan' : '');
     } else if (klassen.includes('ep-abw')) titel.push(`${a.code} ${a.name}`);
     td.title = titel.filter(Boolean).join(' · ');
@@ -502,11 +514,11 @@ function zeichneRaster() {
   const sp = spalten();
   rahmen.sp = sp; // die gezeichneten Spalten: Striche rechnen damit, Neuzeichnen einzelner Zeilen prüft sie
   const oeffnung = t.geoeffnet ? { von: t.oeffnung_von, bis: t.oeffnung_bis } : null;
-  // Kopf: eine Zelle je Stunde (vier Viertelstunden), Öffnungszeit mit gelbem Strich.
+  // Kopf: eine Zelle je Stunde (zwei halbe Stunden), Öffnungszeit mit gelbem Strich.
   const stunden = [];
   for (const von of sp) {
     const letzte = stunden.at(-1);
-    if (letzte && !von.endsWith(':00') && letzte.von.slice(0, 2) === von.slice(0, 2)) letzte.breite += 1;
+    if (letzte && von.endsWith(':30') && letzte.von.slice(0, 2) === von.slice(0, 2)) letzte.breite += 1;
     else stunden.push({ von, breite: 1 });
   }
   const kopf = element('tr', {}, element('th', { class: 'ep-name' }, 'Mitarbeiter'), element('th', { class: 'zahl' }, ist ? 'IST' : 'Std.'),
@@ -667,23 +679,26 @@ async function beiPointerAuf(e) {
   await einreihen(zeilenSchluessel(s.ist, mitarbeiter, s.datum), () => sendeStrich(s, [{ von, bis, bereichId }], zeiger, vorherBeimZiehen));
 }
 
-// „Zeit eingeben“ (Klick auf „Std.“ einer Zeile): von, bis und Pause auf Viertelstunden im Zeitrahmen des Tages,
-// vorbelegt mit der letzten Eingabe (meist ähnliche Schichten nacheinander) und dem Pinsel. Tastatur: „7“ Tab „15“
-// Enter. Danach läuft es wie ein gezogener Strich: dieselben Sperren, Teilen und Verschmelzen; Block und Pause sind
-// ein Rückgängig-Schritt.
+// „Zeit eingeben“ (Klick auf „Std.“ einer Zeile, Plan und IST): von, bis und Pause auf Viertelstunden im Zeitrahmen
+// des Tages, vorbelegt mit der letzten Eingabe (meist ähnliche Schichten nacheinander) und dem Pinsel. Tastatur: „7“
+// Tab „15“ Enter. Oben die Knöpfe „Beginn/Ende 15 min früher/später“ (Raster halbstündig, die Viertelstunde per Klick,
+// wie bei Tegut). Danach läuft es wie ein gezogener Strich: dieselben Sperren, Teilen und Verschmelzen, im IST mit
+// Grund; Block und Pause sind ein Rückgängig-Schritt.
 function zeitEingeben(m) {
   const sp = rahmen.sp ?? [];
-  if (!darfMalen() || istAnsicht() || !sp.length) return;
+  if (!darfMalen() || !sp.length) return;
   const d = datum;
+  const ist = istAnsicht();
+  const vonListe = vonZeiten(sp);
   const bereiche = woche.bereiche.filter((b) => b.aktiv !== false);
   const pauseBereich = bereiche.find((b) => b.art === 'pause');
   const zeiten = (liste) => liste.map((z) => [z, zeitAnzeige(z)]);
   const passt = (liste, wert) => (liste.includes(wert) ? wert : null);
-  const vonStart = passt(sp, letzteEingabe?.von) ?? passt(sp, tag().oeffnung_von?.slice(0, 5)) ?? sp[0];
+  const vonStart = passt(vonListe, letzteEingabe?.von) ?? passt(vonListe, tag().oeffnung_von?.slice(0, 5)) ?? vonListe[0];
   const bisListe = bisZeiten(sp, vonStart);
   const bisStart = passt(bisListe, letzteEingabe?.bis) ?? passt(bisListe, uhrzeit(minuten(vonStart) + 8 * 60)) ?? bisListe.at(-1); // ohne Vorgabe 8 h
 
-  const von = auswahlfeld(zeiten(sp), vonStart);
+  const von = auswahlfeld(zeiten(vonListe), vonStart);
   const bis = auswahlfeld([], '');
   const pinselGilt = pinsel === 'radieren' || bereiche.some((b) => String(b.id) === pinsel);
   const bereich = auswahlfeld([...bereiche.map((b) => [String(b.id), `${b.kuerzel} – ${b.name}`]), ['radieren', 'Radieren (leeren)']],
@@ -708,22 +723,50 @@ function zeitEingeben(m) {
   for (const f of [von, bis, bereich, pause]) f.addEventListener('change', aktualisiere);
   aktualisiere();
 
-  const eintragen = () => {
+  // Wie ein gezogener Strich senden. Schnappschuss der Zeile synchron vor jedem await (danach kann schon eine andere
+  // Woche geladen sein); im IST erst der Grund (Abbrechen = kein Strich).
+  const senden = async (teile, von, bis) => {
     // Woche inzwischen neu geladen: der Rückgängig-Schnappschuss käme aus einer anderen Woche (wie beim Grund-Dialog).
-    if (!inWoche(d)) { meldung('Nicht gespeichert: Woche oder Modus haben inzwischen gewechselt.'); return; }
-    const bereichId = bereich.value === 'radieren' ? null : Number(bereich.value);
-    const teile = eingabeStriche({ von: von.value, bis: bis.value, bereichId, pause: pause.value || null, pauseId: pauseBereich?.id });
-    letzteEingabe = { von: von.value, bis: bis.value, pause: pause.value || null };
-    const s = { mitarbeiter: m.id, datum: d, von: von.value, bis: bis.value, ist: false, grund: null };
+    if (!inWoche(d, ist)) { meldung('Nicht gespeichert: Woche oder Modus haben inzwischen gewechselt.'); return; }
+    const s = { mitarbeiter: m.id, datum: d, von, bis, ist, grund: null };
     // Hinweis bei einer Sperre an der Stundenzelle der Zeile (die Zelle von vorhin kann schon neu gezeichnet sein).
     const r = rahmen.raster.querySelector(`tbody tr[data-mitarbeiter="${m.id}"] td.ep-std`)?.getBoundingClientRect();
     const zeiger = r ? { x: r.right, y: r.top } : { x: 0, y: 0 };
     const vorher = gespeicherteZeile(m.id, d);
+    if (ist) {
+      s.grund = await grundFuer(m.id, d);
+      if (s.grund === undefined) return;
+      if (!inWoche(d, true)) { meldung('Nicht gespeichert: Woche oder Modus haben inzwischen gewechselt.'); return; }
+    }
     wartend.push(s);
     zeigeWartende();
-    einreihen(zeilenSchluessel(false, m.id, d), () => sendeStrich(s, teile, zeiger, vorher));
+    einreihen(zeilenSchluessel(ist, m.id, d), () => sendeStrich(s, teile, zeiger, vorher));
   };
-  const fenster = dialog(`Zeit eingeben: ${m.name}, ${tagKurz(d)}`, [
+  const eintragen = () => {
+    const bereichId = bereich.value === 'radieren' ? null : Number(bereich.value);
+    const teile = eingabeStriche({ von: von.value, bis: bis.value, bereichId, pause: pause.value || null, pauseId: pauseBereich?.id });
+    letzteEingabe = { von: von.value, bis: bis.value, pause: pause.value || null };
+    senden(teile, von.value, bis.value);
+  };
+  // ±15 min an Beginn und Ende der Zeile; ein Klick trägt sofort ein und schließt das Fenster.
+  const segmente = segmenteVon(m.id, d);
+  const erster = segmente.length ? segmente.reduce((x, y) => (minuten(y.von) < minuten(x.von) ? y : x)).von.slice(0, 5) : null;
+  const letzter = segmente.length ? segmente.reduce((x, y) => (minuten(y.bis) > minuten(x.bis) ? y : x)).bis.slice(0, 5) : null;
+  let fenster = null;
+  const viertelKnopf = (art, beschriftung) => {
+    const st = viertelStrich(segmente, art);
+    return element('button', {
+      type: 'button', class: 'knopf', 'data-viertel': art, disabled: !st,
+      onclick: () => { fenster?.close(); if (st) senden([st], st.von, st.bis); },
+    }, beschriftung);
+  };
+  const viertel = segmente.length ? element('div', { class: 'ep-viertel' },
+    element('span', { class: 'ep-viertel-titel' }, `Beginn ${erster}`),
+    viertelKnopf('beginn-frueher', '15 min früher'), viertelKnopf('beginn-spaeter', '15 min später'),
+    element('span', { class: 'ep-viertel-titel' }, `Ende ${letzter}`),
+    viertelKnopf('ende-frueher', '15 min früher'), viertelKnopf('ende-spaeter', '15 min später')) : null;
+  fenster = dialog(`Zeit eingeben: ${m.name}, ${tagKurz(d)}`, [
+    viertel,
     element('div', { class: 'ep-eingabe' }, feld('von', von), feld('bis', bis), feld('Bereich', bereich),
       pauseBereich ? feld('Pause ab (30 min)', pause) : null),
     text,

@@ -1,7 +1,7 @@
 // Reine Plan-Logik (kein DOM). Eingabe `woche` = Antwort von public.pep_einsatzplan_woche.
 // Blöcke sind Abschnitte: dieselbe id kann mehrfach vorkommen, jeder Abschnitt hat sein eigenes
 // `unbesetzt`. Unbesetzte Abschnitte zählen nirgends (F2).
-import { minuten, uhrzeit, plusTage, kwVorZurueck, stundenText, TAKT } from './zeit.js';
+import { minuten, uhrzeit, plusTage, kwVorZurueck, stundenText } from './zeit.js';
 import { WOCHENTAGE } from './hilfe.js';
 
 const stunden = (b) => (minuten(b.bis) - minuten(b.von)) / 60;
@@ -11,26 +11,55 @@ const alsMenge = (ids) => (ids instanceof Set ? ids : new Set(ids ?? []));
 export const rund = (n) => Math.round(n * 100) / 100 || 0; // Rechenreste wie −1e-15 und −0 werden 0
 export const kurz = (n) => `${rund(n) < 0 ? '−' : ''}${Math.abs(rund(n)).toFixed(2).replace(/\.?0+$/, '').replace('.', ',')}`;
 
-// Eine Position je Spalte (Viertelstunde): Zellbeschreibung oder null. Erwartet die Abschnitte EINER Zeile (ein Mitarbeiter, ein Tag).
+// Eine Position je Halbstunde der Spalten: Zellbeschreibung oder null. Erwartet die Abschnitte EINER Zeile (ein Mitarbeiter, ein Tag).
+// Blöcke können auf Viertelstunden beginnen und enden (15-Minuten-Takt); die Zelle sieht dann beide Viertelstunden an:
+// nur eine belegt → `teil: 'vorne'` bzw. `'hinten'` (halb gefüllt); zwei verschiedene → die vordere, dazu `zweite`.
 export function zellen(bloecke, spalten) {
+  const zelle = (b) => (b ? { bereich_id: b.bereich_id, block_id: b.id, unbesetzt: !!b.unbesetzt } : null);
+  const bei = (m) => bloecke.find((x) => minuten(x.von) <= m && m < minuten(x.bis)) ?? null;
   return spalten.map((beginn) => {
     const m = minuten(beginn);
-    const b = bloecke.find((x) => minuten(x.von) <= m && m < minuten(x.bis));
-    return b ? { bereich_id: b.bereich_id, block_id: b.id, unbesetzt: !!b.unbesetzt } : null;
+    const a = bei(m);
+    const b = bei(m + 15);
+    if (a === b || (a && b && a.id === b.id && !!a.unbesetzt === !!b.unbesetzt && a.bereich_id === b.bereich_id)) return zelle(a);
+    if (a && !b) return { ...zelle(a), teil: 'vorne' };
+    if (!a && b) return { ...zelle(b), teil: 'hinten' };
+    return { ...zelle(a), zweite: zelle(b) };
   });
 }
+
+// Viertelstunden der halbstündigen Spalten (Abdeckung rechnet so genau wie die Regelprüfung).
+const viertel = (spalten) => spalten.flatMap((t) => [t, uhrzeit(minuten(t) + 15)]);
 
 // Zieh-Strich über Zellindizes; Richtung egal, `bis` ist das Ende der letzten Zelle.
 export function strich(spalten, startIndex, endIndex) {
   const a = Math.min(startIndex, endIndex);
   const z = Math.max(startIndex, endIndex);
-  return { von: spalten[a], bis: uhrzeit(minuten(spalten[z]) + TAKT) };
+  return { von: spalten[a], bis: uhrzeit(minuten(spalten[z]) + 30) };
 }
 
-// Abdeckung je Spalte (Viertelstunde) eines Tages (F2, F3, F5): nur besetzte Abschnitte. vp = VPs anwesend, vpFrei = davon nicht
+// Abdeckung je Halbstunde eines Tages (F2, F3, F5): nur besetzte Abschnitte. vp = VPs anwesend, vpFrei = davon nicht
 // an der Kasse gebunden: in der Öffnungszeit (offen je Spalte) an der Kasse, niemand mit Kassenkompetenz frei (nicht
 // Kasse, nicht Pause), erst ab mehr als 30 min am Stück. Fachregel-Duplikat von vp_kasse/gebunden in pep.pruefung.
+// Gerechnet wird je Viertelstunde wie in pep.pruefung; je Halbstunde zählt die schlechtere der beiden Viertelstunden
+// (Kasse: die kleinere Zahl; VP: die mit der schlechteren Ampel, sonst die erste).
 export function abdeckung(woche, datum, spalten, offen = spalten.map(() => true)) {
+  const v = abdeckungViertel(woche, datum, viertel(spalten), offen.flatMap((o) => [o, o]));
+  const rang = { rot: 2, gelb: 1, '': 0 };
+  const ergebnis = { kasse: [], vp: [], vpFrei: [], anwesend: [] };
+  spalten.forEach((_, i) => {
+    const [a, b] = [2 * i, 2 * i + 1];
+    const ampel = (q) => rang[abdeckungsKlasse('vp', v.vpFrei[q], offen[i], v.anwesend[q])];
+    const q = ampel(b) > ampel(a) ? b : a;
+    ergebnis.kasse.push(Math.min(v.kasse[a], v.kasse[b]));
+    ergebnis.vp.push(v.vp[q]);
+    ergebnis.vpFrei.push(v.vpFrei[q]);
+    ergebnis.anwesend.push(v.anwesend[q]);
+  });
+  return ergebnis;
+}
+
+function abdeckungViertel(woche, datum, spalten, offen) {
   const bereiche = new Map((woche.bereiche ?? []).map((b) => [b.id, b]));
   const vpIds = new Set((woche.mitarbeiter ?? []).filter((m) => m.vp === true).map((m) => m.id));
   const kassenBereich = (woche.bereiche ?? []).find((b) => b.bedeutung === 'kasse');
@@ -40,7 +69,7 @@ export function abdeckung(woche, datum, spalten, offen = spalten.map(() => true)
   const kasse = [];
   const vp = [];
   const anwesend = [];
-  const anKasse = new Map(); // VP → je Spalte an der Kasse ohne Ablösung
+  const anKasse = new Map(); // VP → je Viertelstunde an der Kasse ohne Ablösung
   spalten.forEach((beginn, i) => {
     const m = minuten(beginn);
     const da = tag.filter((b) => minuten(b.von) <= m && m < minuten(b.bis));
@@ -56,12 +85,12 @@ export function abdeckung(woche, datum, spalten, offen = spalten.map(() => true)
       anKasse.get(b.mitarbeiter_id)[i] = true;
     }
   });
-  // gebunden: Teil einer Strecke von mehr als 30 min am Stück (bei 15 min Takt: mindestens drei Spalten)
+  // gebunden: Teil einer Strecke von mehr als 30 min am Stück, also mindestens drei Viertelstunden
   const gebunden = (x, i) => {
     if (!x[i]) return false;
     let a = i; while (x[a - 1]) a -= 1;
     let z = i; while (x[z + 1]) z += 1;
-    return (z - a + 1) * TAKT > 30;
+    return z - a + 1 > 2;
   };
   const vpFrei = vp.map((n, i) => n - [...anKasse.values()].filter((x) => gebunden(x, i)).length);
   return { kasse, vp, vpFrei, anwesend };
@@ -175,17 +204,42 @@ export function vorschlagBlock(lkw, anteil, rahmen) {
 }
 
 // ---------------------------------------------------------------- Zeit eingeben (Fenster an „Std.“)
-// Auswahl auf Viertelstunden: `von` aus den Spalten des Rasters (Rahmen des Tages), `bis` jede Viertelstunde danach
-// bis zum Rahmenende. Die Pause (30 min) liegt ganz im Block, mit Arbeit davor und danach.
+// Auswahl auf Viertelstunden im Rahmen der (halbstündigen) Rasterspalten: `von` jede Viertelstunde, `bis` jede
+// Viertelstunde danach bis zum Rahmenende. Die Pause (30 min) liegt ganz im Block, mit Arbeit davor und danach.
 export function bisZeiten(spalten, von) {
   if (!spalten.length) return [];
-  return [...spalten, uhrzeit(minuten(spalten.at(-1)) + TAKT)].filter((t) => minuten(t) > minuten(von));
+  return [...vonZeiten(spalten).slice(1), uhrzeit(minuten(spalten.at(-1)) + 30)].filter((t) => minuten(t) > minuten(von));
+}
+
+// `von` in Viertelstunden über die halbstündigen Spalten des Rasters (15-Minuten-Takt ohne kleinere Zellen).
+export function vonZeiten(spalten) {
+  return viertel(spalten);
 }
 
 export function pauseZeiten(von, bis) {
   const liste = [];
-  for (let m = minuten(von) + TAKT; m + 30 < minuten(bis); m += TAKT) liste.push(uhrzeit(m));
+  for (let m = minuten(von) + 15; m + 30 < minuten(bis); m += 15) liste.push(uhrzeit(m));
   return liste;
+}
+
+// „±15 min“ an einer Zeile (wie bei Tegut: Raster halbstündig, die Viertelstunde kommt per Klick dazu oder weg).
+// segmente = Abschnitte der Zeile (ein Mitarbeiter, ein Tag); art: 'beginn-frueher' | 'beginn-spaeter' |
+// 'ende-frueher' | 'ende-spaeter'. Ergebnis ist ein Strich wie beim Ziehen (bereichId null = radieren) oder null
+// (Zeile leer). Früher/später verlängert den ersten bzw. letzten Abschnitt in dessen Bereich.
+export function viertelStrich(segmente, art) {
+  if (!segmente?.length) return null;
+  const sortiert = [...segmente].sort((a, b) => minuten(a.von) - minuten(b.von));
+  const erster = sortiert[0];
+  const letzter = sortiert.reduce((x, s) => (minuten(s.bis) > minuten(x.bis) ? s : x), sortiert[0]);
+  const v = minuten(erster.von);
+  const b = minuten(letzter.bis);
+  switch (art) {
+    case 'beginn-frueher': return v >= 15 ? { von: uhrzeit(v - 15), bis: uhrzeit(v), bereichId: erster.bereich_id } : null;
+    case 'beginn-spaeter': return { von: uhrzeit(v), bis: uhrzeit(v + 15), bereichId: null };
+    case 'ende-frueher': return { von: uhrzeit(b - 15), bis: uhrzeit(b), bereichId: null };
+    case 'ende-spaeter': return b + 15 <= 24 * 60 ? { von: uhrzeit(b), bis: uhrzeit(b + 15), bereichId: letzter.bereich_id } : null;
+    default: return null;
+  }
 }
 
 // Striche wie beim Ziehen: erst der Block, dann die Pause darüber (teilt ihn). bereichId null = radieren, ohne Pause.

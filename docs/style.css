@@ -752,6 +752,10 @@ table.liefermuster th:not(:first-child) { text-align: center; }
 }
 .ep-std-knopf:hover, .ep-std-knopf:focus-visible { border-color: var(--grau); background: var(--hell); }
 .ep-eingabe { display: grid; grid-template-columns: repeat(2, minmax(120px, 1fr)); gap: 0 var(--a3); }
+.ep-viertel { display: grid; grid-template-columns: auto 1fr 1fr; gap: var(--a1) var(--a2); align-items: center; margin-bottom: var(--a3); }
+.ep-viertel-titel { font-weight: 600; white-space: nowrap; }
+.ep-viertel .knopf { min-height: 40px; padding: 0 var(--a2); font-size: 0.9rem; }
+.ep-tabelle td.ep-z.ep-halb { background-repeat: no-repeat; } /* Viertelstunde angeschnitten: halbe Zelle (einsatzplan.js) */
 .ep-tabelle td.ep-kom, .ep-tabelle th.ep-kom { padding: 0 var(--a2); text-align: left; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ep-tabelle td.ep-kom.bearbeitbar { cursor: text; }
 .ep-kom-leer { color: var(--text-2); opacity: 0.6; }
@@ -1021,7 +1025,7 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-c-name { width: 36mm; }
   .dr-c-zahl { width: 13mm; }
 
-  /* Tagesplan: je Viertelstunde eine Zelle; das Kürzel (am Abschnittsbeginn, zur vollen Stunde) ragt nach rechts */
+  /* Tagesplan: je halbe Stunde eine Zelle mit Kürzel */
   .dr-c-zeiten { width: 25mm; }
   .dr-c-std { width: 9mm; }
   .dr-c-kommentar { width: 30mm; }
@@ -1030,8 +1034,7 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-stunde { padding-left: 1pt; font-size: 7pt; }
   .dr-stunde:not(.offen) { color: #555; font-weight: 400; }
   .dr-tagesplan tbody tr { height: 6mm; }
-  .dr-tagesplan td.dr-z { padding: 0 0 0 0.5pt; font-size: 6.5pt; font-weight: 700; text-align: left; white-space: nowrap;
-    overflow: visible; border-left-color: #bbb; }
+  .dr-tagesplan td.dr-z { padding: 0; font-size: 6.5pt; font-weight: 700; text-align: center; border-left-color: #bbb; }
   .dr-tagesplan td.dr-z.voll { border-left-color: #555; }
   .dr-tagesplan td.dr-unbesetzt {
     background: repeating-linear-gradient(-45deg, #999 0 0.4pt, #fff 0.4pt 3pt);

@@ -1,14 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  minuten, uhrzeit, viertelstunden, isoWoche, montagDerKw, kwVorZurueck, tageDerWoche, plusTage,
+  minuten, uhrzeit, halbstunden, isoWoche, montagDerKw, kwVorZurueck, tageDerWoche, plusTage,
   zeitspanne, stundenText, heuteDatum,
 } from '../docs/zeit.js';
 import {
   zellen, strich, abdeckung, abdeckungsKlasse, tagesStunden, wochenSummen, bereichsStunden,
   rueckgaengigStapel, gleicheWochentageBis, naechsteWochen, tagKurz, kopierErgebnis, tageText, lueckeText,
   vorgabeText, ersatzBloecke, uebernahmeText, lieferBedarf, aufteilung, standardVariante, vorschlagBlock,
-  bisZeiten, pauseZeiten, eingabeStriche, eingabeText, zeitAnzeige,
+  bisZeiten, pauseZeiten, eingabeStriche, eingabeText, zeitAnzeige, vonZeiten, viertelStrich,
 } from '../docs/plan-raster.js';
 
 test('heuteDatum: lokales Datum zum Aufrufzeitpunkt; ?heute= ersetzt es nur bei gültigem Datum', () => {
@@ -19,13 +19,12 @@ test('heuteDatum: lokales Datum zum Aufrufzeitpunkt; ?heute= ersetzt es nur bei 
   assert.match(heuteDatum(), /^\d{4}-\d{2}-\d{2}$/);
 });
 
-test('Zeit: Minuten, Uhrzeit, Viertelstunden', () => {
+test('Zeit: Minuten, Uhrzeit, Halbstunden', () => {
   assert.equal(minuten('06:30'), 390);
   assert.equal(uhrzeit(390), '06:30');
   assert.equal(uhrzeit(0), '00:00');
-  assert.deepEqual(viertelstunden('06:00', '07:00'), ['06:00', '06:15', '06:30', '06:45']);
-  assert.deepEqual(viertelstunden('06:30', '07:15'), ['06:30', '06:45', '07:00']);
-  assert.deepEqual(viertelstunden('07:00', '07:00'), []);
+  assert.deepEqual(halbstunden('06:00', '07:30'), ['06:00', '06:30', '07:00']);
+  assert.deepEqual(halbstunden('07:00', '07:00'), []);
   assert.equal(zeitspanne('07:00', '15:30'), '07:00–15:30');
   assert.equal(stundenText(7.5), '7,50');
   assert.equal(stundenText('8'), '8,00');
@@ -53,30 +52,28 @@ test('Zeit: ISO-Wochen, KW 53 und Jahreswechsel', () => {
   assert.equal(plusTage('2026-03-01', -1), '2026-02-28');
 });
 
-const SP = viertelstunden('06:00', '21:30');
-const ix = (h) => SP.indexOf(h);
+const SP = halbstunden('06:00', '21:30');
 
-test('zellen: eine Position je Viertelstunde, Lücken null, unbesetzt weitergereicht', () => {
+test('zellen: eine Position je Halbstunde, Lücken null, unbesetzt weitergereicht', () => {
   const z = zellen([
-    { id: 1, von: '07:45', bis: '08:00', bereich_id: 10, unbesetzt: false },
-    { id: 1, von: '08:00', bis: '08:15', bereich_id: 10, unbesetzt: true },
+    { id: 1, von: '07:00', bis: '08:00', bereich_id: 10, unbesetzt: false },
+    { id: 1, von: '08:00', bis: '08:30', bereich_id: 10, unbesetzt: true },
   ], SP);
   assert.equal(z.length, SP.length);
-  assert.equal(SP.length, 62);
-  assert.equal(z[ix('07:30')], null);
-  assert.deepEqual(z[ix('07:45')], { bereich_id: 10, block_id: 1, unbesetzt: false });
-  assert.deepEqual(z[ix('08:00')], { bereich_id: 10, block_id: 1, unbesetzt: true });
-  assert.equal(z[ix('08:15')], null);
+  assert.equal(z[0], null);
+  assert.deepEqual(z[2], { bereich_id: 10, block_id: 1, unbesetzt: false });
+  assert.deepEqual(z[3], { bereich_id: 10, block_id: 1, unbesetzt: false });
+  assert.deepEqual(z[4], { bereich_id: 10, block_id: 1, unbesetzt: true });
+  assert.equal(z[5], null);
   assert.deepEqual(zellen([], SP).filter(Boolean), []);
 });
 
-test('strich: Richtung egal, bis = Ende der letzten Zelle (Viertelstunde)', () => {
-  assert.deepEqual(strich(SP, ix('08:45'), ix('07:00')), { von: '07:00', bis: '09:00' });
-  assert.deepEqual(strich(SP, ix('07:00'), ix('08:45')), { von: '07:00', bis: '09:00' });
-  assert.deepEqual(strich(SP, ix('07:45'), ix('07:45')), { von: '07:45', bis: '08:00' });
-  assert.deepEqual(strich(SP, ix('07:15'), ix('12:30')), { von: '07:15', bis: '12:45' });
+test('strich: Richtung egal, bis = Ende der letzten Zelle', () => {
+  assert.deepEqual(strich(SP, 5, 2), { von: '07:00', bis: '09:00' });
+  assert.deepEqual(strich(SP, 2, 5), { von: '07:00', bis: '09:00' });
+  assert.deepEqual(strich(SP, 3, 3), { von: '07:30', bis: '08:00' });
   const letzte = SP.length - 1;
-  assert.deepEqual(strich(SP, letzte, letzte), { von: '21:15', bis: '21:30' });
+  assert.deepEqual(strich(SP, letzte, letzte), { von: '21:00', bis: '21:30' });
 });
 
 const woche = {
@@ -128,7 +125,7 @@ test('abdeckung: Kasse 07-10 und 09-12 (zweiter unbesetzt) und leere Woche', () 
     ],
   };
   const a = abdeckung(w, 'd', SP);
-  assert.deepEqual([a.kasse[ix('06:00')], a.kasse[ix('07:00')], a.kasse[ix('10:00')]], [0, 1, 0]);
+  assert.deepEqual([a.kasse[0], a.kasse[2], a.kasse[8]], [0, 1, 0]);
   const leer = abdeckung({ bereiche: [], mitarbeiter: [], bloecke: [], abwesenheiten: [] }, 'd', SP);
   assert.ok(leer.kasse.every((n) => n === 0) && leer.vp.every((n) => n === 0) && leer.anwesend.every((n) => n === 0));
   assert.equal(leer.kasse.length, SP.length);
@@ -166,39 +163,31 @@ const wocheVp = (bloecke, { kompetenzNoetig = true } = {}) => ({
     id: i + 1, mitarbeiter_id: ma, datum: 'd', von, bis, bereich_id: bereich, unbesetzt: false })),
   abwesenheiten: [],
 });
-const SP8 = viertelstunden('08:00', '10:00'); // 08:00 08:15 … 09:45 (8 Spalten)
-const x2 = (liste) => liste.flatMap((v) => [v, v]); // je halbe Stunde zwei Viertelstunden
+const SP8 = halbstunden('08:00', '10:00'); // 08:00 08:30 09:00 09:30
 const frei = (bloecke, optionen, offen) => abdeckung(wocheVp(bloecke, optionen), 'd', SP8, offen).vpFrei;
 
 test('abdeckung.vpFrei: VP an der Kasse ohne Ablösung zählt nicht', () => {
   // Kollege ohne Kassenkompetenz: VP gebunden
   const w = abdeckung(wocheVp([[1, '08:00', '10:00', 1], [2, '08:00', '10:00', 2]]), 'd', SP8);
-  assert.deepEqual(w.vp, x2([1, 1, 1, 1]));
-  assert.deepEqual(w.vpFrei, x2([0, 0, 0, 0]));
+  assert.deepEqual(w.vp, [1, 1, 1, 1]);
+  assert.deepEqual(w.vpFrei, [0, 0, 0, 0]);
   // Kollegin mit Kassenkompetenz erst frei (OG), dann in Pause
-  assert.deepEqual(frei([[1, '08:00', '10:00', 1], [3, '08:00', '09:00', 2], [3, '09:00', '10:00', 3]]), x2([1, 1, 0, 0]));
+  assert.deepEqual(frei([[1, '08:00', '10:00', 1], [3, '08:00', '09:00', 2], [3, '09:00', '10:00', 3]]), [1, 1, 0, 0]);
   // ohne Kassenkompetenz-Pflicht kann jeder ablösen
-  assert.deepEqual(frei([[1, '08:00', '10:00', 1], [2, '08:00', '10:00', 2]], { kompetenzNoetig: false }), x2([1, 1, 1, 1]));
+  assert.deepEqual(frei([[1, '08:00', '10:00', 1], [2, '08:00', '10:00', 2]], { kompetenzNoetig: false }), [1, 1, 1, 1]);
   // zweite VP auf OG kann ablösen: beide frei
-  assert.deepEqual(frei([[1, '08:00', '10:00', 1], [4, '08:00', '10:00', 2]]), x2([2, 2, 2, 2]));
+  assert.deepEqual(frei([[1, '08:00', '10:00', 1], [4, '08:00', '10:00', 2]]), [2, 2, 2, 2]);
   // VP in Pause, andere an der Kasse
-  assert.deepEqual(frei([[1, '08:00', '10:00', 3], [3, '08:00', '10:00', 1]]), x2([1, 1, 1, 1]));
+  assert.deepEqual(frei([[1, '08:00', '10:00', 3], [3, '08:00', '10:00', 1]]), [1, 1, 1, 1]);
 });
 
 test('abdeckung.vpFrei: allein, eigene Pause, 30 min überbrückbar, nur in der Öffnungszeit', () => {
   // allein an der Kasse, Pause 09:00–09:30, danach 30 min Kasse: die halbe Stunde allein zählt noch
-  assert.deepEqual(frei([[1, '08:00', '09:00', 1], [1, '09:00', '09:30', 3], [1, '09:30', '10:00', 1]]), x2([0, 0, 1, 1]));
+  assert.deepEqual(frei([[1, '08:00', '09:00', 1], [1, '09:00', '09:30', 3], [1, '09:30', '10:00', 1]]), [0, 0, 1, 1]);
   // außerhalb der Öffnung bindet die Kasse nicht
-  assert.deepEqual(frei([[1, '08:00', '10:00', 1]], {}, x2([false, false, true, true])), x2([1, 1, 0, 0]));
-  assert.deepEqual(frei([[1, '08:00', '10:00', 1]], {}, x2([true, false, true, false])), x2([1, 1, 1, 1]));
-  assert.deepEqual(abdeckung(wocheVp([]), 'd', SP8).vpFrei, x2([0, 0, 0, 0]));
-});
-
-test('abdeckung.vpFrei: mehr als 30 min am Stück – 45 min gebunden, 30 min nicht (Viertelstunden)', () => {
-  // allein an der Kasse 08:15–09:00 (45 min), sonst Pause
-  assert.deepEqual(frei([[1, '08:00', '08:15', 3], [1, '08:15', '09:00', 1], [1, '09:00', '10:00', 3]]), [1, 0, 0, 0, 1, 1, 1, 1]);
-  // 08:15–08:45 (30 min) bleibt überbrückbar
-  assert.deepEqual(frei([[1, '08:00', '08:15', 3], [1, '08:15', '08:45', 1], [1, '08:45', '10:00', 3]]), [1, 1, 1, 1, 1, 1, 1, 1]);
+  assert.deepEqual(frei([[1, '08:00', '10:00', 1]], {}, [false, false, true, true]), [1, 1, 0, 0]);
+  assert.deepEqual(frei([[1, '08:00', '10:00', 1]], {}, [true, false, true, false]), [1, 1, 1, 1]);
+  assert.deepEqual(abdeckung(wocheVp([]), 'd', SP8).vpFrei, [0, 0, 0, 0]);
 });
 
 test('tagesStunden: ohne Pause und ohne unbesetzt', () => {
@@ -405,13 +394,14 @@ test('standardVariante: wenigste Personen mit größtem Anteil höchstens 6 h, s
   assert.equal(standardVariante([]), -1); // nichts fehlt: keine Variante
 });
 
-test('Zeit eingeben: bis jede Viertelstunde nach von, bis zum Rahmenende', () => {
-  const sp = viertelstunden('07:00', '20:00');
+test('Zeit eingeben: von und bis in Viertelstunden über das halbstündige Raster, bis zum Rahmenende', () => {
+  const sp = halbstunden('07:00', '20:00');
+  assert.deepEqual(vonZeiten(sp).slice(0, 4), ['07:00', '07:15', '07:30', '07:45']);
+  assert.equal(vonZeiten(sp).at(-1), '19:45');
   assert.deepEqual(bisZeiten(sp, '19:00'), ['19:15', '19:30', '19:45', '20:00']);
   assert.equal(bisZeiten(sp, '07:00')[0], '07:15');
   assert.equal(bisZeiten(sp, '07:00').at(-1), '20:00');
   assert.equal(bisZeiten(sp, '07:00').length, 52);
-  assert.deepEqual(bisZeiten(sp, '19:30'), ['19:45', '20:00']);
   assert.deepEqual(bisZeiten(sp, '07:45').slice(0, 2), ['08:00', '08:15']);
   assert.deepEqual(bisZeiten([], '07:00'), []);
 });
@@ -419,7 +409,6 @@ test('Zeit eingeben: bis jede Viertelstunde nach von, bis zum Rahmenende', () =>
 test('Zeit eingeben: Pause 30 min ganz im Block, mit Arbeit davor und danach', () => {
   assert.deepEqual(pauseZeiten('07:00', '09:00'), ['07:15', '07:30', '07:45', '08:00', '08:15']);
   assert.deepEqual(pauseZeiten('07:00', '07:45'), []); // kein Platz für Arbeit vor und nach der Pause
-  assert.deepEqual(pauseZeiten('07:00', '08:00'), ['07:15']);
   assert.equal(pauseZeiten('07:00', '15:30').length, 31);
 });
 
@@ -435,7 +424,6 @@ test('Zeit eingeben: Striche – erst der Block, dann die Pause darüber', () =>
 test('Zeit eingeben: Zusammenfassung mit Arbeitsstunden und Pausenhinweis', () => {
   assert.equal(eingabeText({ von: '07:00', bis: '15:30', pause: '11:00' }), '8 h Arbeit, 30 min Pause');
   assert.equal(eingabeText({ von: '07:00', bis: '13:00' }), '6 h Arbeit');
-  assert.equal(eingabeText({ von: '07:45', bis: '12:00' }), '4,25 h Arbeit');
   assert.equal(eingabeText({ von: '07:00', bis: '13:30' }), '6,5 h Arbeit · über 6 h: Pause nötig');
   assert.equal(eingabeText({ von: '07:00', bis: '09:00', radieren: true }), '07:00–09:00 wird geleert');
 });
@@ -445,4 +433,55 @@ test('Zeit eingeben: Anzeige ohne führende Null, damit „7“ oder „15“ ge
   assert.equal(zeitAnzeige('07:30'), '7:30');
   assert.equal(zeitAnzeige('15:00'), '15:00');
   assert.equal(zeitAnzeige('00:30'), '0:30');
+});
+
+// ---------------------------------------------------------------- 15-Minuten-Takt im halbstündigen Raster
+
+test('zellen: Viertelstunde angeschnitten → halbe Zelle (vorne/hinten), zwei Bereiche in einer Zelle', () => {
+  const sp = halbstunden('07:00', '09:00'); // 07:00 07:30 08:00 08:30
+  const z = zellen([
+    { id: 1, von: '07:45', bis: '08:15', bereich_id: 10, unbesetzt: false },
+    { id: 2, von: '08:15', bis: '08:45', bereich_id: 11, unbesetzt: false },
+  ], sp);
+  assert.equal(z[0], null);
+  assert.deepEqual(z[1], { bereich_id: 10, block_id: 1, unbesetzt: false, teil: 'hinten' });
+  assert.deepEqual(z[2], { bereich_id: 10, block_id: 1, unbesetzt: false, zweite: { bereich_id: 11, block_id: 2, unbesetzt: false } });
+  assert.deepEqual(z[3], { bereich_id: 11, block_id: 2, unbesetzt: false, teil: 'vorne' });
+  // halbe Stunden wie bisher: ohne Zusatzfelder
+  assert.deepEqual(zellen([{ id: 3, von: '07:00', bis: '08:00', bereich_id: 10 }], sp).slice(0, 3),
+    [{ bereich_id: 10, block_id: 3, unbesetzt: false }, { bereich_id: 10, block_id: 3, unbesetzt: false }, null]);
+});
+
+test('abdeckung: je Halbstunde die schlechtere Viertelstunde (Kasse ab 07:15 → 07:00 rot)', () => {
+  const w = {
+    bereiche: [{ id: 1, kuerzel: 'KA', art: 'bereich', bedeutung: 'kasse' }],
+    mitarbeiter: [{ id: 1, vp: true, kompetenzen: [1] }],
+    bloecke: [{ id: 1, mitarbeiter_id: 1, datum: 'd', von: '07:15', bis: '08:45', bereich_id: 1, unbesetzt: false }],
+  };
+  const a = abdeckung(w, 'd', halbstunden('07:00', '09:00'));
+  assert.deepEqual(a.kasse, [0, 1, 1, 0]); // 07:00–07:15 und 08:45–09:00 ohne Kasse
+});
+
+test('abdeckung.vpFrei: 45 min allein an der Kasse gebunden, 30 min nicht', () => {
+  const w = (von, bis) => ({
+    bereiche: [{ id: 1, kuerzel: 'KA', art: 'bereich', bedeutung: 'kasse', kompetenz_noetig: true }],
+    mitarbeiter: [{ id: 1, vp: true, kompetenzen: [1] }],
+    bloecke: [{ id: 1, mitarbeiter_id: 1, datum: 'd', von, bis, bereich_id: 1, unbesetzt: false }],
+  });
+  const sp = halbstunden('08:00', '10:00');
+  assert.deepEqual(abdeckung(w('08:00', '08:45'), 'd', sp).vpFrei, [0, 0, 0, 0]); // 45 min am Stück: gebunden
+  assert.deepEqual(abdeckung(w('08:00', '08:30'), 'd', sp).vpFrei, [1, 0, 0, 0]); // 30 min: frei
+});
+
+test('viertelStrich: Beginn/Ende 15 min früher oder später als Strich (früher im Bereich des Abschnitts)', () => {
+  const zeile = [
+    { von: '12:00', bis: '16:00', bereich_id: 2 },
+    { von: '08:00', bis: '12:00', bereich_id: 1 },
+  ];
+  assert.deepEqual(viertelStrich(zeile, 'beginn-frueher'), { von: '07:45', bis: '08:00', bereichId: 1 });
+  assert.deepEqual(viertelStrich(zeile, 'beginn-spaeter'), { von: '08:00', bis: '08:15', bereichId: null });
+  assert.deepEqual(viertelStrich(zeile, 'ende-frueher'), { von: '15:45', bis: '16:00', bereichId: null });
+  assert.deepEqual(viertelStrich(zeile, 'ende-spaeter'), { von: '16:00', bis: '16:15', bereichId: 2 });
+  assert.equal(viertelStrich([], 'beginn-frueher'), null);
+  assert.equal(viertelStrich([{ von: '23:45', bis: '24:00', bereich_id: 1 }], 'ende-spaeter'), null);
 });

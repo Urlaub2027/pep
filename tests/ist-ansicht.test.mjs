@@ -12,22 +12,21 @@ const seg = (mitarbeiter_id, von, bis, bereich_id = 1, extra = {}) => ({
 test('istSpalten: min(Rahmen, frühester Block, 06:00) bis max(Rahmen, spätester Block); erweitert 04:00–24:00', () => {
   const sp = istSpalten(TAG, []);
   assert.equal(sp[0], '06:00');
-  assert.equal(sp.at(-1), '21:15'); // Viertelstunden
+  assert.equal(sp.at(-1), '21:00');
   assert.equal(istSpalten({ ...TAG, rahmen_von: '07:00' }, [])[0], '06:00'); // nie später als 06:00
   const weit = istSpalten(TAG, [seg(1, '05:30', '06:00'), seg(2, '21:00', '23:00')]);
   assert.equal(weit[0], '05:00'); // frühester Block 05:30, Beginn auf die volle Stunde
-  assert.equal(weit.at(-1), '22:45');
+  assert.equal(weit.at(-1), '22:30');
   const nacht = istSpalten(TAG, [seg(1, '22:00', '24:00')]); // Mitternacht kommt als '24:00'
-  assert.equal(nacht.at(-1), '23:45');
-  assert.deepEqual(strich(nacht, nacht.length - 8, nacht.length - 1), { von: '22:00', bis: '24:00' });
+  assert.equal(nacht.at(-1), '23:30');
+  assert.deepEqual(strich(nacht, nacht.length - 4, nacht.length - 1), { von: '22:00', bis: '24:00' });
   const voll = istSpalten(TAG, [], true);
-  assert.equal(voll.length, 80);
+  assert.equal(voll.length, 40);
   assert.equal(voll[0], '04:00');
-  assert.equal(voll.at(-1), '23:45');
+  assert.equal(voll.at(-1), '23:30');
   // Geschlossener Tag (Rahmen leer): 06:00–22:00 und die Blöcke
-  assert.deepEqual([istSpalten({ geoeffnet: false }, [])[0], istSpalten({ geoeffnet: false }, []).at(-1)], ['06:00', '21:45']);
+  assert.deepEqual([istSpalten({ geoeffnet: false }, [])[0], istSpalten({ geoeffnet: false }, []).at(-1)], ['06:00', '21:30']);
   assert.equal(istSpalten({ geoeffnet: false }, [seg(1, '04:00', '05:00')])[0], '04:00');
-  assert.equal(istSpalten(TAG, [seg(1, '07:45', '21:45')]).at(-1), '21:30'); // Ende um Viertel vor
 });
 
 test('zeilenStatus: keine, bestätigt, offen mit Vorschlag, offen mit IST, offen leer, offen ohne Plan', () => {
