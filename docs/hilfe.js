@@ -59,6 +59,7 @@ const FEHLER = {
   GRENZE_UNTER_VERTRAG: 'Die Grenze für Mehrarbeit darf nicht unter den Vertragsstunden liegen.',
   GRUND_FEHLT: 'Bitte einen Grund angeben. Er ist Pflicht bei Änderungen an bestätigten Tagen und bei Buchungen im Zeitkonto.',
   HALBE_STUNDE: 'Uhrzeiten nur in halben Stunden (:00 oder :30).',
+  VIERTELSTUNDE: 'Uhrzeiten nur in Viertelstunden (:00, :15, :30 oder :45).',
   IST_AB_FEST: 'Nach dem ersten Wochenabschluss lässt sich der Start der IST-Erfassung nicht mehr ändern.',
   IST_OFFEN: 'In dieser Woche sind noch Tage offen. Bitte erst alle Tage im IST bestätigen, dann die Woche abschließen.',
   IST_VOR_START: 'Vor dem Start der IST-Erfassung (Einstellungen) gibt es kein IST – diese Tage zeigt nur der Plan.',

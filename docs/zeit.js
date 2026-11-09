@@ -14,10 +14,13 @@ export function uhrzeit(min) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
-// Beginnzeiten aller Halbstunden von `von` bis `bis` (exklusiv).
-export function halbstunden(von, bis) {
+// Takt des Rasters in Minuten (Einsatzplan, IST, Tagesplan-Druck); bis 11/2026 waren es 30.
+export const TAKT = 15;
+
+// Beginnzeiten aller Viertelstunden von `von` bis `bis` (exklusiv).
+export function viertelstunden(von, bis) {
   const liste = [];
-  for (let m = minuten(von); m < minuten(bis); m += 30) liste.push(uhrzeit(m));
+  for (let m = minuten(von); m < minuten(bis); m += TAKT) liste.push(uhrzeit(m));
   return liste;
 }
 

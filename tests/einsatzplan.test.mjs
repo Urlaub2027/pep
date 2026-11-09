@@ -90,7 +90,7 @@ test('Pause 12:00–12:30 ohne Kompetenz erlaubt; OG ohne Kompetenz → KOMPETEN
   await wirft(malen(leitung, a, '2026-11-09', '08:00', '12:00', 'PO'), 'BEREICH_NICHT_GEFUNDEN');
 });
 
-test('05:30 oder bis 22:00 → AUSSERHALB_RAHMEN; So 15.11. → GESCHLOSSEN; 01.11. → VERGANGEN; heute 02.11. erlaubt; 08:15 → HALBE_STUNDE', async () => {
+test('05:30 oder bis 22:00 → AUSSERHALB_RAHMEN; So 15.11. → GESCHLOSSEN; 01.11. → VERGANGEN; heute 02.11. erlaubt; 08:15 erlaubt, 08:10 → VIERTELSTUNDE', async () => {
   const a = await ma('Test, Rita');
   await wirft(malen(leitung, a, '2026-11-12', '05:30', '08:00', 'KA'), 'AUSSERHALB_RAHMEN');
   await wirft(malen(leitung, a, '2026-11-12', '20:00', '22:00', 'KA'), 'AUSSERHALB_RAHMEN');
@@ -99,8 +99,15 @@ test('05:30 oder bis 22:00 → AUSSERHALB_RAHMEN; So 15.11. → GESCHLOSSEN; 01.
   await wirft(malen(leitung, a, '2026-11-01', '08:00', '12:00', null), 'VERGANGEN');
   const r = await malen(leitung, a, '2026-11-02', '06:00', '21:30', 'KA');
   assert.deepEqual(zeile(r, a), [blk('06:00', '21:30', 'KA')]);
-  await wirft(malen(leitung, a, '2026-11-12', '08:15', '12:00', 'KA'), 'HALBE_STUNDE');
+  await wirft(malen(leitung, a, '2026-11-12', '08:10', '12:00', 'KA'), 'VIERTELSTUNDE');
+  await wirft(malen(leitung, a, '2026-11-12', '08:15', '12:20', 'KA'), 'VIERTELSTUNDE');
   await wirft(malen(leitung, a, '2026-11-12', '12:00', '08:00', 'KA'), 'ZEITEN_UNGUELTIG');
+  // 15-Minuten-Takt: Beginn um Viertel vor, Ende um Viertel nach; Stunden genau (4,5 h)
+  const v = await malen(leitung, a, '2026-11-12', '07:45', '12:15', 'KA');
+  assert.deepEqual(zeile(v, a), [blk('07:45', '12:15', 'KA')]);
+  const h = (await db.query("select pep.arbeitsstunden($1, '2026-11-12', pep.zeile_lesen($1, '2026-11-12')) as h", [a])).rows[0].h;
+  assert.equal(Number(h), 4.5);
+  await malen(leitung, a, '2026-11-12', '07:45', '12:15', null);
 });
 
 test('U ganztags → malen ABWESEND; vorher geplanter Block wird unbesetzt und lässt sich radieren', async () => {
@@ -317,7 +324,7 @@ test('pep_plan_zeile_setzen ersetzt die Zeile; [] löscht sie; Zeile mit 05:00 �
   assert.deepEqual(zeile(await woche(), a), [blk('10:00', '16:00', 'KA')]);
   await wirft(setzen(a, '2026-11-13', [{ von: '08:00', bis: '12:00', bereich_id: bereich.KA },
     { von: '11:00', bis: '13:00', bereich_id: bereich.OG }]), 'UEBERLAPPUNG');
-  await wirft(setzen(a, '2026-11-13', [{ von: '08:15', bis: '12:00', bereich_id: bereich.KA }]), 'HALBE_STUNDE');
+  await wirft(setzen(a, '2026-11-13', [{ von: '08:10', bis: '12:00', bereich_id: bereich.KA }]), 'VIERTELSTUNDE');
   await wirft(setzen(a, '2026-11-13', { von: '08:00' }), 'WERT_UNGUELTIG');
   await wirft(setzen(a, '2026-11-13', [{ von: '08:00', bis: '12:00', bereich_id: 1.5 }]), 'WERT_UNGUELTIG');
   await wirft(setzen(a, '2026-11-13', [{ von: '08:00', bis: '12:00', bereich_id: 1e30 }]), 'WERT_UNGUELTIG');

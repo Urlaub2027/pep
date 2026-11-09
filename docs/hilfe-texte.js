@@ -60,13 +60,13 @@ export const HILFE = {
 
   einsatzplan: {
     titel: 'Einsatzplan',
-    wozu: 'Hier wird geplant, wer an welchem Tag wann in welchem Bereich arbeitet, in halben Stunden. '
+    wozu: 'Hier wird geplant, wer an welchem Tag wann in welchem Bereich arbeitet, in Viertelstunden. '
       + 'Die Seitenleiste prüft die Regeln und zählt die Stunden der Woche.',
     schritte: [
       'Oben links „Plan“ gewählt lassen. Woche mit ◀ ▶, Datumsfeld oder „Heute“ wählen, dann den Tag.',
       'Pinsel wählen und in der Zeile des Mitarbeiters über die Zeit ziehen.',
       'Schneller: auf die Stunden („Std.“) der Zeile klicken, von/bis wählen.',
-      '„Radieren“ leert die gezogenen halben Stunden. „Rückgängig“ nimmt die letzten Striche zurück.',
+      '„Radieren“ leert die gezogenen Viertelstunden. „Rückgängig“ nimmt die letzten Striche zurück.',
       '„Kopieren“ und „Vorlagen“ übertragen einen Tag oder eine Woche. „Krank/ZA“ trägt Krankheit oder Zeitausgleich ein.',
     ],
     gut_zu_wissen: [

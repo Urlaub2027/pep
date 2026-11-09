@@ -1021,7 +1021,7 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-c-name { width: 36mm; }
   .dr-c-zahl { width: 13mm; }
 
-  /* Tagesplan: je halbe Stunde eine Zelle mit Kürzel */
+  /* Tagesplan: je Viertelstunde eine Zelle; das Kürzel (am Abschnittsbeginn, zur vollen Stunde) ragt nach rechts */
   .dr-c-zeiten { width: 25mm; }
   .dr-c-std { width: 9mm; }
   .dr-c-kommentar { width: 30mm; }
@@ -1030,7 +1030,8 @@ table.zk-journal-tabelle td.zk-grund { min-width: 180px; white-space: normal; ov
   .dr-stunde { padding-left: 1pt; font-size: 7pt; }
   .dr-stunde:not(.offen) { color: #555; font-weight: 400; }
   .dr-tagesplan tbody tr { height: 6mm; }
-  .dr-tagesplan td.dr-z { padding: 0; font-size: 6.5pt; font-weight: 700; text-align: center; border-left-color: #bbb; }
+  .dr-tagesplan td.dr-z { padding: 0 0 0 0.5pt; font-size: 6.5pt; font-weight: 700; text-align: left; white-space: nowrap;
+    overflow: visible; border-left-color: #bbb; }
   .dr-tagesplan td.dr-z.voll { border-left-color: #555; }
   .dr-tagesplan td.dr-unbesetzt {
     background: repeating-linear-gradient(-45deg, #999 0 0.4pt, #fff 0.4pt 3pt);

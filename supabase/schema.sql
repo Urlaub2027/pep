@@ -2595,10 +2595,35 @@ create table if not exists pep.plan_bloecke (
   bereich_id     bigint not null references pep.bereiche (id),
   angelegt_von   uuid,
   geaendert_am   timestamptz not null default now(),
-  check (extract(minute from von) in (0, 30) and extract(second from von) = 0
-     and extract(minute from bis) in (0, 30) and extract(second from bis) = 0),
+  constraint plan_bloecke_viertelstunde
+    check (extract(minute from von) in (0, 15, 30, 45) and extract(second from von) = 0
+       and extract(minute from bis) in (0, 15, 30, 45) and extract(second from bis) = 0),
   check (von < bis)
 );
+-- 15-Minuten-Takt (11/2026): die frühere, unbenannte Prüfung „nur :00/:30“ durch die benannte ersetzen.
+-- Idempotent: beim erneuten Ausführen gibt es nur noch die benannte Prüfung, die bleibt.
+do $$
+declare
+  v_name text;
+begin
+  for v_name in select c.conname from pg_constraint c
+                 where c.conrelid = 'pep.plan_bloecke'::regclass and c.contype = 'c'
+                   and pg_get_constraintdef(c.oid) like '%minute%' and c.conname <> 'plan_bloecke_viertelstunde' loop
+    execute format('alter table pep.plan_bloecke drop constraint %I', v_name);
+  end loop;
+  -- Die übrige unbenannte Prüfung (von < bis) hieß neben der alten „…_check1“; Name wie bei einer Neuinstallation.
+  if not exists (select 1 from pg_constraint where conrelid = 'pep.plan_bloecke'::regclass and conname = 'plan_bloecke_check')
+     and exists (select 1 from pg_constraint where conrelid = 'pep.plan_bloecke'::regclass and conname = 'plan_bloecke_check1') then
+    alter table pep.plan_bloecke rename constraint plan_bloecke_check1 to plan_bloecke_check;
+  end if;
+  if not exists (select 1 from pg_constraint
+                  where conrelid = 'pep.plan_bloecke'::regclass and conname = 'plan_bloecke_viertelstunde') then
+    alter table pep.plan_bloecke add constraint plan_bloecke_viertelstunde
+      check (extract(minute from von) in (0, 15, 30, 45) and extract(second from von) = 0
+         and extract(minute from bis) in (0, 15, 30, 45) and extract(second from bis) = 0);
+  end if;
+end;
+$$;
 create index if not exists plan_bloecke_filiale_datum_idx on pep.plan_bloecke (filiale_id, datum);
 create index if not exists plan_bloecke_mitarbeiter_datum_idx on pep.plan_bloecke (mitarbeiter_id, datum);
 
@@ -2732,9 +2757,9 @@ begin
   if p_von is null or p_bis is null then
     raise exception 'ZEITEN_UNGUELTIG';
   end if;
-  if extract(minute from p_von) not in (0, 30) or extract(second from p_von) <> 0
-     or extract(minute from p_bis) not in (0, 30) or extract(second from p_bis) <> 0 then
-    raise exception 'HALBE_STUNDE';
+  if extract(minute from p_von) not in (0, 15, 30, 45) or extract(second from p_von) <> 0
+     or extract(minute from p_bis) not in (0, 15, 30, 45) or extract(second from p_bis) <> 0 then
+    raise exception 'VIERTELSTUNDE';
   end if;
   if p_von >= p_bis then
     raise exception 'ZEITEN_UNGUELTIG';
@@ -2851,7 +2876,7 @@ as $$
    where b.mitarbeiter_id = p_mitarbeiter_id and b.datum = p_datum
 $$;
 
--- F2 (je halbe Stunde): Zerlegt [p_von, p_bis) an den Grenzen der sperrenden Abwesenheit des Tages
+-- F2 (je Viertelstunde): Zerlegt [p_von, p_bis) an den Grenzen der sperrenden Abwesenheit des Tages
 -- (ohne von/bis = ganzer Tag) in Abschnitte; unbesetzt ist genau der überschneidende Teil.
 -- Einzige Stelle, die Abwesenheiten auf Planzeit abbildet (je Mitarbeiter und Tag gibt es höchstens eine).
 create or replace function pep.abschnitte(p_mitarbeiter_id bigint, p_datum date, p_von time, p_bis time)
@@ -2877,7 +2902,7 @@ as $$
   select t.v, t.b, t.u from teile t where t.v < t.b order by t.v
 $$;
 
--- Ist irgendein Teil von [p_von, p_bis) unbesetzt? Für eine halbe Stunde = diese halbe Stunde ist unbesetzt.
+-- Ist irgendein Teil von [p_von, p_bis) unbesetzt? Für eine Viertelstunde = diese Viertelstunde ist unbesetzt.
 create or replace function pep.unbesetzt(p_mitarbeiter_id bigint, p_datum date, p_von time, p_bis time)
 returns boolean
 language sql stable
@@ -2886,7 +2911,7 @@ as $$
   select exists (select 1 from pep.abschnitte(p_mitarbeiter_id, p_datum, p_von, p_bis) x where x.unbesetzt)
 $$;
 
--- F4: Arbeitsstunden einer Zeile = besetzte Zeit ohne Pause (je halbe Stunde nach F2).
+-- F4: Arbeitsstunden einer Zeile = besetzte Zeit ohne Pause (je Viertelstunde nach F2).
 create or replace function pep.arbeitsstunden(p_mitarbeiter_id bigint, p_datum date, p_bloecke jsonb)
 returns numeric
 language sql stable
@@ -2899,7 +2924,7 @@ as $$
    where b.art <> 'pause' and not x.unbesetzt
 $$;
 
--- Halbe Stunden der Zeile p_neu, die gegenüber p_alt neu belegt sind (neu_belegt) oder den Bereich
+-- Viertelstunden der Zeile p_neu, die gegenüber p_alt neu belegt sind (neu_belegt) oder den Bereich
 -- wechseln. Nur sie prüfen die Sperren, damit spätere Änderungen an Einstellungen oder Stammdaten
 -- (Kompetenz entzogen, Rahmen verkürzt, Vorgabe angelegt) nicht jeden weiteren Strich der Zeile blockieren.
 -- p_alt = [] liefert die ganze Zeile.
@@ -2913,8 +2938,8 @@ as $$
                       where (a ->> 'von')::time <= t::time and (a ->> 'bis')::time > t::time)
     from jsonb_array_elements(coalesce(p_neu, '[]'::jsonb)) e
     cross join lateral generate_series(date '2000-01-01' + (e ->> 'von')::time,
-                                       date '2000-01-01' + (e ->> 'bis')::time - interval '30 minutes',
-                                       interval '30 minutes') t
+                                       date '2000-01-01' + (e ->> 'bis')::time - interval '15 minutes',
+                                       interval '15 minutes') t
    where not exists (select 1 from jsonb_array_elements(coalesce(p_alt, '[]'::jsonb)) a
                       where (a ->> 'von')::time <= t::time and (a ->> 'bis')::time > t::time
                         and (a ->> 'bereich_id')::bigint = (e ->> 'bereich_id')::bigint)
@@ -2922,7 +2947,7 @@ $$;
 
 -- Wochenvorgaben (p_pflicht: Pflicht oder bevorzugt), die der Wechsel von p_alt auf p_neu am Tag
 -- verletzt; p_alt = [] prüft die ganze Zeile p_neu.
--- Zeitvorgaben (nicht_verfuegbar, nur_zwischen) zählen nur geänderte halbe Stunden (pep.zeile_aenderungen),
+-- Zeitvorgaben (nicht_verfuegbar, nur_zwischen) zählen nur geänderte Viertelstunden (pep.zeile_aenderungen),
 -- Stundengrenzen nur, wenn die Stunden steigen und danach über der Grenze liegen.
 -- Unbesetzte Zeit zählt nicht (F2); Pausen zählen zur Anwesenheit, nicht zu den Stunden (F4).
 -- nicht_verfuegbar mit von/bis sperrt den Zeitraum, ohne Uhrzeit den ganzen Tag. Ausnahme: ohne Uhrzeit,
@@ -2946,7 +2971,7 @@ declare
 begin
   select coalesce(jsonb_agg(z.von), '[]'::jsonb) into v_slots
     from pep.zeile_aenderungen(p_alt, p_neu) z
-   where not pep.unbesetzt(p_mitarbeiter_id, p_datum, z.von, z.von + interval '30 minutes');
+   where not pep.unbesetzt(p_mitarbeiter_id, p_datum, z.von, z.von + interval '15 minutes');
 
   for v_w in select * from pep.wochenvorgaben w
               where w.mitarbeiter_id = p_mitarbeiter_id and w.pflicht = p_pflicht
@@ -2979,7 +3004,7 @@ $$;
 -- Alle Sperren für den Wechsel der Zeile von p_alt auf p_neu (beide [{von, bis, bereich_id}]).
 -- Reihenfolge der Prüfungen = Reihenfolge der Fehler. Uhrzeiten prüfen die Aufrufer (pep.plan_zeiten_pruefen).
 -- Für die ganze Zeile: VERGANGEN, MITARBEITER_INAKTIV, KEIN_VERTRAG, GESCHLOSSEN. Rahmen, Bereich,
--- Kompetenz, Abwesenheit und Zeitvorgaben nur für geänderte halbe Stunden (pep.zeile_aenderungen),
+-- Kompetenz, Abwesenheit und Zeitvorgaben nur für geänderte Viertelstunden (pep.zeile_aenderungen),
 -- Stundengrenzen nur bei steigenden Stunden. Eine unveränderte Zeile besteht daher immer.
 -- Eine leere Zeile löscht nur; dafür genügt wie beim Radieren, dass der Tag nicht vergangen ist.
 create or replace function pep.zeile_pruefen(
@@ -3015,7 +3040,7 @@ begin
   if not v_tag.geoeffnet then
     raise exception 'GESCHLOSSEN';
   end if;
-  -- Halbe Stunden liegen auf :00/:30 wie der Rahmen: eine beginnt außerhalb, wenn vor rahmen_von oder ab rahmen_bis.
+  -- Viertelstunden liegen auf :00/:15/:30/:45, der Rahmen auf :00/:30: eine beginnt außerhalb, wenn vor rahmen_von oder ab rahmen_bis.
   if exists (select 1 from pep.zeile_aenderungen(v_alt, v_neu) z
               where z.von < v_tag.rahmen_von or z.von >= v_tag.rahmen_bis) then
     raise exception 'AUSSERHALB_RAHMEN';
@@ -3040,7 +3065,7 @@ begin
   -- Geplante Blöcke dürfen nach einer Krankmeldung stehen bleiben (dann unbesetzt), aber nicht wachsen
   -- oder den Bereich wechseln.
   if exists (select 1 from pep.zeile_aenderungen(v_alt, v_neu) z
-              where pep.unbesetzt(p_mitarbeiter_id, p_datum, z.von, z.von + interval '30 minutes')) then
+              where pep.unbesetzt(p_mitarbeiter_id, p_datum, z.von, z.von + interval '15 minutes')) then
     raise exception 'ABWESEND';
   end if;
   if exists (select 1 from pep.vorgaben_verletzt(p_mitarbeiter_id, p_datum, v_alt, v_neu, true)) then
@@ -3544,8 +3569,9 @@ as $$
   select to_char(p_von, 'HH24:MI') || coalesce('–' || to_char(p_bis, 'HH24:MI'), '')
 $$;
 
--- Zustand je Mitarbeiter und halber Stunde eines Tages (p_mitarbeiter_id null = alle der Filiale), t = Beginn:
+-- Zustand je Mitarbeiter und Viertelstunde eines Tages (p_mitarbeiter_id null = alle der Filiale), t = Beginn:
 -- unbesetzt (F2, code = Code der Abwesenheit), sonst kasse (Bereich mit bedeutung kasse), pause oder arbeit.
+-- Der Name stammt aus der Zeit des Halbstunden-Rasters (bis 11/2026).
 create or replace function pep.halbstunden(p_filiale_id bigint, p_datum date, p_mitarbeiter_id bigint)
 returns table (mitarbeiter_id bigint, t time, zustand text, code text)
 language sql stable
@@ -3561,7 +3587,7 @@ as $$
     join pep.bereiche r on r.id = b.bereich_id
     cross join lateral pep.abschnitte(b.mitarbeiter_id, b.datum, b.von, b.bis) x
     cross join lateral generate_series(date '2000-01-01' + x.von,
-                                       date '2000-01-01' + x.bis - interval '30 minutes', interval '30 minutes') s
+                                       date '2000-01-01' + x.bis - interval '15 minutes', interval '15 minutes') s
    where b.filiale_id = p_filiale_id and b.datum = p_datum
      and (p_mitarbeiter_id is null or b.mitarbeiter_id = p_mitarbeiter_id)
 $$;
@@ -3579,7 +3605,7 @@ as $$
               when a.erster <= s.rahmen_von then 'frueh'
               when a.ende > g.grenze then 'spaet'
               else 'mitte' end
-    from (select min(h.t) as erster, max(h.t) + interval '30 minutes' as ende
+    from (select min(h.t) as erster, max(h.t) + interval '15 minutes' as ende
             from pep.halbstunden(p_filiale_id, p_datum, p_mitarbeiter_id) h
            where h.zustand in ('kasse', 'arbeit')) a
     cross join lateral pep.tag_status(p_filiale_id, p_datum) s
@@ -3677,7 +3703,7 @@ as $$
 $$;
 
 -- Regelprüfung eines Tages (Spec 12): Liste [{art, schwere, mitarbeiter_id, von, bis, text}], Warnungen vor
--- Hinweisen, dann von (ohne Uhrzeit zuerst), dann Mitarbeitername. Zusammenhängende halbe Stunden derselben
+-- Hinweisen, dann von (ohne Uhrzeit zuerst), dann Mitarbeitername. Zusammenhängende Viertelstunden derselben
 -- Art und desselben Mitarbeiters ergeben einen Eintrag. Regeln über die ganze Filiale (Kasse, VP, eine Person)
 -- haben mitarbeiter_id NULL. Unbesetzte Zeit zählt nirgends mit (F2), Pause zählt als anwesend (F3).
 -- Wochenregeln (wochenstunden, wochenstunden_unter, Woche unter 18) stehen an jedem Tag der ISO-Woche,
@@ -3729,18 +3755,18 @@ begin
     ), da as (  -- anwesend (F3)
       select * from h where h.zustand <> 'unbesetzt'
     ), ma as (  -- je anwesendem Mitarbeiter: Anwesenheit und Arbeitsstunden (F4), unter 18 (F7)
-      select da.mitarbeiter_id, min(da.t) as erster, max(da.t) + interval '30 minutes' as ende,
+      select da.mitarbeiter_id, min(da.t) as erster, max(da.t) + interval '15 minutes' as ende,
              extract(epoch from min(da.t)) / 3600 as erster_h,
-             extract(epoch from max(da.t)) / 3600 + 0.5 as ende_h,
-             extract(epoch from max(da.t) - min(da.t)) / 3600 + 0.5 as anwesend_h,
-             count(*) filter (where da.zustand in ('kasse', 'arbeit')) * 0.5 as arbeit_h,
+             extract(epoch from max(da.t)) / 3600 + 0.25 as ende_h,
+             extract(epoch from max(da.t) - min(da.t)) / 3600 + 0.25 as anwesend_h,
+             count(*) filter (where da.zustand in ('kasse', 'arbeit')) * 0.25 as arbeit_h,
              coalesce(pep.alter_am(da.mitarbeiter_id, p_datum) < 18, false) as u18
         from da
        group by da.mitarbeiter_id
-    ), slots as (  -- halbe Stunden des Rahmens
+    ), slots as (  -- Viertelstunden des Rahmens
       select s::time as t, s::time >= v_tag.oeffnung_von and s::time < v_tag.oeffnung_bis as offen
         from generate_series(date '2000-01-01' + v_tag.rahmen_von,
-                             date '2000-01-01' + v_tag.rahmen_bis - interval '30 minutes', interval '30 minutes') s
+                             date '2000-01-01' + v_tag.rahmen_bis - interval '15 minutes', interval '15 minutes') s
        where v_tag.geoeffnet
     ), vp_kasse as (  -- VP an der Kasse in der Öffnungszeit, niemand mit Kassenkompetenz frei (nicht Kasse, nicht Pause)
       select v.mitarbeiter_id, v.t
@@ -3757,10 +3783,10 @@ begin
     ), gebunden as (  -- erst ab mehr als 30 min am Stück je VP gebunden (eine Pausenablöse ist überbrückbar)
       select g.mitarbeiter_id, g.t
         from (select x.mitarbeiter_id, x.t, count(*) over (partition by x.mitarbeiter_id, x.g) as n
-                from (select vk.*, extract(epoch from vk.t) / 1800
+                from (select vk.*, extract(epoch from vk.t) / 900
                                    - row_number() over (partition by vk.mitarbeiter_id order by vk.t) as g
                         from vp_kasse vk) x) g
-       where g.n > 1
+       where g.n > 2  -- mehr als zwei Viertelstunden = mehr als 30 min
     ), abdeckung as (  -- vp = VPs anwesend, vp_frei = davon nicht an der Kasse gebunden
       select s.t, s.offen,
              count(da.mitarbeiter_id) as anwesend,
@@ -3777,7 +3803,7 @@ begin
         from slots s
         left join da on da.t = s.t
        group by s.t, s.offen
-    ), roh (art, mitarbeiter_id, t, info) as (  -- Verstöße je halbe Stunde
+    ), roh (art, mitarbeiter_id, t, info) as (  -- Verstöße je Viertelstunde
       select 'unbesetzt', h.mitarbeiter_id, h.t, h.code from h where h.zustand = 'unbesetzt'
       union all
       select 'kasse_unbesetzt', null::bigint, a.t, null::text
@@ -3809,9 +3835,9 @@ begin
       select 'jarbschg', da.mitarbeiter_id, da.t, null
         from da join ma on ma.mitarbeiter_id = da.mitarbeiter_id
        where ma.u18 and (da.t < v_frueh_u18 or da.t >= v_spaet_u18)
-    ), inseln as (  -- zusammenhängende halbe Stunden je Art und Mitarbeiter
-      select r.art, r.mitarbeiter_id, r.info, min(r.t) as von, max(r.t) + interval '30 minutes' as bis
-        from (select roh.*, extract(epoch from roh.t) / 1800
+    ), inseln as (  -- zusammenhängende Viertelstunden je Art und Mitarbeiter
+      select r.art, r.mitarbeiter_id, r.info, min(r.t) as von, max(r.t) + interval '15 minutes' as bis
+        from (select roh.*, extract(epoch from roh.t) / 900
                             - row_number() over (partition by roh.art, roh.mitarbeiter_id, roh.info order by roh.t) as g
                 from roh) r
        group by r.art, r.mitarbeiter_id, r.info, r.g
@@ -3820,7 +3846,7 @@ begin
              case when coalesce(pep.alter_am(ma.mitarbeiter_id, p_datum) < 18, false)
                   then v_ruhe_u18 else v_ruhe end as mind
         from ma
-        join (select x.mitarbeiter_id, extract(epoch from max(x.t)) / 3600 + 0.5 as ende_h
+        join (select x.mitarbeiter_id, extract(epoch from max(x.t)) / 3600 + 0.25 as ende_h
                 from pep.halbstunden(p_filiale_id, p_datum - 1, null) x
                where x.zustand <> 'unbesetzt' group by x.mitarbeiter_id) v on v.mitarbeiter_id = ma.mitarbeiter_id
       union all
@@ -5549,10 +5575,35 @@ create table if not exists pep.ist_bloecke (
   bereich_id     bigint not null references pep.bereiche (id),
   angelegt_von   uuid,
   geaendert_am   timestamptz not null default now(),
-  check (extract(minute from von) in (0, 30) and extract(second from von) = 0
-     and extract(minute from bis) in (0, 30) and extract(second from bis) = 0),
+  constraint ist_bloecke_viertelstunde
+    check (extract(minute from von) in (0, 15, 30, 45) and extract(second from von) = 0
+       and extract(minute from bis) in (0, 15, 30, 45) and extract(second from bis) = 0),
   check (von < bis)
 );
+-- 15-Minuten-Takt (11/2026): die frühere, unbenannte Prüfung „nur :00/:30“ durch die benannte ersetzen.
+-- Idempotent: beim erneuten Ausführen gibt es nur noch die benannte Prüfung, die bleibt.
+do $$
+declare
+  v_name text;
+begin
+  for v_name in select c.conname from pg_constraint c
+                 where c.conrelid = 'pep.ist_bloecke'::regclass and c.contype = 'c'
+                   and pg_get_constraintdef(c.oid) like '%minute%' and c.conname <> 'ist_bloecke_viertelstunde' loop
+    execute format('alter table pep.ist_bloecke drop constraint %I', v_name);
+  end loop;
+  -- Die übrige unbenannte Prüfung (von < bis) hieß neben der alten „…_check1“; Name wie bei einer Neuinstallation.
+  if not exists (select 1 from pg_constraint where conrelid = 'pep.ist_bloecke'::regclass and conname = 'ist_bloecke_check')
+     and exists (select 1 from pg_constraint where conrelid = 'pep.ist_bloecke'::regclass and conname = 'ist_bloecke_check1') then
+    alter table pep.ist_bloecke rename constraint ist_bloecke_check1 to ist_bloecke_check;
+  end if;
+  if not exists (select 1 from pg_constraint
+                  where conrelid = 'pep.ist_bloecke'::regclass and conname = 'ist_bloecke_viertelstunde') then
+    alter table pep.ist_bloecke add constraint ist_bloecke_viertelstunde
+      check (extract(minute from von) in (0, 15, 30, 45) and extract(second from von) = 0
+         and extract(minute from bis) in (0, 15, 30, 45) and extract(second from bis) = 0);
+  end if;
+end;
+$$;
 create index if not exists ist_bloecke_filiale_datum_idx on pep.ist_bloecke (filiale_id, datum);
 create index if not exists ist_bloecke_mitarbeiter_datum_idx on pep.ist_bloecke (mitarbeiter_id, datum);
 
@@ -5721,7 +5772,7 @@ $$;
 
 -- G6: Sperren für den Wechsel der IST-Zeile von p_alt auf p_neu. Nur: Datum ≤ heute, beschäftigt, Vertrag,
 -- Zeitrahmen 04:00–24:00, Bereich der Filiale (aktiv, malbar), sperrende Abwesenheit – Bereich, Zeitrahmen und
--- Abwesenheit nur für geänderte halbe Stunden (pep.zeile_aenderungen). Keine Prüfung von Öffnung, Rahmen, Kompetenz
+-- Abwesenheit nur für geänderte Viertelstunden (pep.zeile_aenderungen). Keine Prüfung von Öffnung, Rahmen, Kompetenz
 -- oder Vorgaben: IST bildet Tatsachen ab. Überlappung lehnt der Trigger ab, den Grund prüft pep.ist_grund_setzen.
 create or replace function pep.ist_zeile_pruefen(
   p_filiale_id bigint, p_mitarbeiter_id bigint, p_datum date, p_alt jsonb, p_neu jsonb)
@@ -5768,7 +5819,7 @@ begin
     raise exception 'BEREICH_NICHT_MALBAR';
   end if;
   if exists (select 1 from pep.zeile_aenderungen(v_alt, v_neu) z
-              where pep.unbesetzt(p_mitarbeiter_id, p_datum, z.von, z.von + interval '30 minutes')) then
+              where pep.unbesetzt(p_mitarbeiter_id, p_datum, z.von, z.von + interval '15 minutes')) then
     raise exception 'ABWESEND';
   end if;
 end;
@@ -6151,7 +6202,7 @@ begin
     from pep.ist_tage it
    where it.mitarbeiter_id = p_mitarbeiter_id and it.datum between p_montag and v_so;
 
-  -- Halbstunden mit Beginn ≥ Grenze: alle Zeiten liegen auf halben Stunden, also Anteil nach der Grenze.
+  -- Anteil nach der Grenze, minutengenau aus von/bis (Blöcke auf Viertelstunden, die Grenze auf halben Stunden).
   select round(coalesce(sum(extract(epoch from x.bis - greatest(x.von, g.grenze)) / 3600), 0), 2) into v_spaet
     from pep.ist_tage it
     join pep.ist_bloecke b on b.mitarbeiter_id = it.mitarbeiter_id and b.datum = it.datum
