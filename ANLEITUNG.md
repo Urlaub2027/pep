@@ -492,7 +492,9 @@ Ein Klick auf den Kopf einer Woche öffnet den Einsatzplan dieser Woche.
 Die Ausdrucke sind A4 quer (das Stundenblatt A4 hoch), mit Kopf (Titel, Zeitraum,
 Filiale, „erstellt am“).
 Jede Zelle trägt Kürzel **und** Farbe, damit Schwarz-Weiß lesbar bleibt. Fehlen die
-Farben, im Druckdialog „Hintergrundgrafiken“ einschalten.
+Farben, im Druckdialog „Hintergrundgrafiken“ einschalten. Chrome und Edge stellen
+das Format selbst ein; bietet der Druckdialog (z. B. Safari auf iPad) Hoch- und
+Querformat an, Querformat wählen – die Druckansicht bleibt dabei erhalten.
 - **Einsatzplan → Drucken:** Wochenplan, Tagesplan des gewählten Tags, Tagespläne der
   ganzen Woche, „Excel (Wochenplan)“ lädt eine .xlsx-Datei herunter.
   **„PEP Mitarbeiter“** füllt das Papierformular „Personaleinsatzplanung (PEP)“ für die

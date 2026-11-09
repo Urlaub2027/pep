@@ -411,16 +411,35 @@ export function baueDruck(art, daten) {
   document.body.classList.add('druckt');
 }
 
+const BEDIENUNG = ['pointerdown', 'keydown'];
+let aufraeumenScharf = null; // Abmelden der wartenden Bedienungs-Hörer, solange einer wartet
+
 function raeumeAuf() {
+  aufraeumenScharf?.();
   document.body.classList.remove('druckt');
   $('ansicht-druck').replaceChildren();
 }
 
-// Druckansicht bauen, Druckdialog öffnen, danach aufräumen. In Browsern, deren print() nicht wartet,
-// räumt erst afterprint auf; die Bildschirmansicht bleibt in beiden Fällen unverändert.
+// afterprint kommt in manchen Browsern (Safari auf iPad/iPhone), während der Druckdialog noch offen ist. Stellt man
+// dort auf Querformat, rendert der Browser neu – ohne Druckansicht käme die App-Seite aufs Papier. Darum erst bei der
+// nächsten Bedienung der Seite aufräumen (Tippen, Klicken, Taste; Strg+P löst vorher keydown aus). Bis dahin stört die
+// Druckansicht nicht: am Bildschirm ist sie immer verborgen.
+function raeumeBeiBedienungAuf() {
+  aufraeumenScharf?.();
+  const los = () => raeumeAuf();
+  BEDIENUNG.forEach((e) => window.addEventListener(e, los, true));
+  aufraeumenScharf = () => {
+    BEDIENUNG.forEach((e) => window.removeEventListener(e, los, true));
+    aufraeumenScharf = null;
+  };
+}
+
+// Druckansicht bauen, Druckdialog öffnen; aufgeräumt wird nach afterprint bei der nächsten Bedienung der Seite.
+// Die Bildschirmansicht bleibt unverändert.
 export function drucke(art, daten) {
+  aufraeumenScharf?.(); // ein noch wartendes Aufräumen vom letzten Druck darf die neue Ansicht nicht leeren
   baueDruck(art, daten);
-  window.addEventListener('afterprint', raeumeAuf, { once: true });
+  window.addEventListener('afterprint', raeumeBeiBedienungAuf, { once: true });
   // Bilder (Logo im Formblatt) erst fertig dekodieren, sonst fehlen sie im Druck; ohne Bild wie bisher sofort.
   const bilder = [...$('ansicht-druck').querySelectorAll('img')];
   if (!bilder.length) { window.print(); return; }
@@ -458,7 +477,8 @@ export function druckAuswahlPlan(kontext) {
   const tag = woche.tage.find((t) => t.datum === datum);
   let logo = null;
   dialog(`Drucken – KW ${woche.kw}`, [
-    element('p', { class: 'hinweis' }, 'Der Ausdruck ist A4 quer. Im Druckdialog „Hintergrundgrafiken“ einschalten, '
+    element('p', { class: 'hinweis' }, 'Der Ausdruck ist A4 quer; bietet der Druckdialog Hoch- und Querformat an, '
+      + 'Querformat wählen. Im Druckdialog „Hintergrundgrafiken“ einschalten, '
       + 'falls die Bereichsfarben fehlen; die Kürzel sind auch ohne Farbe lesbar.'),
   ], [
     { text: 'Wochenplan', aktion: () => {}, danach: () => drucke('woche', { woche }) },

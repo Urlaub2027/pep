@@ -245,9 +245,12 @@ async function anmelden(name) {
   await ruhe();
 }
 
-// Druck: window.print abfangen (headless wäre es ein No-op); danach afterprint selbst auslösen.
+// Druck: window.print abfangen (headless wäre es ein No-op); danach afterprint selbst auslösen. Aufgeräumt wird erst bei
+// der nächsten Bedienung der Seite (druck.js: Safari feuert afterprint bei offenem Druckdialog), darum ein Tippen hinterher.
 const druckStub = () => c.werte(() => { window.__gedruckt = 0; window.print = () => { window.__gedruckt += 1; }; });
-const druckAufraeumen = () => c.werte(() => window.dispatchEvent(new Event('afterprint')));
+const nachDemDruck = () => c.werte(() => window.dispatchEvent(new Event('afterprint')));
+const tippeAufSeite = () => c.werte(() => document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true })));
+const druckAufraeumen = async () => { await nachDemDruck(); await tippeAufSeite(); };
 
 // ================================================================ Szenarien
 
@@ -536,8 +539,14 @@ await szenario('Abwesenheiten: Drucken (Monat, Resturlaub)', async () => {
   pruefe((await text('#ansicht-druck .dr-titel')) === 'Abwesenheiten', 'Titel Abwesenheiten');
   pruefe((await text('#ansicht-druck .dr-kopf-rechts')).includes('Netto Aschaffenburg (2558)'), 'Kopf mit Filiale und Nummer');
   pruefe(!(await sichtbar('#ansicht-druck')), 'Druckansicht am Bildschirm verborgen');
-  await druckAufraeumen();
-  pruefe(!(await c.werte(() => document.body.classList.contains('druckt'))), 'afterprint räumt auf');
+  // afterprint allein räumt nicht auf: Safari feuert es bei offenem Druckdialog, ein Wechsel auf Querformat rendert
+  // danach neu und bräuchte die Druckansicht noch. Erst die nächste Bedienung der Seite räumt auf.
+  await nachDemDruck();
+  pruefe(await c.werte(() => document.body.classList.contains('druckt')), 'nach afterprint: Druckansicht bleibt (Querformat im Dialog)');
+  gleich(await anzahl('#ansicht-druck .dr-monat tbody tr'), zeilen, 'nach afterprint: Druckinhalt bleibt');
+  await c.werte(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Control', bubbles: true })));
+  pruefe(!(await c.werte(() => document.body.classList.contains('druckt'))), 'Taste nach dem Druck räumt auf (Strg+P druckt die Seite)');
+  gleich(await anzahl('#ansicht-druck > *'), 0, 'Druckansicht nach dem Aufräumen leer');
   await c.klick({ text: 'Drucken', in: '#ansicht-abwesenheiten', sel: 'button', genau: true });
   await warteDialog('Drucken');
   await dKnopf('Resturlaub 2026');
