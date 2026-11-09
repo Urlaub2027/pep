@@ -64,43 +64,38 @@ function tagesplan(woche, datum) {
       element('thead', {}, kopfZeile('Tagesplan', titel, 1)),
       element('tbody', {}, element('tr', {}, element('td', {}, tag?.feiertag ? `Geschlossen (${tag.feiertag})` : 'Geschlossen')))));
   }
-  // Kopf: eine Zelle je Stunde über vier Viertelstunden (wie im Einsatzplan), Öffnungszeit fett.
+  // Kopf: eine Zelle je Stunde über zwei halbe Stunden (wie im Einsatzplan), Öffnungszeit fett.
   const stunden = [];
   for (const von of spalten) {
     const letzte = stunden.at(-1);
-    if (letzte && !von.endsWith(':00') && letzte.von.slice(0, 2) === von.slice(0, 2)) letzte.breite += 1;
+    if (letzte && von.endsWith(':30') && letzte.von.slice(0, 2) === von.slice(0, 2)) letzte.breite += 1;
     else stunden.push({ von, breite: 1 });
   }
   const offen = (von) => von >= tag.oeffnung_von && von < tag.oeffnung_bis;
   const benutzt = new Map();
-  // Kürzel am Beginn eines Abschnitts und wieder zur vollen Stunde (frühestens drei Zellen nach dem letzten): je
-  // Viertelstunde ist die Zelle zu schmal für ein Kürzel in jeder Zelle; es ragt in die Nachbarzellen.
-  const gleich = (a, b) => a && b && a.kuerzel === b.kuerzel && a.unbesetzt === b.unbesetzt;
-  const mitKuerzel = (zellen) => {
-    let seit = 0;
-    return zellen.map((c, i) => {
-      seit += 1;
-      const zeigen = c && (!gleich(c, zellen[i - 1]) || (spalten[i].endsWith(':00') && seit >= 3));
-      if (zeigen) seit = 0;
-      return zeigen;
-    });
-  };
   const reihen = zeilen.map((z) => element('tr', {},
     element('th', { class: 'dr-name' }, z.name),
     element('td', { class: 'dr-zeiten' }, z.zeiten ? z.zeiten.replace(/, /g, '\n') : '–'),
     element('td', { class: 'zahl' }, stundenDE(z.stunden)),
     element('td', { class: 'dr-kommentar' }, z.kommentar),
-    ((zeigen) => z.zellen.map((c, i) => {
+    z.zellen.map((c, i) => {
       const td = element('td', { class: ['dr-z', spalten[i].endsWith(':00') ? 'voll' : ''].filter(Boolean).join(' ') });
       if (!c) return td;
-      if (zeigen[i]) td.textContent = c.kuerzel;
+      td.textContent = c.kuerzel;
       if (c.unbesetzt) td.classList.add('dr-unbesetzt');
-      else {
+      else if (c.teil || c.zweite) {
+        // Viertelstunde angeschnitten: halbe Zelle (die Zeiten-Spalte nennt die genaue Uhrzeit)
+        const eigene = c.farbe ?? 'transparent';
+        const [links, rechts] = c.teil === 'hinten' ? ['transparent', eigene] : [eigene, c.zweite?.farbe ?? 'transparent'];
+        td.style.backgroundImage = `linear-gradient(to right, ${links} 50%, ${rechts} 50%)`;
+        if (c.zweite) benutzt.set(c.zweite.kuerzel, woche.bereiche.find((b) => b.kuerzel === c.zweite.kuerzel));
+        benutzt.set(c.kuerzel, woche.bereiche.find((b) => b.kuerzel === c.kuerzel));
+      } else {
         farbig(td, c.farbe);
         benutzt.set(c.kuerzel, woche.bereiche.find((b) => b.kuerzel === c.kuerzel));
       }
       return td;
-    }))(mitKuerzel(z.zellen))));
+    })));
   const spaltenZahl = 4 + spalten.length;
   const tabelle = element('table', { class: 'dr-tabelle dr-tagesplan' },
     element('colgroup', {}, element('col', { class: 'dr-c-name' }), element('col', { class: 'dr-c-zeiten' }),

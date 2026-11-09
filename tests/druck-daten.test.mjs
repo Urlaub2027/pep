@@ -99,29 +99,26 @@ test('Wochenplan: unbesetzte Abschnitte zählen nicht (F2), Teilabwesenheit steh
 
 test('Tagesplan: nur Mitarbeiter mit Blöcken, Zeiten, Stunden, Kommentar, Zellen mit Kürzel und Farbe', () => {
   const { zeilen, abwesende, spalten } = tagesplanZeilen(woche(), TAGE[0]);
-  assert.equal(spalten.length, 62); // 06:00–21:30 in Viertelstunden
+  assert.equal(spalten.length, 31); // 06:00–21:30
   assert.deepEqual(zeilen.map((z) => z.name), ['Test, Anna', 'Muster, Ben']);
   const [anna] = zeilen;
   assert.equal(anna.zeiten, '07:00–15:30');
   assert.equal(anna.stunden, 8);
   assert.equal(anna.kommentar, 'Kasse 1');
-  assert.equal(anna.zellen.length, 62);
-  const i = (h) => spalten.indexOf(h);
-  assert.equal(anna.zellen[i('06:00')], null);
-  assert.equal(anna.zellen[i('06:45')], null);
-  assert.deepEqual(anna.zellen[i('07:00')], { kuerzel: 'KA', farbe: '#7FD1FF', unbesetzt: false });
-  assert.deepEqual(anna.zellen[i('12:00')], { kuerzel: 'PA', farbe: '#555555', unbesetzt: false });
-  assert.deepEqual(anna.zellen[i('15:15')], { kuerzel: 'KA', farbe: '#7FD1FF', unbesetzt: false });
-  assert.equal(anna.zellen[i('15:30')], null);
+  assert.equal(anna.zellen.length, 31);
+  assert.equal(anna.zellen[0], null); // 06:00
+  assert.deepEqual(anna.zellen[2], { kuerzel: 'KA', farbe: '#7FD1FF', unbesetzt: false }); // 07:00
+  assert.deepEqual(anna.zellen[12], { kuerzel: 'PA', farbe: '#555555', unbesetzt: false }); // 12:00
+  assert.equal(anna.zellen[19], null); // 15:30
   assert.deepEqual(abwesende, [{ name: 'Beispiel, Cem', code: 'U', zeiten: '' }]);
 });
 
 test('Tagesplan: Teilabwesende stehen im Raster (unbesetzt markiert) und in den Abwesenden', () => {
-  const { zeilen, abwesende, spalten } = tagesplanZeilen(woche(), TAGE[3]);
+  const { zeilen, abwesende } = tagesplanZeilen(woche(), TAGE[3]);
   const dana = zeilen.find((z) => z.name === 'Probe, Dana');
   assert.equal(dana.zeiten, '07:00–08:00, 13:00–17:00');
   assert.equal(dana.stunden, 5);
-  assert.deepEqual(dana.zellen[spalten.indexOf('08:00')], { kuerzel: 'TS', farbe: '#D9B38C', unbesetzt: true });
+  assert.deepEqual(dana.zellen[4], { kuerzel: 'TS', farbe: '#D9B38C', unbesetzt: true }); // 08:00
   assert.deepEqual(abwesende.map((a) => [a.name, a.code, a.zeiten]),
     [['Beispiel, Cem', 'U', ''], ['Probe, Dana', 'BS', '08:00–13:00']]);
 });
@@ -483,4 +480,19 @@ test('Formblatt: mehr als zwei Pausen landen in der zweiten Pausenzeile', () => 
 test('Formblatt: 8 Spalten je Seite, ohne Mitarbeiter keine Seite', () => {
   assert.deepEqual(formblattSeiten(formblattWoche(9)).map((s) => s.length), [8, 5]);
   assert.deepEqual(formblattSeiten({ ...woche(), mitarbeiter: [] }), []);
+});
+
+test('Tagesplan: Viertelstunde angeschnitten → halbe Zelle, zwei Bereiche in einer Zelle (15-Minuten-Takt)', () => {
+  const w = woche();
+  w.bloecke = w.bloecke.filter((x) => x.datum !== TAGE[4]);
+  w.bloecke.push({ id: 960, mitarbeiter_id: 1, datum: TAGE[4], von: '07:45', bis: '10:15', bereich_id: KA, unbesetzt: false },
+    { id: 961, mitarbeiter_id: 1, datum: TAGE[4], von: '10:15', bis: '10:45', bereich_id: PA, unbesetzt: false });
+  const { zeilen, spalten } = tagesplanZeilen(w, TAGE[4]);
+  const z = zeilen[0].zellen;
+  const i = (h) => spalten.indexOf(h);
+  assert.equal(zeilen[0].zeiten, '07:45–10:45');
+  assert.deepEqual(z[i('07:30')], { kuerzel: 'KA', farbe: '#7FD1FF', unbesetzt: false, teil: 'hinten' });
+  assert.deepEqual(z[i('08:00')], { kuerzel: 'KA', farbe: '#7FD1FF', unbesetzt: false });
+  assert.deepEqual(z[i('10:00')], { kuerzel: 'KA', farbe: '#7FD1FF', unbesetzt: false, zweite: { kuerzel: 'PA', farbe: '#555555' } });
+  assert.deepEqual(z[i('10:30')], { kuerzel: 'PA', farbe: '#555555', unbesetzt: false, teil: 'vorne' });
 });
