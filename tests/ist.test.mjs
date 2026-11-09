@@ -135,7 +135,12 @@ test('Zeitrahmen 04:00–24:00: 05:00–06:00 erlaubt (außerhalb Rahmen), 03:30
   assert.deepEqual(segmente(r, a).map((s) => `${s.von}-${s.bis}`), ['04:00-06:00', '22:00-23:30']);
   const h = (await t.db.query("select pep.arbeitsstunden($1, '2026-11-11', pep.ist_zeile_lesen($1, '2026-11-11')) as h", [a])).rows[0].h;
   assert.equal(Number(h), 3.5);
-  await wirft(ist(leitung, a, '2026-11-11', '08:15', '09:00', 'KA'), 'HALBE_STUNDE');
+  await wirft(ist(leitung, a, '2026-11-11', '08:10', '09:00', 'KA'), 'VIERTELSTUNDE');
+  // IST auf Viertelstunden: 08:15–09:00 = 0,75 h dazu
+  r = await ist(leitung, a, '2026-11-11', '08:15', '09:00', 'KA');
+  assert.deepEqual(segmente(r, a).map((s) => `${s.von}-${s.bis}`), ['04:00-06:00', '08:15-09:00', '22:00-23:30']);
+  const h2 = (await t.db.query("select pep.arbeitsstunden($1, '2026-11-11', pep.ist_zeile_lesen($1, '2026-11-11')) as h", [a])).rows[0].h;
+  assert.equal(Number(h2), 4.25);
   await wirft(ist(leitung, a, '2026-11-11', '09:00', '08:00', 'KA'), 'ZEITEN_UNGUELTIG');
 });
 

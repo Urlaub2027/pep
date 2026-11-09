@@ -194,9 +194,13 @@ async function zellPunkt(sel, scrollen) {
     return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
   }, sel, scrollen);
 }
+// Raster in Viertelstunden: `bis` nennt wie früher den Beginn der letzten halben Stunde des Strichs; gezogen wird bis zu
+// ihrer zweiten Viertelstunde (bis '11:30' → Zelle 11:45 → Strich endet 12:00). Mit Viertelstunde (z. B. '11:15') genau die Zelle.
+const letzteZelle = (bis) => (/:(00|30)$/.test(bis)
+  ? `${bis.slice(0, 3)}${String(Number(bis.slice(3)) + 15).padStart(2, '0')}` : bis);
 async function epStrich(mid, von, bis, { touch = false } = {}) {
   const a = await zellPunkt(epZelle(mid, von), true);
-  const b = await zellPunkt(epZelle(mid, bis), false);
+  const b = await zellPunkt(epZelle(mid, letzteZelle(bis)), false);
   if (!a || !b) throw new Error(`Zelle fehlt: ${mid} ${von}/${bis}`);
   if (touch) await c.wische(a, b); else await c.ziehe(a, b);
   await ruhe();
@@ -599,7 +603,8 @@ await szenario('Einsatzplan: Block malen per Maus', async () => {
   await epStrich(MIA, '08:00', '11:30');
   gleich(await bloecke(MIA, MI), ['KA 08:00-12:00'], 'DB nach Strich');
   const belegt = await zeilenBelegung(MIA);
-  gleich(belegt, ['08:00', '08:30', '09:00', '09:30', '10:00', '10:30', '11:00', '11:30'], 'Zellen belegt');
+  gleich(belegt, ['08:00', '08:15', '08:30', '08:45', '09:00', '09:15', '09:30', '09:45', '10:00', '10:15', '10:30', '10:45',
+    '11:00', '11:15', '11:30', '11:45'], 'Zellen belegt (Viertelstunden)');
   gleich(await text(`#ansicht-einsatzplan tr[data-mitarbeiter="${MIA}"] .ep-std`), '4', 'Stunden der Zeile');
   pruefe(!(await c.werte(() => document.querySelector('#ansicht-einsatzplan .ep-knoepfe .knopf').disabled)), 'Rückgängig aktiv');
 });
@@ -1454,9 +1459,10 @@ await szenario('Einsatzplan: zwei schnelle Striche in einer Zeile bei langsamer 
     // Erste Zelle jedes Strichs ins Bild holen: Das Raster endet am Fensterrand (passeHoeheAn), untere Zeilen liegen
     // sonst unter den klebenden Abdeckungszeilen und die Maus träfe diese.
     const p = async (von, holen = false) => zellPunkt(epZelle(MIA, von), holen);
-    await c.ziehe(await p('13:00', true), await p('13:30'));
-    await c.ziehe(await p('15:00', true), await p('15:30'));
-    gleich(await wartendeZellen(), ['13:00', '13:30', '15:00', '15:30'], 'Beide Striche markiert, solange sie warten');
+    await c.ziehe(await p('13:00', true), await p(letzteZelle('13:30')));
+    await c.ziehe(await p('15:00', true), await p(letzteZelle('15:30')));
+    gleich(await wartendeZellen(), ['13:00', '13:15', '13:30', '13:45', '15:00', '15:15', '15:30', '15:45'],
+      'Beide Striche markiert, solange sie warten');
     gleich(await hinweis(), 'wird gespeichert …', 'Hinweis „wird gespeichert …“');
     await pause(350); // der Hinweis blendet nach 300 ms ein
     await c.foto(`${FOTOS}zwei-striche-wartend.png`);
@@ -1489,7 +1495,7 @@ await szenario('Einsatzplan: Strich, dann sofort Tageswechsel (langsame Verbindu
   s.verzoegere(800);
   try {
     const a = await zellPunkt(epZelle(NICO, '17:00'), true);
-    const b = await zellPunkt(epZelle(NICO, '17:30'), false);
+    const b = await zellPunkt(epZelle(NICO, letzteZelle('17:30')), false);
     await c.ziehe(a, b);
     await c.klick('#ansicht-einsatzplan .ep-tag:nth-child(4)');
     await ruhe();
@@ -1551,9 +1557,9 @@ await szenario('Einsatzplan: erster Strich abgelehnt, zweiter wartet, Wochenwech
     const p = async (von, sc = false) => zellPunkt(epZelle(hanna, von), sc);
     await pinsel('KA');
     const a = await p('08:00', true);
-    await c.ziehe(a, await p('08:30'));
+    await c.ziehe(a, await p(letzteZelle('08:30')));
     await pinsel('BB');
-    await c.ziehe(await p('09:00'), await p('09:30'));
+    await c.ziehe(await p('09:00'), await p(letzteZelle('09:30')));
     // Die Woche wechselt, bevor die (langsame) Antwort auf den ersten Strich kommt.
     s.verzoegere(0);
     await c.klick('#ansicht-einsatzplan [aria-label="Nächste Woche"]');
@@ -1581,9 +1587,9 @@ await szenario('Einsatzplan: Rückgängig während des Speicherns, danach noch e
   try {
     const p = async (von, sc = false) => zellPunkt(epZelle(MIA, von), sc);
     const a = await p('17:00', true);
-    await c.ziehe(a, await p('17:30'));
+    await c.ziehe(a, await p(letzteZelle('17:30')));
     await c.klick({ text: 'Rückgängig', in: '#ansicht-einsatzplan .ep-knoepfe', sel: 'button' });
-    await c.ziehe(await p('19:00'), await p('19:30'));
+    await c.ziehe(await p('19:00'), await p(letzteZelle('19:30')));
     await ruhe();
     await c.warteAuf(() => !document.querySelector('#ansicht-einsatzplan td.ep-z.wartet'), { text: 'Markierung weg', ms: 8000 });
     await ruhe();
@@ -1593,7 +1599,7 @@ await szenario('Einsatzplan: Rückgängig während des Speicherns, danach noch e
   gleich((await bloecke(MIA, MI)).sort(), [...vorher, 'KA 06:00-07:00', 'KA 17:00-18:00'].sort(), 'Strich 0 und A bleiben, B zurückgenommen');
 });
 
-// Fenster an „Std.“: von/bis/Pause nur auf halben Stunden, Block und Pause als ein Rückgängig-Schritt, Sperren wie beim
+// Fenster an „Std.“: von/bis/Pause auf Viertelstunden, Block und Pause als ein Rückgängig-Schritt, Sperren wie beim
 // Ziehen. Am Ende ist alles zurückgenommen (Datenbank und Rückgängig-Stapel wie vorher).
 await szenario('Einsatzplan: Zeit eingeben (von/bis, Pause, Sperre, Rückgängig)', async () => {
   const knopf = (mid) => `#ansicht-einsatzplan tr[data-mitarbeiter="${mid}"] .ep-std-knopf`;
@@ -1607,25 +1613,28 @@ await szenario('Einsatzplan: Zeit eingeben (von/bis, Pause, Sperre, Rückgängig
   const bis = await feldUnter('dialog[open]', 'bis');
   const pauseAb = await feldUnter('dialog[open]', 'Pause ab');
   const vonListe = await optionen(von);
-  pruefe(vonListe.length > 10 && vonListe.every((t) => /:(00|30)$/.test(t)), 'von: nur halbe Stunden', vonListe);
-  await c.setzeWert(von, '07:00');
-  await c.setzeWert(bis, '15:30');
-  gleich((await optionen(bis))[0], '07:30', 'bis beginnt nach von');
+  pruefe(vonListe.length > 10 && vonListe.every((t) => /:(00|15|30|45)$/.test(t)) && vonListe.includes('07:45'),
+    'von: Viertelstunden', vonListe);
+  // Beginn um Viertel vor, Ende um Viertel nach (15-Minuten-Takt)
+  await c.setzeWert(von, '07:45');
+  await c.setzeWert(bis, '16:15');
+  gleich((await optionen(bis))[0], '08:00', 'bis beginnt eine Viertelstunde nach von');
   await c.setzeWert(pauseAb, '11:00');
   gleich(await text('dialog[open] .hinweis'), '8 h Arbeit, 30 min Pause', 'Zusammenfassung');
   await c.foto(`${FOTOS}zeit-eingeben.png`);
   await c.taste('Enter');
   await ruhe();
   pruefe(!(await c.werte(() => Boolean(document.querySelector('dialog[open]')))), 'Enter trägt ein und schließt');
-  gleich(await bloecke(NICO, DO), ['KA 07:00-11:00', 'PA 11:00-11:30', 'KA 11:30-15:30'], 'DB: Block mit Pause');
-  gleich(await text(`#ansicht-einsatzplan tr[data-mitarbeiter="${NICO}"] .ep-std`), '8', 'Stunden der Zeile ohne Pause');
+  // Nico hat hier schon KA 07:00–15:30 (Kopieren): der KA-Strich 07:45–16:15 verschmilzt damit, endet aber um Viertel nach.
+  gleich(await bloecke(NICO, DO), ['KA 07:00-11:00', 'PA 11:00-11:30', 'KA 11:30-16:15'], 'DB: Block mit Pause, Ende auf Viertelstunde');
+  gleich(await text(`#ansicht-einsatzplan tr[data-mitarbeiter="${NICO}"] .ep-std`), '8,75', 'Stunden der Zeile ohne Pause');
   // Nächste Zeile: Vorbelegung mit der letzten Eingabe; fehlende Kompetenz sperrt wie beim Ziehen.
   await epTag(MI);
   await pinsel('KA');
   await c.klick(knopf(ID[7]));
   await warteDialog('Zeit eingeben');
   gleich(await c.werte(() => [...document.querySelectorAll('dialog[open] select')].map((s) => s.value).filter((v) => v.includes(':'))),
-    ['07:00', '15:30', '11:00'], 'Vorbelegung: letzte Eingabe');
+    ['07:45', '16:15', '11:00'], 'Vorbelegung: letzte Eingabe');
   await c.setzeWert(await feldUnter('dialog[open]', 'von'), '08:00');
   await c.setzeWert(await feldUnter('dialog[open]', 'bis'), '09:00');
   const vorher = await bloecke(ID[7], MI);
@@ -2743,7 +2752,7 @@ await szenario('Einsatzplan: VP-Zeile wie die Regelprüfung (keine VP frei an de
     const texte = { vp_allein: 'Nur eine Person anwesend', vp_gebunden: 'VP an der Kasse, keine Ablösung frei' };
     const db = [];
     for (const e of liste.filter((x) => texte[x.art])) {
-      for (let t = e.von; t < e.bis; t = halbeStundeWeiter(t)) {
+      for (let t = e.von; t < e.bis; t = viertelStundeWeiter(t)) {
         if (e.art === 'vp_gebunden' || mitVp.has(t)) db.push(`${t} ${texte[e.art]}`);
       }
     }
@@ -2759,9 +2768,9 @@ await szenario('Einsatzplan: VP-Zeile wie die Regelprüfung (keine VP frei an de
   await c.foto(`${FOTOS}vp-gebunden.png`);
 });
 
-function halbeStundeWeiter(t) {
+function viertelStundeWeiter(t) {
   const [h, m] = t.split(':').map(Number);
-  const n = h * 60 + m + 30;
+  const n = h * 60 + m + 15;
   return `${String(Math.floor(n / 60)).padStart(2, '0')}:${String(n % 60).padStart(2, '0')}`;
 }
 

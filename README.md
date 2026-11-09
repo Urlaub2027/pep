@@ -77,6 +77,15 @@ Beide Dateien sind idempotent; danach den Datenschutztext hinterlegen (ANLEITUNG
 „Ausschalten behält die Zuordnungen.“ verloren (Grenze von 180 Wörtern); er steht in
 ANLEITUNG.md, Abschnitt „Urlaubstool“.
 
+**15-Minuten-Takt (11/2026):** nur `supabase/schema.sql` im SQL-Editor **erneut** ausführen,
+**erst das Schema, dann mergen**, dann in der Seite Strg+F5. Das Schema ersetzt an
+`pep.plan_bloecke` und `pep.ist_bloecke` die Prüfung „nur :00/:30“ durch „:00, :15, :30, :45“
+(benannt `…_viertelstunde`) und rechnet Regelprüfung, Abdeckung und Sperren je Viertelstunde.
+Die alte Seite läuft mit dem neuen Schema weiter (ihre Striche liegen auf halben Stunden); die
+neue Seite mit dem alten Schema meldet bei :15/:45 „Uhrzeiten nur in halben Stunden“.
+Öffnungszeiten, Rahmen, Abwesenheiten mit Uhrzeit, Zeitvorgaben, LKW-Zeit und die
+Einstellungs-Uhrzeiten bleiben bei halben Stunden.
+
 ## Sicherheitsprinzip
 
 Das Repository ist öffentlich, die Daten sind es nicht. Alle Tabellen liegen im

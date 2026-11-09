@@ -4,7 +4,7 @@
 // Eingabe `woche` = Antwort von pep_ist_woche: bloecke = IST bzw. Vorschlag (vorschlag: true, negative id), dazu
 // plan_bloecke (Plan-Segmente) und status [{mitarbeiter_id, datum, bestaetigt}] je IST-Zeile bis heute.
 import { element, datumDE } from './hilfe.js';
-import { minuten, uhrzeit, halbstunden } from './zeit.js';
+import { minuten, uhrzeit, viertelstunden } from './zeit.js';
 import { tagesStunden, tagKurz, kurz, rund } from './plan-raster.js';
 import { dialog } from './dialog.js';
 
@@ -23,11 +23,11 @@ const statusVon = (woche, mid, d) => (woche.status ?? []).find(vonZeile(mid, d))
 
 // ---------------------------------------------------------------- Reine Hilfen
 
-// Halbstunden des IST-Rasters: von min(Rahmen, frühester Block, 06:00) bis max(Rahmen, spätester Block); `segmente`
+// Viertelstunden des IST-Rasters: von min(Rahmen, frühester Block, 06:00) bis max(Rahmen, spätester Block); `segmente`
 // sind alle IST-, Vorschlag- und Plan-Segmente des Tages. erweitert: 04:00–24:00. Mitternacht ist '24:00'.
-// Der Beginn rundet auf die volle Stunde ab (05:30 → 05:00), sonst bekäme der Stundenkopf eine halbe, abgeschnittene Zelle.
+// Der Beginn rundet auf die volle Stunde ab (05:30 → 05:00), sonst bekäme der Stundenkopf eine abgeschnittene Zelle.
 export function istSpalten(tag, segmente, erweitert = false) {
-  if (erweitert) return halbstunden(...ERWEITERT);
+  if (erweitert) return viertelstunden(...ERWEITERT);
   let von = minuten(STANDARD_VON);
   let bis = minuten(tag?.rahmen_bis ?? GESCHLOSSEN_BIS);
   if (tag?.rahmen_von) von = Math.min(von, minuten(tag.rahmen_von));
@@ -35,7 +35,7 @@ export function istSpalten(tag, segmente, erweitert = false) {
     von = Math.min(von, minuten(s.von));
     bis = Math.max(bis, minuten(s.bis));
   }
-  return halbstunden(uhrzeit(von - (von % 60)), uhrzeit(bis));
+  return viertelstunden(uhrzeit(von - (von % 60)), uhrzeit(bis));
 }
 
 // Status einer Zeile (Mitarbeiter, Tag): art keine | bestaetigt | vorschlag | offen | leer.

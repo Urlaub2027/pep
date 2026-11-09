@@ -1,7 +1,7 @@
 // Reine Plan-Logik (kein DOM). Eingabe `woche` = Antwort von public.pep_einsatzplan_woche.
 // Blöcke sind Abschnitte: dieselbe id kann mehrfach vorkommen, jeder Abschnitt hat sein eigenes
 // `unbesetzt`. Unbesetzte Abschnitte zählen nirgends (F2).
-import { minuten, uhrzeit, plusTage, kwVorZurueck, stundenText } from './zeit.js';
+import { minuten, uhrzeit, plusTage, kwVorZurueck, stundenText, TAKT } from './zeit.js';
 import { WOCHENTAGE } from './hilfe.js';
 
 const stunden = (b) => (minuten(b.bis) - minuten(b.von)) / 60;
@@ -11,7 +11,7 @@ const alsMenge = (ids) => (ids instanceof Set ? ids : new Set(ids ?? []));
 export const rund = (n) => Math.round(n * 100) / 100 || 0; // Rechenreste wie −1e-15 und −0 werden 0
 export const kurz = (n) => `${rund(n) < 0 ? '−' : ''}${Math.abs(rund(n)).toFixed(2).replace(/\.?0+$/, '').replace('.', ',')}`;
 
-// Eine Position je Halbstunde der Spalten: Zellbeschreibung oder null. Erwartet die Abschnitte EINER Zeile (ein Mitarbeiter, ein Tag).
+// Eine Position je Spalte (Viertelstunde): Zellbeschreibung oder null. Erwartet die Abschnitte EINER Zeile (ein Mitarbeiter, ein Tag).
 export function zellen(bloecke, spalten) {
   return spalten.map((beginn) => {
     const m = minuten(beginn);
@@ -24,10 +24,10 @@ export function zellen(bloecke, spalten) {
 export function strich(spalten, startIndex, endIndex) {
   const a = Math.min(startIndex, endIndex);
   const z = Math.max(startIndex, endIndex);
-  return { von: spalten[a], bis: uhrzeit(minuten(spalten[z]) + 30) };
+  return { von: spalten[a], bis: uhrzeit(minuten(spalten[z]) + TAKT) };
 }
 
-// Abdeckung je Halbstunde eines Tages (F2, F3, F5): nur besetzte Abschnitte. vp = VPs anwesend, vpFrei = davon nicht
+// Abdeckung je Spalte (Viertelstunde) eines Tages (F2, F3, F5): nur besetzte Abschnitte. vp = VPs anwesend, vpFrei = davon nicht
 // an der Kasse gebunden: in der Öffnungszeit (offen je Spalte) an der Kasse, niemand mit Kassenkompetenz frei (nicht
 // Kasse, nicht Pause), erst ab mehr als 30 min am Stück. Fachregel-Duplikat von vp_kasse/gebunden in pep.pruefung.
 export function abdeckung(woche, datum, spalten, offen = spalten.map(() => true)) {
@@ -40,7 +40,7 @@ export function abdeckung(woche, datum, spalten, offen = spalten.map(() => true)
   const kasse = [];
   const vp = [];
   const anwesend = [];
-  const anKasse = new Map(); // VP → je Halbstunde an der Kasse ohne Ablösung
+  const anKasse = new Map(); // VP → je Spalte an der Kasse ohne Ablösung
   spalten.forEach((beginn, i) => {
     const m = minuten(beginn);
     const da = tag.filter((b) => minuten(b.von) <= m && m < minuten(b.bis));
@@ -56,7 +56,14 @@ export function abdeckung(woche, datum, spalten, offen = spalten.map(() => true)
       anKasse.get(b.mitarbeiter_id)[i] = true;
     }
   });
-  const vpFrei = vp.map((n, i) => n - [...anKasse.values()].filter((x) => x[i] && (x[i - 1] || x[i + 1])).length);
+  // gebunden: Teil einer Strecke von mehr als 30 min am Stück (bei 15 min Takt: mindestens drei Spalten)
+  const gebunden = (x, i) => {
+    if (!x[i]) return false;
+    let a = i; while (x[a - 1]) a -= 1;
+    let z = i; while (x[z + 1]) z += 1;
+    return (z - a + 1) * TAKT > 30;
+  };
+  const vpFrei = vp.map((n, i) => n - [...anKasse.values()].filter((x) => gebunden(x, i)).length);
   return { kasse, vp, vpFrei, anwesend };
 }
 
@@ -168,16 +175,16 @@ export function vorschlagBlock(lkw, anteil, rahmen) {
 }
 
 // ---------------------------------------------------------------- Zeit eingeben (Fenster an „Std.“)
-// Auswahl nur auf halben Stunden: `von` aus den Spalten des Rasters (Rahmen des Tages), `bis` jede halbe Stunde danach
+// Auswahl auf Viertelstunden: `von` aus den Spalten des Rasters (Rahmen des Tages), `bis` jede Viertelstunde danach
 // bis zum Rahmenende. Die Pause (30 min) liegt ganz im Block, mit Arbeit davor und danach.
 export function bisZeiten(spalten, von) {
   if (!spalten.length) return [];
-  return [...spalten, uhrzeit(minuten(spalten.at(-1)) + 30)].filter((t) => minuten(t) > minuten(von));
+  return [...spalten, uhrzeit(minuten(spalten.at(-1)) + TAKT)].filter((t) => minuten(t) > minuten(von));
 }
 
 export function pauseZeiten(von, bis) {
   const liste = [];
-  for (let m = minuten(von) + 30; m + 30 < minuten(bis); m += 30) liste.push(uhrzeit(m));
+  for (let m = minuten(von) + TAKT; m + 30 < minuten(bis); m += TAKT) liste.push(uhrzeit(m));
   return liste;
 }
 

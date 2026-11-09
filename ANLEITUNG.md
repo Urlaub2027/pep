@@ -279,18 +279,20 @@ Ganz links der Umschalter **Plan | IST** (IST siehe nächster Abschnitt). Danebe
 Woche (◀ ▶, Datumsfeld, „Heute“) und die Tage Mo–So mit Öffnungszeit.
 Darunter die Pinsel (ein Bereich je Knopf, dazu „Radieren“) und die Knöpfe
 Rückgängig, Kopieren, Vorlagen, Krank/ZA und Drucken. Das Raster zeigt je
-Mitarbeiter eine Zeile in halben Stunden, rechts die Kommentarspalte. Unter dem
+Mitarbeiter eine Zeile in Viertelstunden (15-Minuten-Takt), rechts die Kommentarspalte. Unter dem
 Raster stehen die Abdeckungszeilen Kasse und VP: Rot heißt „niemand da“. Die VP-Zeile
-zählt nur freie VPs: Sitzt eine VP länger als 30 Minuten am Stück an der Kasse und
+zählt nur freie VPs: Sitzt eine VP länger als 30 Minuten (also ab 45 Minuten) am Stück an der Kasse und
 niemand mit Kassenkompetenz könnte sie ablösen, zählt sie nicht (auch allein; in der
 eigenen Pause zählt sie). Gelb heißt: nur eine Person da.
 
 - **Malen:** Pinsel wählen, in der Zeile des Mitarbeiters über die Zeit ziehen.
   Nach dem Loslassen steht der Block mit Kürzel und Farbe da. Malen mitten in einen
   anderen Block teilt ihn; gleicher Bereich daneben verschmilzt. „Radieren“ leert
-  die gezogenen halben Stunden. Die Stunden der Zeile und die Abdeckung ändern sich sofort.
+  die gezogenen Viertelstunden. Die Stunden der Zeile und die Abdeckung ändern sich sofort.
+  Beginn oder Ende um Viertel nach oder Viertel vor (z. B. 7:45) lassen sich ziehen oder
+  bequemer über „Zeit eingeben“ wählen.
 - **Zeit eingeben:** Klick auf die Stunden einer Zeile (Spalte „Std.“) öffnet ein Fenster
-  mit *von*, *bis*, *Bereich* und *Pause ab*. Wählbar sind nur halbe Stunden im Zeitrahmen
+  mit *von*, *bis*, *Bereich* und *Pause ab*. Wählbar sind Viertelstunden im Zeitrahmen
   des Tages; *bis* bietet nur Zeiten nach *von* an. Vorbelegt sind der gewählte Pinsel und
   die zuletzt eingegebenen Zeiten (für die nächste Person mit derselben Schicht reicht
   Enter). Mit der Tastatur: „7“ wählt 7:00, Tab, „15:3“ wählt 15:30, Enter trägt ein.
